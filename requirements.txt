@@ -1,0 +1,17 @@
+# GitHub Watcher Dependencies
+# Installation: pip install -r requirements.txt
+
+# Menu bar application framework
+rumps==0.4.0
+
+# HTTP requests for GitHub API
+requests>=2.31.0
+
+# macOS native UI bindings
+pyobjc-framework-Cocoa>=10.0
+
+# Secure credential storage
+keyring>=24.0.0
+
+# Build tool (optional, for distribution)
+pyinstaller>=6.0.0

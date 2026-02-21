@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.eggs/
+*.egg-info/
+dist-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Application data
+.config/
+repos.json
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Logs
+*.log
