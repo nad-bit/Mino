@@ -12,8 +12,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     var refreshMenuItem: NSMenuItem!
     var addRepoMenuItem: NSMenuItem!
-    var sortToggleMenuItem: NSMenuItem!
-    var ownerToggleMenuItem: NSMenuItem!
+    
+    var settingsWindowController: SettingsWindowController?
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -208,35 +208,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         menu.addItem(NSMenuItem.separator())
         
-        let prefMenuItem = NSMenuItem(title: Translations.get("preferences"), action: nil, keyEquivalent: "")
-        let prefMenu = NSMenu()
+
         
-        let loginItem = NSMenuItem(title: Translations.get("startAtLogin"), action: #selector(toggleLoginItem(_:)), keyEquivalent: "")
-        loginItem.state = isLoginItem() ? .on : .off
-        loginItem.target = self
-        prefMenu.addItem(loginItem)
-        
-        let sortTitle = isSortedByName ? Translations.get("sortByDate") : Translations.get("sortByName")
-        sortToggleMenuItem = NSMenuItem(title: sortTitle, action: #selector(toggleSortOrder(_:)), keyEquivalent: "")
-        sortToggleMenuItem.target = self
-        prefMenu.addItem(sortToggleMenuItem)
-        
-        let ownerTitle = config.showOwner ? Translations.get("hideOwner") : Translations.get("showOwner")
-        ownerToggleMenuItem = NSMenuItem(title: ownerTitle, action: #selector(toggleOwnerDisplay(_:)), keyEquivalent: "")
-        ownerToggleMenuItem.target = self
-        prefMenu.addItem(ownerToggleMenuItem)
-        
-        prefMenu.addItem(NSMenuItem(title: Translations.get("configureToken"), action: #selector(configureTokenDialog(_:)), keyEquivalent: ""))
-        prefMenu.addItem(NSMenuItem(title: Translations.get("changeInterval"), action: #selector(changeIntervalDialog(_:)), keyEquivalent: ""))
-        prefMenu.addItem(NSMenuItem(title: Translations.get("about"), action: #selector(showAbout(_:)), keyEquivalent: ""))
-        
-        // Ensure targets for pref menu
-        for item in prefMenu.items {
-            item.target = self
-        }
-        
-        prefMenuItem.submenu = prefMenu
-        menu.addItem(prefMenuItem)
+        let preferencesItem = NSMenuItem(title: Translations.get("preferences"), action: #selector(showPreferences(_:)), keyEquivalent: ",")
+        preferencesItem.target = self
+        menu.addItem(preferencesItem)
         
         menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: Translations.get("quit"), action: #selector(quitApp(_:)), keyEquivalent: "")
@@ -326,37 +302,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         UIHandlers.shared.showAbout()
     }
     
-    @objc func configureTokenDialog(_ sender: Any) {
-        UIHandlers.shared.showTokenDialog(currentToken: ConfigManager.shared.token) { newToken in
-            guard let t = newToken else { return }
-            if t.isEmpty {
-                 self.triggerFullRefresh(nil)
-                 return
-            }
-            Task {
-                let valid = await GitHubAPI.shared.validateToken(t)
-                DispatchQueue.main.async {
-                    if valid {
-                        _ = ConfigManager.shared.saveTokenToKeychain(t)
-                        ConfigManager.shared.token = t
-                        UIHandlers.shared.showAlert(title: Translations.get("configureToken"), message: Translations.get("tokenValidationSuccess"))
-                        self.triggerFullRefresh(nil)
-                    } else {
-                        UIHandlers.shared.showAlert(title: Translations.get("error"), message: Translations.get("tokenValidationError"))
-                    }
-                }
-            }
+    @objc func showPreferences(_ sender: Any) {
+        if settingsWindowController == nil {
+            settingsWindowController = SettingsWindowController()
         }
-    }
-    
-    @objc func changeIntervalDialog(_ sender: Any) {
-        let currentMins = ConfigManager.shared.config.refreshMinutes
-        if let newMinutes = UIHandlers.shared.showIntervalDialog(currentMinutes: currentMins) {
-            ConfigManager.shared.config.refreshMinutes = newMinutes
-            ConfigManager.shared.saveConfig()
-            lastRefreshTime = Date()
-            setupMenu()
-        }
+        
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindowController?.showWindow(self)
     }
     
     @objc func unifiedAddRepoDialog(_ sender: Any) {
@@ -483,61 +435,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     // MARK: - Preferences Logics
     
-    @objc func toggleSortOrder(_ sender: Any) {
-        ConfigManager.shared.config.sortBy = ConfigManager.shared.config.sortBy == "date" ? "name" : "date"
-        ConfigManager.shared.saveConfig()
-        setupMenu()
-    }
-    
-    @objc func toggleOwnerDisplay(_ sender: Any) {
-        ConfigManager.shared.config.showOwner = !ConfigManager.shared.config.showOwner
-        ConfigManager.shared.saveConfig()
-        setupMenu()
-    }
-    
-    func isLoginItem() -> Bool {
-        let launchAgentPath = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/\(Constants.launchAgentLabel).plist")
-        return FileManager.default.fileExists(atPath: launchAgentPath.path)
-    }
-    
-    @objc func toggleLoginItem(_ sender: Any) {
-        let launchAgentPath = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/\(Constants.launchAgentLabel).plist")
-        
-        if isLoginItem() {
-            try? FileManager.default.removeItem(at: launchAgentPath)
-        } else {
-            let bundlePath = Bundle.main.bundlePath
-            let executablePath: String
-            
-            // Check if it's actually an app bundle
-            if bundlePath.hasSuffix(".app") {
-                executablePath = Bundle.main.executablePath ?? bundlePath
-            } else {
-                executablePath = bundlePath // Could be command line script fallback
-            }
-            
-            let plistContent = """
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-                <key>Label</key>
-                <string>\(Constants.launchAgentLabel)</string>
-                <key>ProgramArguments</key>
-                <array>
-                    <string>\(executablePath)</string>
-                </array>
-                <key>RunAtLoad</key>
-                <true/>
-            </dict>
-            </plist>
-            """
-            
-            try? FileManager.default.createDirectory(at: launchAgentPath.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? plistContent.write(to: launchAgentPath, atomically: true, encoding: .utf8)
-        }
-        setupMenu()
-    }
+    // Removed redundant inline toggles since they are now in SettingsWindowController.
     
     func sendNotification(title: String, subtitle: String, message: String = "") {
         let notification = NSUserNotification()
