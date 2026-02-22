@@ -123,6 +123,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         refreshMenuItem = NSMenuItem(title: getRefreshTitle(), action: #selector(triggerFullRefresh(_:)), keyEquivalent: "")
         refreshMenuItem.target = self
+        refreshMenuItem.image = getIcon("arrow.clockwise")
         menu.addItem(refreshMenuItem)
         if isRefreshing {
              refreshMenuItem.action = nil
@@ -130,6 +131,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         addRepoMenuItem = NSMenuItem(title: Translations.get("addRepoUnified"), action: #selector(unifiedAddRepoDialog(_:)), keyEquivalent: "")
         addRepoMenuItem.target = self
+        addRepoMenuItem.image = getIcon("plus")
         menu.addItem(addRepoMenuItem)
         
         menu.addItem(NSMenuItem.separator())
@@ -151,6 +153,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if sortedRepos.isEmpty {
             let noRepos = NSMenuItem(title: Translations.get("noRepos"), action: nil, keyEquivalent: "")
             noRepos.isEnabled = false
+            noRepos.image = getIcon("slash.circle")
             menu.addItem(noRepos)
         }
         
@@ -176,16 +179,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             
             let repoMenuItem = NSMenuItem(title: label, action: nil, keyEquivalent: "")
+            repoMenuItem.image = getIcon(repoObj.source == "brew" ? "shippingbox" : "folder")
             let subMenu = NSMenu()
             
             let openItem = NSMenuItem(title: Translations.get("openReleases"), action: #selector(handleOpenReleases(_:)), keyEquivalent: "")
             openItem.representedObject = repoName
             openItem.target = self
+            openItem.image = getIcon("arrow.up.right.square")
             subMenu.addItem(openItem)
             
             let notesItem = NSMenuItem(title: Translations.get("releaseNotes"), action: #selector(handleShowNotes(_:)), keyEquivalent: "")
             notesItem.representedObject = repoName
             notesItem.target = self
+            notesItem.image = getIcon("doc.text")
             subMenu.addItem(notesItem)
             
             if HomebrewManager.shared.brewPath != nil && repoObj.source == "brew" {
@@ -193,6 +199,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let installItem = NSMenuItem(title: Translations.get("installUpdate"), action: #selector(handleInstallBrewCask(_:)), keyEquivalent: "")
                 installItem.representedObject = repoObj.cask
                 installItem.target = self
+                installItem.image = getIcon("arrow.down.circle")
                 subMenu.addItem(installItem)
             }
             
@@ -200,6 +207,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let deleteItem = NSMenuItem(title: Translations.get("deleteRepo"), action: #selector(handleDeleteRepo(_:)), keyEquivalent: "")
             deleteItem.representedObject = repoName
             deleteItem.target = self
+            deleteItem.image = getIcon("trash")
             subMenu.addItem(deleteItem)
             
             repoMenuItem.submenu = subMenu
@@ -209,18 +217,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(NSMenuItem.separator())
         
 
+        let prefTitle = Translations.get("preferences")
+        // Append zero-width space if no icons, to bypass macOS auto-injecting a gear icon
+        let finalPrefTitle = (ConfigManager.shared.config.showIcons ?? false) ? prefTitle : prefTitle + "\u{200B}"
         
-        let preferencesItem = NSMenuItem(title: Translations.get("preferences"), action: #selector(showPreferences(_:)), keyEquivalent: ",")
+        let preferencesItem = NSMenuItem(title: finalPrefTitle, action: #selector(openSettingsWindow(_:)), keyEquivalent: ",")
         preferencesItem.target = self
+        preferencesItem.image = getIcon("gearshape")
         menu.addItem(preferencesItem)
         
         menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: Translations.get("quit"), action: #selector(quitApp(_:)), keyEquivalent: "")
         quitItem.target = self
+        quitItem.image = getIcon("xmark.circle")
         menu.addItem(quitItem)
     }
     
     // MARK: - Handlers
+    
+    private func getIcon(_ name: String) -> NSImage? {
+        if ConfigManager.shared.config.showIcons ?? false {
+            return NSImage(systemSymbolName: name, accessibilityDescription: nil)
+        }
+        return nil
+    }
     
     @objc func quitApp(_ sender: Any) {
         countdownTimer?.invalidate()
@@ -302,7 +322,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         UIHandlers.shared.showAbout()
     }
     
-    @objc func showPreferences(_ sender: Any) {
+    @objc func openSettingsWindow(_ sender: Any) {
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController()
         }

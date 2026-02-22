@@ -12,6 +12,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     let loginSwitch = NSSwitch()
     let ownerSwitch = NSSwitch()
+    let iconsSwitch = NSSwitch()
     let sortPopup = NSPopUpButton()
     
     var tempToken: String?
@@ -76,8 +77,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         appNameLabel.font = .boldSystemFont(ofSize: 18)
         aboutStack.addArrangedSubview(appNameLabel)
         
-        // Hardcoded version string for now to match AppDelegate "About" msg
-        let appVersionLabel = NSTextField(labelWithString: "Versión 0.8.2 (166)\nnad")
+        let appVersionLabel = NSTextField(labelWithString: Translations.get("aboutMsg"))
         appVersionLabel.alignment = .center
         appVersionLabel.textColor = .secondaryLabelColor
         appVersionLabel.font = .systemFont(ofSize: 12)
@@ -174,6 +174,14 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         ownerRow.spacing = 10
         formStack.addArrangedSubview(ownerRow)
         
+        let iconsLabel = NSTextField(labelWithString: Translations.get("showIcons"))
+        iconsSwitch.target = self
+        iconsSwitch.action = #selector(toggleIcons(_:))
+        let iconsRow = NSStackView(views: [iconsSwitch, iconsLabel])
+        iconsRow.orientation = .horizontal
+        iconsRow.spacing = 10
+        formStack.addArrangedSubview(iconsRow)
+        
         // --- 4. Sort Section ---
         let sortLabel = NSTextField(labelWithString: Translations.get("sortLabel") + ":")
         sortPopup.addItem(withTitle: Translations.get("sortDateOnly"))
@@ -203,17 +211,16 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     private func loadCurrentSettings() {
         // Load Token
-        let pbString = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let t = pbString, isLikelyGitHubToken(t), t != ConfigManager.shared.token {
-            self.tempToken = t
-            tokenField.stringValue = t
-        } else if let currentToken = ConfigManager.shared.token, !currentToken.isEmpty {
+        if let currentToken = ConfigManager.shared.token, !currentToken.isEmpty {
             self.tempToken = currentToken
             tokenField.stringValue = maskToken(currentToken)
         } else {
             self.tempToken = nil
             tokenField.stringValue = ""
         }
+        
+        // Initial clipboard check
+        checkClipboardForToken()
         
         // Load Interval
         let mins = ConfigManager.shared.config.refreshMinutes
@@ -227,6 +234,9 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         // Load Owner
         ownerSwitch.state = ConfigManager.shared.config.showOwner ? .on : .off
         
+        // Load Icons
+        iconsSwitch.state = (ConfigManager.shared.config.showIcons ?? false) ? .on : .off
+        
         // Load Sort
         let isSortedByName = ConfigManager.shared.config.sortBy == "name"
         sortPopup.selectItem(at: isSortedByName ? 1 : 0)
@@ -239,6 +249,18 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     private func isLikelyGitHubToken(_ t: String) -> Bool {
         return t.hasPrefix("ghp_") || t.hasPrefix("github_pat_") || t.hasPrefix("gho_") || t.hasPrefix("ghu_") || t.hasPrefix("ghs_") || t.hasPrefix("ghr_")
+    }
+    
+    private func checkClipboardForToken() {
+        let pbString = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let t = pbString, isLikelyGitHubToken(t), t != ConfigManager.shared.token, t != self.tempToken {
+            self.tempToken = t
+            tokenField.stringValue = t
+        }
+    }
+    
+    func windowDidBecomeKey(_ notification: Notification) {
+        checkClipboardForToken()
     }
     
     func controlTextDidChange(_ obj: Notification) {
@@ -333,6 +355,14 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     @objc private func toggleOwner(_ sender: NSSwitch) {
         ConfigManager.shared.config.showOwner = sender.state == .on
+        ConfigManager.shared.saveConfig()
+        if let delegate = NSApp.delegate as? AppDelegate {
+             delegate.setupMenu()
+        }
+    }
+    
+    @objc private func toggleIcons(_ sender: NSSwitch) {
+        ConfigManager.shared.config.showIcons = sender.state == .on
         ConfigManager.shared.saveConfig()
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.setupMenu()

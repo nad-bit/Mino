@@ -19,12 +19,14 @@ struct AppConfig: Codable {
     var refreshMinutes: Int
     var sortBy: String // "name" or "date"
     var showOwner: Bool
+    var showIcons: Bool?
     
     enum CodingKeys: String, CodingKey {
         case repos
         case refreshMinutes = "refresh_minutes"
         case sortBy = "sort_by"
         case showOwner = "show_owner"
+        case showIcons = "show_icons"
     }
     
     init() {
@@ -46,5 +48,6 @@ struct AppConfig: Codable {
         self.refreshMinutes = Constants.defaultRefreshIntervalMinutes
         self.sortBy = "date"
         self.showOwner = false
+        self.showIcons = false
     }
 }
