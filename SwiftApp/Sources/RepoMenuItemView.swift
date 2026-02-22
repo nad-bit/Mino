@@ -9,6 +9,7 @@ class RepoMenuItemView: NSView {
     private let openReleasesBtn = NSButton()
     private let notesBtn = NSButton()
     private let deleteBtn = NSButton()
+    private let mainStack = NSStackView()
     
     // Data constraints
     private let repoName: String
@@ -23,7 +24,7 @@ class RepoMenuItemView: NSView {
         self.repoName = repoName
         self.caskName = caskName
         self.appDelegate = appDelegate
-        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 26)) // Menus are typically ~22-26pt high
+        super.init(frame: .zero) // Size will be determined by intrinsicContentSize
         
         setupView(labelText: labelText)
     }
@@ -55,15 +56,15 @@ class RepoMenuItemView: NSView {
         buttonStack.alignment = .centerY
         
         // Main Container Stack
-        let mainStack = NSStackView(views: [titleLabel, buttonStack])
+        mainStack.setViews([titleLabel, buttonStack], in: .leading)
         mainStack.orientation = .horizontal
         mainStack.spacing = 8
         mainStack.alignment = .centerY
         mainStack.distribution = .fill
         mainStack.translatesAutoresizingMaskIntoConstraints = false
         
-        // Prioritize truncating the label over squishing the buttons
-        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // Adjust compression resistance so the label dictates the width instead of artificially truncating
+        titleLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
         
         addSubview(mainStack)
@@ -136,11 +137,22 @@ class RepoMenuItemView: NSView {
             removeTrackingArea(trackingArea)
         }
         
-        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect]
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
         trackingArea = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
         if let ta = trackingArea {
             addTrackingArea(ta)
         }
+    }
+    
+    // MARK: - Sizing
+    override var intrinsicContentSize: NSSize {
+        // Calculate the required width based on child views
+        let minWidth: CGFloat = 200 // Ensure a minimum readable width
+        // Required width = leading margin (18) + Label Width + spacing (8) + Button Stack Width + trailing margin (12)
+        // Since mainStack handles spacing, we just ask for its width + insets
+        let calculatedWidth = mainStack.fittingSize.width + 30
+        
+        return NSSize(width: max(minWidth, calculatedWidth), height: 26)
     }
     
     override func mouseEntered(with event: NSEvent) {
