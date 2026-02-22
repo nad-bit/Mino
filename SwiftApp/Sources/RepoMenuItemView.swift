@@ -41,8 +41,8 @@ class RepoMenuItemView: NSView {
         titleLabel.backgroundColor = .clear
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        // Build Buttons
-        if caskName != nil {
+        // Build Buttons (only show install if Homebrew is available)
+        if caskName != nil && HomebrewManager.shared.brewPath != nil {
             setupButton(installBtn, icon: "shippingbox", action: #selector(installClicked), tooltip: Translations.get("installUpdate"))
         }
         setupButton(notesBtn, icon: "doc.text", action: #selector(notesClicked), tooltip: Translations.get("releaseNotes"))
@@ -160,8 +160,13 @@ class RepoMenuItemView: NSView {
         super.draw(dirtyRect)
     }
     
-    // Click on empty row area opens releases
+    // Click on row opens the repo's main GitHub page
     override func mouseUp(with event: NSEvent) {
-        openReleasesClicked()
+        if let menuItem = enclosingMenuItem {
+            appDelegate.menu.cancelTracking()
+            if let url = URL(string: "https://github.com/\(repoName)") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 }
