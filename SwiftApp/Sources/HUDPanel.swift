@@ -34,6 +34,7 @@ class HUDPanel: NSPanel {
         visualEffect.material = .hudWindow
         visualEffect.state = .active
         visualEffect.blendingMode = .behindWindow
+        visualEffect.appearance = NSAppearance(named: .darkAqua)  // HUDs are always dark, like macOS system HUDs
         visualEffect.wantsLayer = true
         visualEffect.layer?.cornerRadius = 15
         visualEffect.translatesAutoresizingMaskIntoConstraints = false
