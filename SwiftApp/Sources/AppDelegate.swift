@@ -179,6 +179,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             
             let repoMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
             let customView = RepoMenuItemView(repoName: repoName, labelText: label, caskName: repoObj.cask, appDelegate: self)
+            
+            // Calculate dynamic width to prevent NSMenu collapse while avoiding truncation
+            let fittingSize = customView.fittingSize
+            let requiredWidth = max(320, fittingSize.width + 10)
+            customView.frame = NSRect(x: 0, y: 0, width: requiredWidth, height: 26)
+            
             repoMenuItem.view = customView
             menu.addItem(repoMenuItem)
         }

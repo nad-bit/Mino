@@ -24,7 +24,7 @@ class RepoMenuItemView: NSView {
         self.repoName = repoName
         self.caskName = caskName
         self.appDelegate = appDelegate
-        super.init(frame: .zero) // Size will be determined by intrinsicContentSize
+        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 26)) // Temporarily fixed, will be adjusted dynamically by the AppDelegate
         
         setupView(labelText: labelText)
     }
@@ -144,16 +144,7 @@ class RepoMenuItemView: NSView {
         }
     }
     
-    // MARK: - Sizing
-    override var intrinsicContentSize: NSSize {
-        // Calculate the required width based on child views
-        let minWidth: CGFloat = 200 // Ensure a minimum readable width
-        // Required width = leading margin (18) + Label Width + spacing (8) + Button Stack Width + trailing margin (12)
-        // Since mainStack handles spacing, we just ask for its width + insets
-        let calculatedWidth = mainStack.fittingSize.width + 30
-        
-        return NSSize(width: max(minWidth, calculatedWidth), height: 26)
-    }
+    // No intrinsic override, sizing is handled externally to prevent NSMenu zero-collapse
     
     override func mouseEntered(with event: NSEvent) {
         isHovered = true
