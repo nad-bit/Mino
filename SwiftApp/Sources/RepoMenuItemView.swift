@@ -162,7 +162,7 @@ class RepoMenuItemView: NSView {
     
     // Click on row opens the repo's main GitHub page
     override func mouseUp(with event: NSEvent) {
-        if let menuItem = enclosingMenuItem {
+        if enclosingMenuItem != nil {
             appDelegate.menu.cancelTracking()
             if let url = URL(string: "https://github.com/\(repoName)") {
                 NSWorkspace.shared.open(url)
