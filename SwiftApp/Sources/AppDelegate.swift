@@ -164,6 +164,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(noRepos)
         }
         
+        // Two-pass approach: create all views first, then apply uniform width
+        var repoEntries: [(NSMenuItem, RepoMenuItemView)] = []
+        
         for repoObj in sortedRepos {
             let repoName = repoObj.name
             let info = repoCache[repoName] ?? RepoInfo(name: repoName, error: nil)
@@ -187,14 +190,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             
             let repoMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
             let customView = RepoMenuItemView(repoName: repoName, labelText: label, caskName: repoObj.cask, appDelegate: self)
-            
-            // Calculate dynamic width to prevent NSMenu collapse while avoiding truncation
-            let fittingSize = customView.fittingSize
-            let requiredWidth = max(320, fittingSize.width + 10)
-            customView.frame = NSRect(x: 0, y: 0, width: requiredWidth, height: 26)
-            
             repoMenuItem.view = customView
-            menu.addItem(repoMenuItem)
+            repoEntries.append((repoMenuItem, customView))
+        }
+        
+        // Calculate uniform width: the widest repo view determines all widths
+        let maxWidth = repoEntries.reduce(CGFloat(320)) { maxSoFar, entry in
+            max(maxSoFar, entry.1.fittingSize.width + 30)
+        }
+        
+        // Apply uniform width and add to menu
+        for (menuItem, customView) in repoEntries {
+            customView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 22)
+            menu.addItem(menuItem)
         }
         
         menu.addItem(NSMenuItem.separator())
