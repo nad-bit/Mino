@@ -14,6 +14,9 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     let loginSwitch = NSSwitch()
     let ownerSwitch = NSSwitch()
     let iconsSwitch = NSSwitch()
+    let newIndicatorSwitch = NSSwitch()
+    let newIndicatorSlider = NSSlider()
+    let newIndicatorLabel = NSTextField(labelWithString: "")
     let sortPopup = NSPopUpButton()
     
     var tempToken: String?
@@ -183,6 +186,30 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         iconsRow.spacing = 10
         formStack.addArrangedSubview(iconsRow)
         
+        // --- New Release Indicator Toggle ---
+        let indicatorLabel = NSTextField(labelWithString: Translations.get("showNewIndicator"))
+        newIndicatorSwitch.target = self
+        newIndicatorSwitch.action = #selector(toggleNewIndicator(_:))
+        let indicatorRow = NSStackView(views: [newIndicatorSwitch, indicatorLabel])
+        indicatorRow.orientation = .horizontal
+        indicatorRow.spacing = 10
+        formStack.addArrangedSubview(indicatorRow)
+        
+        // Indicator Days Slider
+        newIndicatorLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        newIndicatorSlider.minValue = 1
+        newIndicatorSlider.maxValue = 30
+        newIndicatorSlider.numberOfTickMarks = 30
+        newIndicatorSlider.allowsTickMarkValuesOnly = true
+        newIndicatorSlider.target = self
+        newIndicatorSlider.action = #selector(indicatorDaysChanged(_:))
+        newIndicatorSlider.translatesAutoresizingMaskIntoConstraints = false
+        newIndicatorSlider.widthAnchor.constraint(equalToConstant: 380).isActive = true
+        
+        formStack.addArrangedSubview(newIndicatorLabel)
+        formStack.addArrangedSubview(newIndicatorSlider)
+        
         // --- 4. Sort Section ---
         let sortLabel = NSTextField(labelWithString: Translations.get("sortLabel") + ":")
         sortPopup.addItem(withTitle: Translations.get("sortDateOnly"))
@@ -237,6 +264,13 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         // Load Icons
         iconsSwitch.state = (ConfigManager.shared.config.showIcons ?? false) ? .on : .off
+        
+        // Load New Indicator
+        newIndicatorSwitch.state = (ConfigManager.shared.config.showNewIndicator ?? true) ? .on : .off
+        let days = ConfigManager.shared.config.newIndicatorDays ?? Constants.newReleaseThresholdDays
+        newIndicatorSlider.integerValue = days
+        updateIndicatorDaysLabel()
+        updateIndicatorSliderVisibility()
         
         // Load Sort
         let isSortedByName = ConfigManager.shared.config.sortBy == "name"
@@ -377,6 +411,36 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.setupMenu()
         }
+    }
+    
+    @objc private func toggleNewIndicator(_ sender: NSSwitch) {
+        ConfigManager.shared.config.showNewIndicator = sender.state == .on
+        ConfigManager.shared.saveConfig()
+        updateIndicatorSliderVisibility()
+        if let delegate = NSApp.delegate as? AppDelegate {
+             delegate.setupMenu()
+        }
+    }
+    
+    @objc private func indicatorDaysChanged(_ sender: NSSlider) {
+        ConfigManager.shared.config.newIndicatorDays = sender.integerValue
+        ConfigManager.shared.saveConfig()
+        updateIndicatorDaysLabel()
+        if let delegate = NSApp.delegate as? AppDelegate {
+             delegate.setupMenu()
+        }
+    }
+    
+    private func updateIndicatorDaysLabel() {
+        let days = newIndicatorSlider.integerValue
+        let unit = days == 1 ? Translations.get("unitDay") : Translations.get("days")
+        newIndicatorLabel.stringValue = Translations.get("indicatorDays").format(with: ["days": "\(days)", "unit": unit])
+    }
+    
+    private func updateIndicatorSliderVisibility() {
+        let isEnabled = newIndicatorSwitch.state == .on
+        newIndicatorSlider.isEnabled = isEnabled
+        newIndicatorLabel.textColor = isEnabled ? .labelColor : .disabledControlTextColor
     }
     
     // Extracted Login Item Logic for reuse

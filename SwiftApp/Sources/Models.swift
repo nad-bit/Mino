@@ -20,6 +20,8 @@ struct AppConfig: Codable {
     var sortBy: String // "name" or "date"
     var showOwner: Bool
     var showIcons: Bool?
+    var showNewIndicator: Bool?
+    var newIndicatorDays: Int?
     
     enum CodingKeys: String, CodingKey {
         case repos
@@ -27,6 +29,8 @@ struct AppConfig: Codable {
         case sortBy = "sort_by"
         case showOwner = "show_owner"
         case showIcons = "show_icons"
+        case showNewIndicator = "show_new_indicator"
+        case newIndicatorDays = "new_indicator_days"
     }
     
     init() {
@@ -49,5 +53,7 @@ struct AppConfig: Codable {
         self.sortBy = "date"
         self.showOwner = false
         self.showIcons = false
+        self.showNewIndicator = true
+        self.newIndicatorDays = 7
     }
 }

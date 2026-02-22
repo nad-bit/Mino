@@ -178,7 +178,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else if let version = info.version {
                 let ageInfo = Utils.getReleaseAge(dateString: info.date)
                 let daysDiff = Int(ageInfo.seconds / 86400)
-                let newIndicator = daysDiff <= Constants.newReleaseThresholdDays ? " \(Constants.newReleaseIndicator)" : ""
+                let indicatorEnabled = config.showNewIndicator ?? true
+                let thresholdDays = config.newIndicatorDays ?? Constants.newReleaseThresholdDays
+                let newIndicator = (indicatorEnabled && daysDiff <= thresholdDays) ? " \(Constants.newReleaseIndicator)" : ""
                 
                 var formattedName = repoName
                 if !config.showOwner {
