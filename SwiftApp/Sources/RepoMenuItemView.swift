@@ -17,7 +17,6 @@ class RepoMenuItemView: NSView {
     private let appDelegate: AppDelegate
     
     // Interaction states
-    private var trackingArea: NSTrackingArea?
     private var isHovered = false
     
     init(repoName: String, labelText: String, caskName: String?, appDelegate: AppDelegate) {
@@ -55,28 +54,24 @@ class RepoMenuItemView: NSView {
         buttonStack.spacing = 8
         buttonStack.alignment = .centerY
         
-        // Main Container Stack
-        mainStack.setViews([titleLabel, buttonStack], in: .leading)
-        mainStack.orientation = .horizontal
-        mainStack.spacing = 8
-        mainStack.alignment = .centerY
-        mainStack.distribution = .fill
-        mainStack.translatesAutoresizingMaskIntoConstraints = false
+        // Direct layout for right-alignment
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
         
-        // Adjust compression resistance so the label dictates the width instead of artificially truncating
-        titleLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        addSubview(titleLabel)
+        addSubview(buttonStack)
+        
+        // Priority to ensure title compresses before button stack gives up space
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
         
-        addSubview(mainStack)
-        
         NSLayoutConstraint.activate([
-            mainStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18), // standard inset
-            mainStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            mainStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            mainStack.heightAnchor.constraint(equalTo: heightAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             
-            // Force the buttonStack to hug the trailing edge
-            mainStack.trailingAnchor.constraint(equalTo: buttonStack.trailingAnchor)
+            buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 8)
         ])
         
         // Ensure buttons start hidden
@@ -129,44 +124,7 @@ class RepoMenuItemView: NSView {
         }
     }
     
-    // MARK: - Hover Tracking & Drawing
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        
-        if let trackingArea = trackingArea {
-            removeTrackingArea(trackingArea)
-        }
-        
-        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
-        trackingArea = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
-        if let ta = trackingArea {
-            addTrackingArea(ta)
-        }
-    }
-    
-    // No intrinsic override, sizing is handled externally to prevent NSMenu zero-collapse
-    
-    override func mouseEntered(with event: NSEvent) {
-        isHovered = true
-        needsDisplay = true
-        
-        // Show context buttons if we are hovering
-        toggleButtons(visible: true)
-        // Provide the enclosing NSMenuItem state so keyboard navigation isn't wildly disconnected
-        if let _ = enclosingMenuItem {
-            // Note: Since setAsHighlightedItem is not accessible, we trigger standard selection natively if needed
-            // By doing nothing here, we just rely on our custom draw() highlighting
-        }
-    }
-    
-    override func mouseExited(with event: NSEvent) {
-        isHovered = false
-        needsDisplay = true
-        
-        // Hide context buttons when cursor leaves
-        toggleButtons(visible: false)
-    }
-    
+    // MARK: - AppKit Menu Highlight Lifecycle
     private func toggleButtons(visible: Bool) {
         let desiredVisibility = visible
         
@@ -183,9 +141,11 @@ class RepoMenuItemView: NSView {
         openReleasesBtn.contentTintColor = btnTint
         deleteBtn.contentTintColor = btnTint
     }
-    
+
     override func draw(_ dirtyRect: NSRect) {
-        if isHovered {
+        let highlighted = enclosingMenuItem?.isHighlighted ?? false
+        
+        if highlighted {
             NSColor.selectedContentBackgroundColor.set()
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
             path.fill()
@@ -193,6 +153,15 @@ class RepoMenuItemView: NSView {
             NSColor.clear.set()
             bounds.fill()
         }
+        
+        // Sync button states on highlight changes quietly without layout loops
+        if highlighted != isHovered {
+            isHovered = highlighted
+            DispatchQueue.main.async { [weak self] in
+                self?.toggleButtons(visible: highlighted)
+            }
+        }
+        
         super.draw(dirtyRect)
     }
     
