@@ -72,8 +72,14 @@ class RepoMenuItemView: NSView {
             mainStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18), // standard inset
             mainStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             mainStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            mainStack.heightAnchor.constraint(equalTo: heightAnchor)
+            mainStack.heightAnchor.constraint(equalTo: heightAnchor),
+            
+            // Force the buttonStack to hug the trailing edge
+            mainStack.trailingAnchor.constraint(equalTo: buttonStack.trailingAnchor)
         ])
+        
+        // Ensure buttons start hidden
+        toggleButtons(visible: false)
     }
     
     private func setupButton(_ btn: NSButton, icon: String, action: Selector, tooltip: String) {
@@ -130,9 +136,11 @@ class RepoMenuItemView: NSView {
             removeTrackingArea(trackingArea)
         }
         
-        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect]
         trackingArea = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
-        addTrackingArea(trackingArea!)
+        if let ta = trackingArea {
+            addTrackingArea(ta)
+        }
     }
     
     override func mouseEntered(with event: NSEvent) {
@@ -157,11 +165,12 @@ class RepoMenuItemView: NSView {
     }
     
     private func toggleButtons(visible: Bool) {
-        let targetState = visible ? false : true // isHidden
-        installBtn.isHidden = installBtn.action == nil ? true : targetState
-        notesBtn.isHidden = targetState
-        openReleasesBtn.isHidden = targetState
-        deleteBtn.isHidden = targetState
+        let desiredVisibility = visible
+        
+        installBtn.isHidden = (caskName == nil) ? true : !desiredVisibility
+        notesBtn.isHidden = !desiredVisibility
+        openReleasesBtn.isHidden = !desiredVisibility
+        deleteBtn.isHidden = !desiredVisibility
         
         // Highlight logic
         titleLabel.textColor = isHovered ? .selectedMenuItemTextColor : .labelColor
