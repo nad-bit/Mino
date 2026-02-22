@@ -1,5 +1,6 @@
 import Cocoa
 
+@MainActor
 class IntervalDialogHandler: NSObject {
     var label: NSTextField!
     
@@ -13,6 +14,7 @@ class IntervalDialogHandler: NSObject {
     }
 }
 
+@MainActor
 class AddRepoHandler: NSObject {
     var inputField: NSTextField!
     var brewPopup: NSPopUpButton!
@@ -31,13 +33,9 @@ class AddRepoHandler: NSObject {
             
             if brewPopup.numberOfItems <= 1 {
                 // Fetch brews
-                DispatchQueue.global().async {
-                    Task {
-                        let casks = await HomebrewManager.shared.listCasks()
-                        DispatchQueue.main.async {
-                            self.updateBrewList(caskList: casks)
-                        }
-                    }
+                Task {
+                    let casks = await HomebrewManager.shared.listCasks()
+                    self.updateBrewList(caskList: casks)
                 }
             }
         }
@@ -56,6 +54,7 @@ class AddRepoHandler: NSObject {
     }
 }
 
+@MainActor
 class UIHandlers {
     static let shared = UIHandlers()
     

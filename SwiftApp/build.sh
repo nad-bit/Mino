@@ -49,6 +49,6 @@ if [ -f "../icon.icns" ]; then
 fi
 
 echo "🔨 Compiling Swift sources..."
-swiftc Sources/*.swift -o "$MACOS_DIR/$APP_NAME"
+swiftc -parse-as-library Sources/*.swift -o "$MACOS_DIR/$APP_NAME"
 
 echo "✅ Build complete: $APP_DIR"

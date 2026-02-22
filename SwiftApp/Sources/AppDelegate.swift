@@ -1,5 +1,6 @@
 import Cocoa
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
     var menu: NSMenu!
@@ -71,10 +72,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let nextRefreshDate = lastRefreshTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
         let nextRefreshSeconds = nextRefreshDate.timeIntervalSince(Date())
         
-        DispatchQueue.main.async {
-            // Re-render menu to update times and countdown
-            self.setupMenu()
-        }
+        // Re-render menu to update times and countdown
+        self.setupMenu()
         
         if nextRefreshSeconds <= 0 {
             triggerFullRefresh(nil)
@@ -85,15 +84,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if isRefreshing { return }
         isRefreshing = true
         
-        DispatchQueue.main.async {
-            self.refreshMenuItem.title = Translations.get("refreshing")
-            self.refreshMenuItem.action = nil
-        }
+        self.refreshMenuItem.title = Translations.get("refreshing")
+        self.refreshMenuItem.action = nil
         
         let reposToFetch = ConfigManager.shared.config.repos.map { $0.name }
         
         Task {
             // Concurrent fetching for all repos
+            var results: [(String, RepoInfo)] = []
             await withTaskGroup(of: (String, RepoInfo).self) { group in
                 for repo in reposToFetch {
                     group.addTask {
@@ -102,19 +100,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     }
                 }
                 
-                for await (repo, info) in group {
-                    DispatchQueue.main.async {
-                        self.repoCache[repo] = info
-                    }
+                for await result in group {
+                    results.append(result)
                 }
             }
             
-            DispatchQueue.main.async {
-                self.isRefreshing = false
-                self.lastRefreshTime = Date()
-                self.setupMenu()
-                self.updateCountdown()
+            // All fetches done, safely update the UI properties from within the MainActor Context
+            for (repo, info) in results {
+                self.repoCache[repo] = info
             }
+            
+            self.isRefreshing = false
+            self.lastRefreshTime = Date()
+            self.setupMenu()
+            self.updateCountdown()
         }
     }
     
@@ -276,16 +275,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         Task {
             let result = await HomebrewManager.shared.installCask(cask: caskName)
-            DispatchQueue.main.async {
-                if result.success {
-                    let msgId = result.message == "alreadyInstalled" ? "alreadyInstalled" : "installComplete"
-                    self.sendNotification(title: "GitHub Watcher", subtitle: Translations.get(msgId).format(with: ["cask_name": caskName]))
-                    
-                    // Reveal in Finder
-                    self.revealCaskInFinder(caskName: caskName)
-                } else {
-                    self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("installFailed").format(with: ["cask_name": caskName]), message: String(result.message.prefix(100)))
-                }
+            
+            if result.success {
+                let msgId = result.message == "alreadyInstalled" ? "alreadyInstalled" : "installComplete"
+                self.sendNotification(title: "GitHub Watcher", subtitle: Translations.get(msgId).format(with: ["cask_name": caskName]))
+                
+                // Reveal in Finder
+                self.revealCaskInFinder(caskName: caskName)
+            } else {
+                self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("installFailed").format(with: ["cask_name": caskName]), message: String(result.message.prefix(100)))
             }
         }
     }
@@ -302,15 +300,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 for artifact in artifacts {
                     if let appArray = artifact["app"] as? [String], let appName = appArray.first {
                         let appPath = "/Applications/\(appName)"
-                        DispatchQueue.main.async {
-                            NSWorkspace.shared.selectFile(appPath, inFileViewerRootedAtPath: "/Applications")
-                        }
+                        NSWorkspace.shared.selectFile(appPath, inFileViewerRootedAtPath: "/Applications")
                         return
                     } else if let appName = artifact["app"] as? String {
                         let appPath = "/Applications/\(appName)"
-                        DispatchQueue.main.async {
-                            NSWorkspace.shared.selectFile(appPath, inFileViewerRootedAtPath: "/Applications")
-                        }
+                        NSWorkspace.shared.selectFile(appPath, inFileViewerRootedAtPath: "/Applications")
                         return
                     }
                 }
@@ -362,13 +356,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task {
             // Very simplistic check, without fetching headers explicitly as in Python.
             if let cask = await HomebrewManager.shared.findCaskForRepo(repoName: repoName) {
-                DispatchQueue.main.async {
-                    self.addRepo(repoName: repoName, source: "brew", cask: cask)
-                }
+                self.addRepo(repoName: repoName, source: "brew", cask: cask)
             } else {
-                DispatchQueue.main.async {
-                    self.addRepo(repoName: repoName, source: "manual")
-                }
+                self.addRepo(repoName: repoName, source: "manual")
             }
         }
     }
@@ -391,19 +381,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Fix: Do not add to config/cache immediately. Fetch first to validate.
         Task {
             let info = await GitHubAPI.shared.fetchRepoInfo(repo: repoName)
-            DispatchQueue.main.async {
-                if info.error != nil {
-                    // Invalid repo, show error and do NOT add to array
-                    UIHandlers.shared.showAlert(title: Translations.get("error"), message: Translations.get("repoNotFound"))
-                } else {
-                    // Valid repo, add to array and cache
-                    let newRepo = RepoConfig(name: repoName, source: source, cask: cask)
-                    ConfigManager.shared.config.repos.append(newRepo)
-                    ConfigManager.shared.saveConfig()
-                    
-                    self.repoCache[repoName] = info
-                    self.setupMenu()
-                }
+            if info.error != nil {
+                // Invalid repo, show error and do NOT add to array
+                UIHandlers.shared.showAlert(title: Translations.get("error"), message: Translations.get("repoNotFound"))
+            } else {
+                // Valid repo, add to array and cache
+                let newRepo = RepoConfig(name: repoName, source: source, cask: cask)
+                ConfigManager.shared.config.repos.append(newRepo)
+                ConfigManager.shared.saveConfig()
+                
+                self.repoCache[repoName] = info
+                self.setupMenu()
             }
         }
     }
@@ -437,18 +425,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         }
                     }
                     
-                    DispatchQueue.main.async {
-                        if let r = repoName {
-                            self.addRepo(repoName: r, source: "brew", cask: caskName)
-                        } else {
-                            UIHandlers.shared.showAlert(title: Translations.get("brewErrorTitle"), message: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
-                        }
+                    if let r = repoName {
+                        self.addRepo(repoName: r, source: "brew", cask: caskName)
+                    } else {
+                        UIHandlers.shared.showAlert(title: Translations.get("brewErrorTitle"), message: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
                     }
                 }
             } catch {
-                DispatchQueue.main.async {
-                    UIHandlers.shared.showAlert(title: Translations.get("error"), message: "Could not get info for \(caskName): \(error.localizedDescription)")
-                }
+                UIHandlers.shared.showAlert(title: Translations.get("error"), message: "Could not get info for \(caskName): \(error.localizedDescription)")
             }
         }
     }

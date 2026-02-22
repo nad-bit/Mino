@@ -1,5 +1,6 @@
 import Cocoa
 
+@MainActor
 class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindowDelegate {
     
     let tokenField = NSTextField()

@@ -1,5 +1,6 @@
 import Cocoa
 
+@MainActor
 class HUDPanel: NSPanel {
     static let shared = HUDPanel()
     
@@ -77,7 +78,9 @@ class HUDPanel: NSPanel {
         // Setup hide timer
         hideTimer?.invalidate()
         hideTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
-            self?.hide()
+            Task { @MainActor [weak self] in
+                self?.hide()
+            }
         }
     }
     

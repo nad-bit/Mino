@@ -83,8 +83,13 @@ enum Translations {
     ]
     
     static var currentLanguage: String {
-        let langCode = Locale.current.languageCode ?? "en"
-        return i18n.keys.contains(langCode) ? langCode : "en"
+        if #available(macOS 13, *) {
+            let langCode = Locale.current.language.languageCode?.identifier ?? "en"
+            return i18n.keys.contains(langCode) ? langCode : "en"
+        } else {
+            let langCode = Locale.current.languageCode ?? "en"
+            return i18n.keys.contains(langCode) ? langCode : "en"
+        }
     }
     
     static func get(_ key: String) -> String {
