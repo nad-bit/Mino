@@ -18,6 +18,7 @@ class RepoMenuItemView: NSView {
     
     // Interaction states
     private var isHovered = false
+    private var highlightObserver: NSObjectProtocol?
     
     init(repoName: String, labelText: String, caskName: String?, appDelegate: AppDelegate) {
         self.repoName = repoName
@@ -125,6 +126,37 @@ class RepoMenuItemView: NSView {
     }
     
     // MARK: - AppKit Menu Highlight Lifecycle
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        
+        if window != nil {
+            if highlightObserver == nil {
+                highlightObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name("RepoMenuItemHighlighted"), object: nil, queue: .main) { [weak self] notification in
+                    Task { @MainActor [weak self] in
+                        guard let self = self else { return }
+                        let highlightedItem = notification.object as? NSMenuItem
+                        let isMe = (highlightedItem === self.enclosingMenuItem)
+                        
+                        if self.isHovered != isMe {
+                            self.isHovered = isMe
+                            self.needsDisplay = true
+                            self.toggleButtons(visible: isMe)
+                        }
+                    }
+                }
+            }
+        } else {
+            if let obs = highlightObserver {
+                NotificationCenter.default.removeObserver(obs)
+                highlightObserver = nil
+            }
+            if isHovered {
+                isHovered = false
+                toggleButtons(visible: false)
+            }
+        }
+    }
+
     private func toggleButtons(visible: Bool) {
         let desiredVisibility = visible
         
@@ -143,23 +175,13 @@ class RepoMenuItemView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let highlighted = enclosingMenuItem?.isHighlighted ?? false
-        
-        if highlighted {
+        if isHovered {
             NSColor.selectedContentBackgroundColor.set()
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
             path.fill()
         } else {
             NSColor.clear.set()
             bounds.fill()
-        }
-        
-        // Sync button states on highlight changes quietly without layout loops
-        if highlighted != isHovered {
-            isHovered = highlighted
-            DispatchQueue.main.async { [weak self] in
-                self?.toggleButtons(visible: highlighted)
-            }
         }
         
         super.draw(dirtyRect)

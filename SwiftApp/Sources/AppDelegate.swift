@@ -208,6 +208,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(quitItem)
     }
     
+    // MARK: - NSMenuDelegate
+    
+    func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
+        NotificationCenter.default.post(name: NSNotification.Name("RepoMenuItemHighlighted"), object: item)
+    }
+
     // MARK: - Handlers
     
     private func getIcon(_ name: String) -> NSImage? {
