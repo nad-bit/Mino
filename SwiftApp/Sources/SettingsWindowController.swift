@@ -17,7 +17,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     let newIndicatorSwitch = NSSwitch()
     let newIndicatorSlider = NSSlider()
     let newIndicatorLabel = NSTextField(labelWithString: "")
-    let sortPopup = NSPopUpButton()
+    let sortSegment = NSSegmentedControl()
     
     var tempToken: String?
     
@@ -212,12 +212,14 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         // --- 4. Sort Section ---
         let sortLabel = NSTextField(labelWithString: Translations.get("sortLabel") + ":")
-        sortPopup.addItem(withTitle: Translations.get("sortDateOnly"))
-        sortPopup.addItem(withTitle: Translations.get("sortNameOnly"))
-        sortPopup.target = self
-        sortPopup.action = #selector(sortChanged(_:))
+        sortSegment.segmentCount = 2
+        sortSegment.setLabel(Translations.get("sortDateOnly"), forSegment: 0)
+        sortSegment.setLabel(Translations.get("sortNameOnly"), forSegment: 1)
+        sortSegment.segmentStyle = .rounded
+        sortSegment.target = self
+        sortSegment.action = #selector(sortChanged(_:))
         
-        let sortRow = NSStackView(views: [sortLabel, sortPopup])
+        let sortRow = NSStackView(views: [sortLabel, sortSegment])
         sortRow.orientation = .horizontal
         sortRow.spacing = 10
         formStack.addArrangedSubview(sortRow)
@@ -274,7 +276,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         // Load Sort
         let isSortedByName = ConfigManager.shared.config.sortBy == "name"
-        sortPopup.selectItem(at: isSortedByName ? 1 : 0)
+        sortSegment.selectedSegment = isSortedByName ? 1 : 0
     }
     
     private func maskToken(_ t: String) -> String {
@@ -404,8 +406,8 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         }
     }
     
-    @objc private func sortChanged(_ sender: NSPopUpButton) {
-        let isByName = sender.indexOfSelectedItem == 1
+    @objc private func sortChanged(_ sender: NSSegmentedControl) {
+        let isByName = sender.selectedSegment == 1
         ConfigManager.shared.config.sortBy = isByName ? "name" : "date"
         ConfigManager.shared.saveConfig()
         if let delegate = NSApp.delegate as? AppDelegate {
