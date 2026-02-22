@@ -30,6 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         menu = NSMenu()
         menu.delegate = self
+        menu.autoenablesItems = false  // Critical: prevents AppKit from disabling custom-view items that have no action
         statusItem.menu = menu
         
         setupMenu()
