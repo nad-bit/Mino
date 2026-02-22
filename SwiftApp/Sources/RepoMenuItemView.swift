@@ -9,22 +9,21 @@ class RepoMenuItemView: NSView {
     private let openReleasesBtn = NSButton()
     private let notesBtn = NSButton()
     private let deleteBtn = NSButton()
-    private let mainStack = NSStackView()
+    private let buttonStack = NSStackView()
     
     // Data constraints
     private let repoName: String
     private let caskName: String?
     private let appDelegate: AppDelegate
     
-    // Interaction states
-    private var isHovered = false
-    private var highlightObserver: NSObjectProtocol?
+    // Track last known highlight state to avoid redundant updates
+    private var lastHighlightState = false
     
     init(repoName: String, labelText: String, caskName: String?, appDelegate: AppDelegate) {
         self.repoName = repoName
         self.caskName = caskName
         self.appDelegate = appDelegate
-        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 26)) // Temporarily fixed, will be adjusted dynamically by the AppDelegate
+        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 22))
         
         setupView(labelText: labelText)
     }
@@ -36,13 +35,14 @@ class RepoMenuItemView: NSView {
     private func setupView(labelText: String) {
         // Build Title Label
         titleLabel.stringValue = labelText
-        titleLabel.font = .menuBarFont(ofSize: 0) // Default menu font size
+        titleLabel.font = .menuBarFont(ofSize: 0)
         titleLabel.textColor = .labelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.backgroundColor = .clear
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
         
         // Build Buttons
-        if let _ = caskName {
+        if caskName != nil {
             setupButton(installBtn, icon: "shippingbox", action: #selector(installClicked), tooltip: Translations.get("installUpdate"))
         }
         setupButton(notesBtn, icon: "doc.text", action: #selector(notesClicked), tooltip: Translations.get("releaseNotes"))
@@ -50,19 +50,17 @@ class RepoMenuItemView: NSView {
         setupButton(deleteBtn, icon: "trash", action: #selector(deleteClicked), tooltip: Translations.get("deleteRepo"))
         
         // Layout Right-Side Stack
-        let buttonStack = NSStackView(views: [installBtn, notesBtn, openReleasesBtn, deleteBtn].filter { $0.action != nil })
+        let buttons = [installBtn, notesBtn, openReleasesBtn, deleteBtn].filter { $0.action != nil }
+        buttonStack.setViews(buttons, in: .leading)
         buttonStack.orientation = .horizontal
         buttonStack.spacing = 8
         buttonStack.alignment = .centerY
-        
-        // Direct layout for right-alignment
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
         
         addSubview(titleLabel)
         addSubview(buttonStack)
         
-        // Priority to ensure title compresses before button stack gives up space
+        // Priority: title truncates before buttons get compressed
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
         
@@ -75,8 +73,8 @@ class RepoMenuItemView: NSView {
             buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 8)
         ])
         
-        // Ensure buttons start hidden
-        toggleButtons(visible: false)
+        // Buttons start hidden, will be revealed on hover
+        applyHighlightState(false)
     }
     
     private func setupButton(_ btn: NSButton, icon: String, action: Selector, tooltip: String) {
@@ -87,15 +85,12 @@ class RepoMenuItemView: NSView {
         btn.action = action
         btn.toolTip = tooltip
         btn.contentTintColor = .secondaryLabelColor
-        
-        // Make the button only visible/clickable in hover mode for a cleaner look natively
-        btn.isHidden = ConfigManager.shared.config.showIcons == false ? false : true 
     }
     
     // MARK: - Actions
     @objc private func installClicked() {
         if let menuItem = enclosingMenuItem {
-            appDelegate.menu.cancelTracking() // Dismiss the menu immediately
+            appDelegate.menu.cancelTracking()
             menuItem.representedObject = caskName
             appDelegate.handleInstallBrewCask(menuItem)
         }
@@ -125,72 +120,51 @@ class RepoMenuItemView: NSView {
         }
     }
     
-    // MARK: - AppKit Menu Highlight Lifecycle
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        
-        if window != nil {
-            if highlightObserver == nil {
-                highlightObserver = NotificationCenter.default.addObserver(forName: NSNotification.Name("RepoMenuItemHighlighted"), object: nil, queue: .main) { [weak self] notification in
-                    Task { @MainActor [weak self] in
-                        guard let self = self else { return }
-                        let highlightedItem = notification.object as? NSMenuItem
-                        let isMe = (highlightedItem === self.enclosingMenuItem)
-                        
-                        if self.isHovered != isMe {
-                            self.isHovered = isMe
-                            self.needsDisplay = true
-                            self.toggleButtons(visible: isMe)
-                        }
-                    }
-                }
-            }
-        } else {
-            if let obs = highlightObserver {
-                NotificationCenter.default.removeObserver(obs)
-                highlightObserver = nil
-            }
-            if isHovered {
-                isHovered = false
-                toggleButtons(visible: false)
-            }
+    // MARK: - Highlight Drawing
+    
+    /// Called by AppDelegate's menu(_:willHighlight:) via direct reference.
+    /// This is the ONLY mechanism that drives highlight state — no tracking areas, no notifications.
+    func menuDidChangeHighlight() {
+        let highlighted = enclosingMenuItem?.isHighlighted ?? false
+        if highlighted != lastHighlightState {
+            lastHighlightState = highlighted
+            applyHighlightState(highlighted)
+            needsDisplay = true
         }
     }
-
-    private func toggleButtons(visible: Bool) {
-        let desiredVisibility = visible
+    
+    private func applyHighlightState(_ highlighted: Bool) {
+        // Show/hide buttons
+        let showButtons = highlighted
+        installBtn.isHidden = (caskName == nil) ? true : !showButtons
+        notesBtn.isHidden = !showButtons
+        openReleasesBtn.isHidden = !showButtons
+        deleteBtn.isHidden = !showButtons
         
-        installBtn.isHidden = (caskName == nil) ? true : !desiredVisibility
-        notesBtn.isHidden = !desiredVisibility
-        openReleasesBtn.isHidden = !desiredVisibility
-        deleteBtn.isHidden = !desiredVisibility
-        
-        // Highlight logic
-        titleLabel.textColor = isHovered ? .selectedMenuItemTextColor : .labelColor
-        let btnTint: NSColor = isHovered ? .selectedMenuItemTextColor : .secondaryLabelColor
+        // Adjust text/icon colors
+        titleLabel.textColor = highlighted ? .selectedMenuItemTextColor : .labelColor
+        let btnTint: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
         installBtn.contentTintColor = btnTint
         notesBtn.contentTintColor = btnTint
         openReleasesBtn.contentTintColor = btnTint
         deleteBtn.contentTintColor = btnTint
     }
-
+    
     override func draw(_ dirtyRect: NSRect) {
-        if isHovered {
+        let highlighted = enclosingMenuItem?.isHighlighted ?? false
+        
+        if highlighted {
             NSColor.selectedContentBackgroundColor.set()
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
             path.fill()
-        } else {
-            NSColor.clear.set()
-            bounds.fill()
         }
+        // No need to fill clear — the menu already provides the background
         
         super.draw(dirtyRect)
     }
     
-    // Optional: allow row click to do something (like GitHub) if not hitting a specific button
+    // Click on empty row area opens releases
     override func mouseUp(with event: NSEvent) {
-        // If the user clicks the empty space of the row, act like normal menu item click
-        // Assuming open notes as default action for now, or open repo
-        openReleasesClicked() 
+        openReleasesClicked()
     }
 }

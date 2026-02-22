@@ -211,7 +211,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - NSMenuDelegate
     
     func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
-        NotificationCenter.default.post(name: NSNotification.Name("RepoMenuItemHighlighted"), object: item)
+        // Directly notify all custom repo views about the highlight change
+        for menuItem in menu.items {
+            if let repoView = menuItem.view as? RepoMenuItemView {
+                repoView.menuDidChangeHighlight()
+            }
+        }
     }
 
     // MARK: - Handlers
