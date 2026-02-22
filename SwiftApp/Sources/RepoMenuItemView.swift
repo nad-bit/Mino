@@ -123,9 +123,9 @@ class RepoMenuItemView: NSView {
     // MARK: - Highlight Drawing
     
     /// Called by AppDelegate's menu(_:willHighlight:) via direct reference.
-    /// This is the ONLY mechanism that drives highlight state — no tracking areas, no notifications.
-    func menuDidChangeHighlight() {
-        let highlighted = enclosingMenuItem?.isHighlighted ?? false
+    /// Receives the item that WILL be highlighted (willHighlight fires BEFORE isHighlighted updates).
+    func menuDidChangeHighlight(highlightedItem: NSMenuItem?) {
+        let highlighted = (highlightedItem === enclosingMenuItem)
         if highlighted != lastHighlightState {
             lastHighlightState = highlighted
             applyHighlightState(highlighted)
@@ -151,14 +151,11 @@ class RepoMenuItemView: NSView {
     }
     
     override func draw(_ dirtyRect: NSRect) {
-        let highlighted = enclosingMenuItem?.isHighlighted ?? false
-        
-        if highlighted {
+        if lastHighlightState {
             NSColor.selectedContentBackgroundColor.set()
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
             path.fill()
         }
-        // No need to fill clear — the menu already provides the background
         
         super.draw(dirtyRect)
     }

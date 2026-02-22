@@ -10,6 +10,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     var countdownTimer: Timer?
     var isRefreshing = false
+    var menuIsOpen = false
     
     var refreshMenuItem: NSMenuItem!
     var addRepoMenuItem: NSMenuItem!
@@ -72,8 +73,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let nextRefreshDate = lastRefreshTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
         let nextRefreshSeconds = nextRefreshDate.timeIntervalSince(Date())
         
-        // Re-render menu to update times and countdown
-        self.setupMenu()
+        // Only rebuild the menu if it's NOT currently being shown to the user
+        // Rebuilding while open destroys custom views and kills hover tracking
+        if !menuIsOpen {
+            self.setupMenu()
+        } else {
+            // At minimum update the countdown text in the refresh item
+            refreshMenuItem?.title = getRefreshTitle()
+        }
         
         if nextRefreshSeconds <= 0 {
             triggerFullRefresh(nil)
@@ -210,11 +217,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     // MARK: - NSMenuDelegate
     
+    func menuWillOpen(_ menu: NSMenu) {
+        menuIsOpen = true
+    }
+    
+    func menuDidClose(_ menu: NSMenu) {
+        menuIsOpen = false
+        // Rebuild the menu now that it's closed, to pick up any missed countdown updates
+        setupMenu()
+    }
+    
     func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {
-        // Directly notify all custom repo views about the highlight change
+        // Pass the item that WILL be highlighted directly to each custom view
         for menuItem in menu.items {
             if let repoView = menuItem.view as? RepoMenuItemView {
-                repoView.menuDidChangeHighlight()
+                repoView.menuDidChangeHighlight(highlightedItem: item)
             }
         }
     }
