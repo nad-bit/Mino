@@ -177,39 +177,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 label = "\(formattedName) (\(version)) · \(ageInfo.label)\(newIndicator)"
             }
             
-            let repoMenuItem = NSMenuItem(title: label, action: nil, keyEquivalent: "")
-            repoMenuItem.image = getIcon(repoObj.source == "brew" ? "shippingbox" : "folder")
-            let subMenu = NSMenu()
-            
-            let openItem = NSMenuItem(title: Translations.get("openReleases"), action: #selector(handleOpenReleases(_:)), keyEquivalent: "")
-            openItem.representedObject = repoName
-            openItem.target = self
-            openItem.image = getIcon("arrow.up.right.square")
-            subMenu.addItem(openItem)
-            
-            let notesItem = NSMenuItem(title: Translations.get("releaseNotes"), action: #selector(handleShowNotes(_:)), keyEquivalent: "")
-            notesItem.representedObject = repoName
-            notesItem.target = self
-            notesItem.image = getIcon("doc.text")
-            subMenu.addItem(notesItem)
-            
-            if HomebrewManager.shared.brewPath != nil && repoObj.source == "brew" {
-                subMenu.addItem(NSMenuItem.separator())
-                let installItem = NSMenuItem(title: Translations.get("installUpdate"), action: #selector(handleInstallBrewCask(_:)), keyEquivalent: "")
-                installItem.representedObject = repoObj.cask
-                installItem.target = self
-                installItem.image = getIcon("arrow.down.circle")
-                subMenu.addItem(installItem)
-            }
-            
-            subMenu.addItem(NSMenuItem.separator())
-            let deleteItem = NSMenuItem(title: Translations.get("deleteRepo"), action: #selector(handleDeleteRepo(_:)), keyEquivalent: "")
-            deleteItem.representedObject = repoName
-            deleteItem.target = self
-            deleteItem.image = getIcon("trash")
-            subMenu.addItem(deleteItem)
-            
-            repoMenuItem.submenu = subMenu
+            let repoMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            let customView = RepoMenuItemView(repoName: repoName, labelText: label, caskName: repoObj.cask, appDelegate: self)
+            repoMenuItem.view = customView
             menu.addItem(repoMenuItem)
         }
         
