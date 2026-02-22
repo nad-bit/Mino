@@ -458,10 +458,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Removed redundant inline toggles since they are now in SettingsWindowController.
     
     func sendNotification(title: String, subtitle: String, message: String = "") {
-        let notification = NSUserNotification()
-        notification.title = title
-        notification.subtitle = subtitle
-        notification.informativeText = message
-        NSUserNotificationCenter.default.deliver(notification)
+        let fullSubtitle = message.isEmpty ? subtitle : "\(subtitle)\n\(message)"
+        HUDPanel.shared.show(title: title, subtitle: fullSubtitle)
     }
 }
