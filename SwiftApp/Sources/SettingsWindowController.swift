@@ -240,17 +240,28 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     private func loadCurrentSettings() {
-        // Load Token
-        if let currentToken = ConfigManager.shared.token, !currentToken.isEmpty {
-            self.tempToken = currentToken
-            tokenField.stringValue = maskToken(currentToken)
-        } else {
-            self.tempToken = nil
-            tokenField.stringValue = ""
-        }
+        // Load Token - two exclusive states
+        let hasToken = ConfigManager.shared.token != nil && !ConfigManager.shared.token!.isEmpty
         
-        // Initial clipboard check
-        checkClipboardForToken()
+        if hasToken {
+            // State: Token stored → read-only masked field, only Delete button
+            tokenField.stringValue = maskToken(ConfigManager.shared.token!)
+            tokenField.isEditable = false
+            tokenField.isSelectable = false
+            tokenField.textColor = .secondaryLabelColor
+            tokenSaveBtn.isHidden = true
+            tokenDeleteBtn.isHidden = false
+        } else {
+            // State: No token → editable field, only OK button
+            tokenField.stringValue = ""
+            tokenField.isEditable = true
+            tokenField.isSelectable = true
+            tokenField.textColor = .labelColor
+            tokenSaveBtn.isHidden = false
+            tokenDeleteBtn.isHidden = true
+            self.tempToken = nil
+            checkClipboardForToken()
+        }
         
         // Load Interval
         let mins = ConfigManager.shared.config.refreshMinutes
@@ -289,8 +300,10 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     private func checkClipboardForToken() {
+        // Only auto-fill from clipboard if no token is currently stored
+        guard ConfigManager.shared.token == nil || ConfigManager.shared.token!.isEmpty else { return }
         let pbString = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let t = pbString, isLikelyGitHubToken(t), t != ConfigManager.shared.token, t != self.tempToken {
+        if let t = pbString, isLikelyGitHubToken(t), t != self.tempToken {
             self.tempToken = t
             tokenField.stringValue = t
         }
@@ -302,17 +315,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     func controlTextDidChange(_ obj: Notification) {
         if let textField = obj.object as? NSTextField, textField == tokenField {
-            let val = textField.stringValue
-            
-            // Si el texto sigue conteniendo el enmascarado, significa que está intentando borrarlo
-            if val.contains("••••••••") {
-                // Borramos todo y preparamos para el nuevo token
-                textField.stringValue = ""
-                self.tempToken = nil
-            } else {
-                // Si ya no está el enmascarado (p.ej lo pegó todo de golpe), usamos el valor real
-                self.tempToken = val
-            }
+            self.tempToken = textField.stringValue
         }
     }
     
@@ -347,15 +350,8 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     @objc private func saveToken(_ sender: NSButton) {
-        let t = tempToken ?? tokenField.stringValue
-        if t.isEmpty {
-            _ = ConfigManager.shared.deleteTokenFromKeychain()
-            ConfigManager.shared.token = nil
-            if let delegate = NSApp.delegate as? AppDelegate {
-                 delegate.triggerFullRefresh(nil)
-            }
-            return
-        }
+        let t = (tempToken ?? tokenField.stringValue).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
         
         Task {
             let valid = await GitHubAPI.shared.validateToken(t)
@@ -363,7 +359,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
                 if valid {
                     _ = ConfigManager.shared.saveTokenToKeychain(t)
                     ConfigManager.shared.token = t
-                    self.loadCurrentSettings() // remask token
+                    self.loadCurrentSettings()
                     UIHandlers.shared.showAlert(title: Translations.get("configureToken"), message: Translations.get("tokenValidationSuccess"))
                     if let delegate = NSApp.delegate as? AppDelegate {
                          delegate.triggerFullRefresh(nil)
@@ -376,13 +372,28 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     @objc private func deleteToken(_ sender: NSButton) {
+        // Confirmation dialog
+        let confirm = NSAlert()
+        confirm.messageText = Translations.get("confirmDelete")
+        confirm.informativeText = Translations.get("tokenValidationEmpty")
+        confirm.alertStyle = .warning
+        confirm.addButton(withTitle: Translations.get("deleteToken"))
+        confirm.addButton(withTitle: Translations.get("cancel"))
+        
+        let response = confirm.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+        
         _ = ConfigManager.shared.deleteTokenFromKeychain()
         ConfigManager.shared.token = nil
-        self.loadCurrentSettings() // refresh UI
+        self.loadCurrentSettings()
+        
+        // Notify user of reverted limits
+        HUDPanel.shared.show(title: Translations.get("deleteToken"), subtitle: Translations.get("tokenValidationEmpty"))
+        
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.triggerFullRefresh(nil)
         }
-        self.window?.makeFirstResponder(nil) // remove focus so delegate works correctly if pasted again
+        self.window?.makeFirstResponder(nil)
     }
     
     @objc private func toggleLogin(_ sender: NSSwitch) {
