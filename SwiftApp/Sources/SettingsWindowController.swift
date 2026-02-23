@@ -374,7 +374,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     @objc private func deleteToken(_ sender: NSButton) {
         // Confirmation dialog
         let confirm = NSAlert()
-        confirm.messageText = Translations.get("confirmDelete")
+        confirm.messageText = Translations.get("confirmDeleteToken")
         confirm.informativeText = Translations.get("tokenValidationEmpty")
         confirm.alertStyle = .warning
         confirm.addButton(withTitle: Translations.get("deleteToken"))
