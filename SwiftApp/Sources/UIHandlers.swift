@@ -288,7 +288,32 @@ class UIHandlers {
         alert.addButton(withTitle: Translations.get("ok"))
         alert.addButton(withTitle: Translations.get("cancel"))
         
+        // Active clipboard monitoring while dialog is open
+        var lastClipboardContent = NSPasteboard.general.string(forType: .string) ?? ""
+        let clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            guard let clip = NSPasteboard.general.string(forType: .string), clip != lastClipboardContent else { return }
+            lastClipboardContent = clip
+            
+            // Only auto-fill if manual mode is selected and field is empty or unchanged from prefill
+            guard radioManual.state == .on else { return }
+            
+            let regex = try? NSRegularExpression(pattern: "(?:github\\.com/)?([^/\\s\"]+/[^/\\s\"]+)")
+            let range = NSRange(location: 0, length: clip.utf16.count)
+            if let match = regex?.firstMatch(in: clip, options: [], range: range) {
+                if let r = Range(match.range(at: 1), in: clip) {
+                    var candidate = String(clip[r]).replacingOccurrences(of: ".git", with: "")
+                    if let index = candidate.firstIndex(of: "?") { candidate = String(candidate[..<index]) }
+                    if let index = candidate.firstIndex(of: "#") { candidate = String(candidate[..<index]) }
+                    if candidate.split(separator: "/").count == 2 {
+                        inputField.stringValue = candidate
+                    }
+                }
+            }
+        }
+        
         let response = alert.runModal()
+        clipboardTimer.invalidate()
+        
         if response == .alertFirstButtonReturn {
             if radioManual.state == .on {
                 let repo = inputField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
