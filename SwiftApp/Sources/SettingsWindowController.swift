@@ -230,7 +230,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
         stackView.addArrangedSubview(spacer)
         
-        let saveCloseBtn = NSButton(title: "Close", target: self, action: #selector(closeWindow(_:)))
+        let saveCloseBtn = NSButton(title: Translations.get("close"), target: self, action: #selector(closeWindow(_:)))
         
         let bottomRow = NSStackView(views: [saveCloseBtn])
         bottomRow.alignment = .trailing
