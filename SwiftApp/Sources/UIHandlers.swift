@@ -1,18 +1,6 @@
 import Cocoa
 
-@MainActor
-class IntervalDialogHandler: NSObject {
-    var label: NSTextField!
-    
-    @objc func sliderChanged(_ sender: NSSlider) {
-        let val = Int(sender.intValue)
-        if val == 1 {
-            label.stringValue = "1 \(Translations.get("unitHour"))"
-        } else {
-            label.stringValue = "\(val) \(Translations.get("hours"))"
-        }
-    }
-}
+
 
 @MainActor
 class AddRepoHandler: NSObject {
@@ -58,69 +46,7 @@ class AddRepoHandler: NSObject {
 class UIHandlers {
     static let shared = UIHandlers()
     
-    func showTokenDialog(currentToken: String?, completion: @escaping (String?) -> Void) {
-        NSApp.activate(ignoringOtherApps: true)
-        
-        var maskedIndicator: String? = nil
-        if let token = currentToken, token.count > 4 {
-            let suffix = String(token.suffix(4))
-            maskedIndicator = "••••••••\(suffix)"
-        } else if currentToken != nil {
-            maskedIndicator = "••••••••"
-        }
-        
-        let alert = NSAlert()
-        alert.messageText = Translations.get("configureToken")
-        
-        if let prefix = maskedIndicator {
-            alert.informativeText = "\(Translations.get("enterTokenMsg"))\n\n\(Translations.get("currentToken")): \(prefix)"
-        } else {
-            alert.informativeText = Translations.get("enterTokenMsg")
-        }
-        
-        let inputField = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 50))
-        inputField.placeholderString = Translations.get("tokenPlaceholder")
-        
-        // Smart Paste logic simplified for Swift
-        if let clipboardString = NSPasteboard.general.string(forType: .string) {
-            let regex = try? NSRegularExpression(pattern: "((?:gh[ps]_|github_pat_)[a-zA-Z0-9_-]{36,})|([0-9a-fA-F]{40})")
-            let range = NSRange(location: 0, length: clipboardString.utf16.count)
-            if let match = regex?.firstMatch(in: clipboardString, options: [], range: range) {
-                if let r = Range(match.range, in: clipboardString) {
-                    inputField.stringValue = String(clipboardString[r])
-                }
-            }
-        }
-        
-        alert.accessoryView = inputField
-        alert.addButton(withTitle: Translations.get("ok"))
-        alert.addButton(withTitle: Translations.get("cancel"))
-        
-        if currentToken != nil {
-            alert.addButton(withTitle: Translations.get("deleteToken"))
-        }
-        
-        let response = alert.runModal()
-        // NSAlertFirstButtonReturn = 1000, Second = 1001, Third = 1002
-        if response == .alertFirstButtonReturn {
-            let nwToken = inputField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !nwToken.isEmpty {
-                completion(nwToken)
-            } else {
-                completion(nil) // empty field, do nothing
-            }
-        } else if response == .alertThirdButtonReturn {
-            // Delete token
-            let _ = ConfigManager.shared.deleteTokenFromKeychain()
-            ConfigManager.shared.token = nil
-            let infoAlert = NSAlert()
-            infoAlert.messageText = Translations.get("configureToken")
-            infoAlert.informativeText = Translations.get("tokenValidationEmpty")
-            infoAlert.runModal()
-            completion("") // Signal explicitly to trigger refresh without token
-        }
-    }
-    
+
     func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
@@ -178,51 +104,7 @@ class UIHandlers {
         alert.runModal()
     }
     
-    func showIntervalDialog(currentMinutes: Int) -> Int? {
-        NSApp.activate(ignoringOtherApps: true)
-        let currentHours = max(1, min(24, currentMinutes / 60))
-        
-        let alert = NSAlert()
-        alert.messageText = Translations.get("changeInterval")
-        alert.informativeText = Translations.get("enterIntervalMsg")
-        
-        let customView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 50))
-        
-        let slider = NSSlider(frame: NSRect(x: 50, y: 20, width: 200, height: 24))
-        slider.minValue = 1.0
-        slider.maxValue = 24.0
-        slider.numberOfTickMarks = 24
-        slider.allowsTickMarkValuesOnly = true
-        slider.intValue = Int32(currentHours)
-        
-        let label = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 20))
-        label.isBezeled = false
-        label.drawsBackground = false
-        label.isEditable = false
-        label.alignment = .center
-        
-        let handler = IntervalDialogHandler()
-        handler.label = label
-        slider.target = handler
-        slider.action = #selector(IntervalDialogHandler.sliderChanged(_:))
-        
-        // Initial setup
-        handler.sliderChanged(slider)
-        
-        customView.addSubview(slider)
-        customView.addSubview(label)
-        alert.accessoryView = customView
-        
-        alert.addButton(withTitle: Translations.get("ok"))
-        alert.addButton(withTitle: Translations.get("cancel"))
-        
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            return Int(slider.intValue) * 60
-        }
-        return nil
-    }
-    
+
     func showUnifiedAddRepoDialog(hasBrew: Bool, completion: @escaping (String?, String?, String?) -> Void) {
         NSApp.activate(ignoringOtherApps: true)
         

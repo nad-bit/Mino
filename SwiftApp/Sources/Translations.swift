@@ -3,8 +3,7 @@ import Foundation
 enum Translations {
     static let i18n: [String: [String: String]] = [
         "en": [
-            "configureToken": "Configure Token...", "enterTokenMsg": "Enter your GitHub personal access token:",
-            "changeInterval": "Change Update Interval...", "enterIntervalMsg": "Select interval (1-24 hours):",
+            "configureToken": "Configure GitHub Token",
             "selectCaskPlaceholder": "--- Select a Cask ---",
             "enterRepoMsg": "Enter repository (owner/name):",
             "deleteRepo": "Delete Repository", "openReleases": "Open Releases Page", "releaseNotes": "Release Notes",
@@ -35,11 +34,10 @@ enum Translations {
             "tokenValidationError": "Invalid token. Please check your GitHub Personal Access Token.",
             "tokenValidationEmpty": "Token cleared. Reverting to unauthenticated rate limit (60/hr).",
             "unitMin": "min", "unitHour": "hr", "unitDay": "day", "unitHoursPlural": "hrs",
-            "currentToken": "Current token", "tokenPlaceholder": "Paste new token here...", "deleteToken": "Delete Token",
+            "tokenPlaceholder": "Paste new token here...", "deleteToken": "Delete Token",
         ],
         "es": [
-            "configureToken": "Configurar Token...", "enterTokenMsg": "Introduce tu token personal de GitHub:",
-            "changeInterval": "Cambiar intervalo...", "enterIntervalMsg": "Selecciona intervalo (1-24 horas):",
+            "configureToken": "Configurar Token de GitHub",
             "selectCaskPlaceholder": "--- Selecciona un Cask ---",
             "enterRepoMsg": "Introduce el repositorio (owner/nombre):",
             "deleteRepo": "Eliminar Repositorio", "openReleases": "Abrir página de lanzamientos", "releaseNotes": "Notas de la versión",
@@ -70,7 +68,7 @@ enum Translations {
             "tokenValidationError": "Token inválido. Por favor revisa tu Token Personal de GitHub.",
             "tokenValidationEmpty": "Token eliminado. Volviendo al límite no autenticado (60/h).",
             "unitMin": "min", "unitHour": "hora", "unitDay": "día", "unitHoursPlural": "horas",
-            "currentToken": "Token actual", "tokenPlaceholder": "Pega el nuevo token aquí...", "deleteToken": "Borrar Token",
+            "tokenPlaceholder": "Pega el nuevo token aquí...", "deleteToken": "Borrar Token",
             "addRepoUnified": "Añadir Repositorio",
             "manualOption": "Entrada Manual", "brewOption": "Desde Homebrew"
         ]
