@@ -360,7 +360,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
                     _ = ConfigManager.shared.saveTokenToKeychain(t)
                     ConfigManager.shared.token = t
                     self.loadCurrentSettings()
-                    UIHandlers.shared.showAlert(title: Translations.get("configureToken"), message: Translations.get("tokenValidationSuccess"))
+                    HUDPanel.shared.show(title: Translations.get("configureToken"), subtitle: Translations.get("tokenValidationSuccess"))
                     if let delegate = NSApp.delegate as? AppDelegate {
                          delegate.triggerFullRefresh(nil)
                     }
