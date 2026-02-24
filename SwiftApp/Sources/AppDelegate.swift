@@ -159,7 +159,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         let config = ConfigManager.shared.config
         let isSortedByName = config.sortBy == "name"
-        let currentLayout = config.menuLayout ?? "compact"
+        let currentLayout = config.menuLayout ?? "columns"
         
         var sortedRepos = config.repos
         if isSortedByName {
@@ -217,7 +217,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else if daysDiff <= thresholdDays {
                 freshnessColor = .systemGreen
             } else if daysDiff <= 90 {
-                freshnessColor = .systemYellow
+                freshnessColor = .systemOrange
             } else {
                 freshnessColor = .systemGray
             }

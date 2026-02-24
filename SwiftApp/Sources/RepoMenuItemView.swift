@@ -96,12 +96,12 @@ class RepoMenuItemView: NSView {
         switch layout {
         case "cards":
             setupCardsView(data: displayData)
-        case "columns":
-            setupColumnsView(data: displayData)
         case "hybrid":
             setupHybridView(data: displayData)
+        case "columns":
+            fallthrough
         default:
-            setupCompactView(data: displayData)
+            setupColumnsView(data: displayData)
         }
         
         applyHighlightState(false)
@@ -138,45 +138,6 @@ class RepoMenuItemView: NSView {
         btn.toolTip = tooltip
         btn.baseColor = .secondaryLabelColor
         btn.hoverColor = .labelColor
-    }
-    
-    // MARK: - Layout: Compact (current/default)
-    
-    private func setupCompactView(data: RepoDisplayData) {
-        let label = buildCompactLabel(data: data)
-        titleLabel.stringValue = label
-        titleLabel.font = .menuBarFont(ofSize: 0)
-        titleLabel.textColor = .labelColor
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.backgroundColor = .clear
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        addSubview(titleLabel)
-        addSubview(buttonStack)
-        
-        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
-        
-        NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
-            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 8)
-        ])
-    }
-    
-    private func buildCompactLabel(data: RepoDisplayData) -> String {
-        if data.isLoading {
-            return "\(data.repoName) - \(Translations.get("loading"))"
-        }
-        if data.isError {
-            return "⚠️ \(data.repoName) - \(Translations.get("error"))"
-        }
-        if let ver = data.version, let age = data.ageLabel {
-            return "\(data.formattedName) (\(ver)) · \(age)\(data.newIndicator)"
-        }
-        return data.formattedName
     }
     
     // MARK: - Layout: Cards (two-line)
@@ -411,10 +372,13 @@ class RepoMenuItemView: NSView {
         let btnBase: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
         let btnHover: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
         
-        titleLabel.textColor = mainColor
-        subtitleLabel.textColor = secondaryColor
+        applyTextWithIndicatorColor(to: titleLabel, baseColor: mainColor, highlighted: highlighted)
+        applyTextWithIndicatorColor(to: subtitleLabel, baseColor: secondaryColor, highlighted: highlighted)
+        
         versionLabel.textColor = (layout == "cards") ? (highlighted ? mainColor : .white) : secondaryColor
-        ageLabel.textColor = highlighted ? mainColor : tertiaryColor
+        
+        // ageLabel shouldn't normally have the indicator since it's in the title/subtitle, but for safety:
+        applyTextWithIndicatorColor(to: ageLabel, baseColor: highlighted ? mainColor : tertiaryColor, highlighted: highlighted)
         
         installBtn.baseColor = btnBase
         installBtn.hoverColor = btnHover
@@ -429,6 +393,32 @@ class RepoMenuItemView: NSView {
         if layout == "cards" {
             versionLabel.backgroundColor = highlighted ? .clear : NSColor.systemBlue.withAlphaComponent(0.7)
         }
+    }
+    
+    // Applies a base color to the entire string, but if the 'new release indicator' is present and
+    // the user requested 'gold', paints just that character yellow.
+    private func applyTextWithIndicatorColor(to label: NSTextField, baseColor: NSColor, highlighted: Bool) {
+        let text = label.stringValue
+        if text.isEmpty { return }
+        
+        let attrStr = NSMutableAttributedString(string: text)
+        
+        // Restore truncation line break mode that attributed strings wipe out by default
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byTruncatingTail
+        let fullRange = NSRange(location: 0, length: attrStr.length)
+        
+        attrStr.addAttribute(.foregroundColor, value: baseColor, range: fullRange)
+        attrStr.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
+        
+        if !highlighted, ConfigManager.shared.config.indicatorColor == "gold", text.contains(Constants.newReleaseIndicator) {
+            let indicatorRange = (text as NSString).range(of: Constants.newReleaseIndicator)
+            if indicatorRange.location != NSNotFound {
+                attrStr.addAttribute(.foregroundColor, value: NSColor.systemYellow, range: indicatorRange)
+            }
+        }
+        
+        label.attributedStringValue = attrStr
     }
     
     override func draw(_ dirtyRect: NSRect) {

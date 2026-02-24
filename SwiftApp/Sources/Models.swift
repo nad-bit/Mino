@@ -22,6 +22,7 @@ struct AppConfig: Codable {
     var showIcons: Bool?
     var showNewIndicator: Bool?
     var newIndicatorDays: Int?
+    var indicatorColor: String? // "default" | "gold"
     var menuLayout: String? // "compact" | "cards" | "columns" | "hybrid"
     
     enum CodingKeys: String, CodingKey {
@@ -31,6 +32,7 @@ struct AppConfig: Codable {
         case showOwner = "show_owner"
         case showNewIndicator = "show_new_indicator"
         case newIndicatorDays = "new_indicator_days"
+        case indicatorColor = "indicator_color"
         case menuLayout = "menu_layout"
     }
     
@@ -51,10 +53,11 @@ struct AppConfig: Codable {
             RepoConfig(name: "HandBrake/HandBrake", source: "brew", cask: "handbrake-app")
         ]
         self.refreshMinutes = Constants.defaultRefreshIntervalMinutes
-        self.sortBy = "date"
+        self.sortBy = "name"
         self.showOwner = false
         self.showNewIndicator = true
         self.newIndicatorDays = 7
-        self.menuLayout = "compact"
+        self.indicatorColor = "default"
+        self.menuLayout = "columns"
     }
 }

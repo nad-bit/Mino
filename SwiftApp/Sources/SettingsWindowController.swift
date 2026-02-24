@@ -12,9 +12,10 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     var initialIntervalHours: Int = 1
     
     let loginSwitch = NSSwitch()
-    let ownerSwitch = NSSwitch()
-    let newIndicatorSwitch = NSSwitch()
-    let newIndicatorSlider = NSSlider()
+    private let ownerSwitch = NSSwitch()
+    private let newIndicatorSwitch = NSSwitch()
+    private let newIndicatorColorSegment = NSSegmentedControl()
+    private let newIndicatorSlider = NSSlider(value: 1, minValue: 1, maxValue: 30, target: nil, action: nil)
     let newIndicatorLabel = NSTextField(labelWithString: "")
     let sortSegment = NSSegmentedControl()
     let layoutSegment = NSSegmentedControl()
@@ -182,7 +183,17 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let indicatorLabel = NSTextField(labelWithString: Translations.get("showNewIndicator"))
         newIndicatorSwitch.target = self
         newIndicatorSwitch.action = #selector(toggleNewIndicator(_:))
-        let indicatorRow = NSStackView(views: [newIndicatorSwitch, indicatorLabel])
+        
+        newIndicatorColorSegment.segmentCount = 2
+        newIndicatorColorSegment.setImage(createIndicatorSwatch(color: .labelColor), forSegment: 0)
+        newIndicatorColorSegment.setImage(createIndicatorSwatch(color: .systemYellow), forSegment: 1)
+        newIndicatorColorSegment.segmentStyle = .rounded
+        newIndicatorColorSegment.setToolTip("Default", forSegment: 0)
+        newIndicatorColorSegment.setToolTip("Gold", forSegment: 1)
+        newIndicatorColorSegment.target = self
+        newIndicatorColorSegment.action = #selector(indicatorColorChanged(_:))
+        
+        let indicatorRow = NSStackView(views: [newIndicatorSwitch, indicatorLabel, newIndicatorColorSegment])
         indicatorRow.orientation = .horizontal
         indicatorRow.spacing = 10
         formStack.addArrangedSubview(indicatorRow)
@@ -205,8 +216,8 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         // --- 4. Sort Section ---
         let sortLabel = NSTextField(labelWithString: Translations.get("sortLabel") + ":")
         sortSegment.segmentCount = 2
-        sortSegment.setLabel(Translations.get("sortDateOnly"), forSegment: 0)
-        sortSegment.setLabel(Translations.get("sortNameOnly"), forSegment: 1)
+        sortSegment.setLabel(Translations.get("sortNameOnly"), forSegment: 0)
+        sortSegment.setLabel(Translations.get("sortDateOnly"), forSegment: 1)
         sortSegment.segmentStyle = .rounded
         sortSegment.target = self
         sortSegment.action = #selector(sortChanged(_:))
@@ -218,11 +229,10 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         // --- 5. Layout Mode Section ---
         let layoutLabel = NSTextField(labelWithString: Translations.get("layoutLabel") + ":")
-        layoutSegment.segmentCount = 4
-        layoutSegment.setLabel(Translations.get("layoutCompact"), forSegment: 0)
+        layoutSegment.segmentCount = 3
+        layoutSegment.setLabel(Translations.get("layoutColumns"), forSegment: 0)
         layoutSegment.setLabel(Translations.get("layoutCards"), forSegment: 1)
-        layoutSegment.setLabel(Translations.get("layoutColumns"), forSegment: 2)
-        layoutSegment.setLabel(Translations.get("layoutHybrid"), forSegment: 3)
+        layoutSegment.setLabel(Translations.get("layoutHybrid"), forSegment: 2)
         layoutSegment.segmentStyle = .rounded
         layoutSegment.target = self
         layoutSegment.action = #selector(layoutChanged(_:))
@@ -276,20 +286,24 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         ownerSwitch.state = ConfigManager.shared.config.showOwner ? .on : .off
         
         // Load New Indicator
-        newIndicatorSwitch.state = (ConfigManager.shared.config.showNewIndicator ?? true) ? .on : .off
+        let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
+        newIndicatorSwitch.state = showNewIndicator ? .on : .off
+        
+        let indicatorColor = ConfigManager.shared.config.indicatorColor ?? "default"
+        newIndicatorColorSegment.selectedSegment = (indicatorColor == "gold") ? 1 : 0
+        
         let days = ConfigManager.shared.config.newIndicatorDays ?? Constants.newReleaseThresholdDays
         newIndicatorSlider.integerValue = days
         updateIndicatorDaysLabel()
         updateIndicatorSliderVisibility()
         
-        // Load Sort
-        let isSortedByName = ConfigManager.shared.config.sortBy == "name"
-        sortSegment.selectedSegment = isSortedByName ? 1 : 0
+        // Load Sort By
+        sortSegment.selectedSegment = (ConfigManager.shared.config.sortBy == "name") ? 0 : 1
         
         // Load Layout
-        let layoutModes = ["compact", "cards", "columns", "hybrid"]
-        let currentLayout = ConfigManager.shared.config.menuLayout ?? "compact"
-        layoutSegment.selectedSegment = layoutModes.firstIndex(of: currentLayout) ?? 0
+        let layout = ConfigManager.shared.config.menuLayout ?? "columns"
+        let layoutIndex = ["columns", "cards", "hybrid"].firstIndex(of: layout) ?? 0
+        layoutSegment.selectedSegment = layoutIndex
     }
     
     private func maskToken(_ t: String) -> String {
@@ -411,7 +425,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     @objc private func sortChanged(_ sender: NSSegmentedControl) {
-        let isByName = sender.selectedSegment == 1
+        let isByName = sender.selectedSegment == 0 // Name is index 0
         ConfigManager.shared.config.sortBy = isByName ? "name" : "date"
         ConfigManager.shared.saveConfig()
         if let delegate = NSApp.delegate as? AppDelegate {
@@ -428,6 +442,15 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         }
     }
     
+    @objc private func indicatorColorChanged(_ sender: NSSegmentedControl) {
+        let isGold = sender.selectedSegment == 1
+        ConfigManager.shared.config.indicatorColor = isGold ? "gold" : "default"
+        ConfigManager.shared.saveConfig()
+        if let delegate = NSApp.delegate as? AppDelegate {
+             delegate.setupMenu()
+        }
+    }
+    
     @objc private func indicatorDaysChanged(_ sender: NSSlider) {
         ConfigManager.shared.config.newIndicatorDays = sender.integerValue
         ConfigManager.shared.saveConfig()
@@ -438,7 +461,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     @objc private func layoutChanged(_ sender: NSSegmentedControl) {
-        let layoutModes = ["compact", "cards", "columns", "hybrid"]
+        let layoutModes = ["columns", "cards", "hybrid"]
         ConfigManager.shared.config.menuLayout = layoutModes[sender.selectedSegment]
         ConfigManager.shared.saveConfig()
         if let delegate = NSApp.delegate as? AppDelegate {
@@ -458,7 +481,31 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     private func updateIndicatorSliderVisibility() {
         let isEnabled = newIndicatorSwitch.state == .on
         newIndicatorSlider.isEnabled = isEnabled
+        newIndicatorColorSegment.isEnabled = isEnabled
         newIndicatorLabel.textColor = isEnabled ? .labelColor : .disabledControlTextColor
+    }
+    
+    private func createIndicatorSwatch(color: NSColor) -> NSImage {
+        let text = Constants.newReleaseIndicator
+        let font = NSFont.systemFont(ofSize: 14, weight: .bold)
+        let attr: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        let attrString = NSAttributedString(string: text, attributes: attr)
+        
+        let size = NSSize(width: 14, height: 16)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        // Draw the text centered
+        let stringSize = attrString.size()
+        let rect = NSRect(
+            x: (size.width - stringSize.width) / 2,
+            y: (size.height - stringSize.height) / 2,
+            width: stringSize.width,
+            height: stringSize.height
+        )
+        attrString.draw(in: rect)
+        image.unlockFocus()
+        image.isTemplate = false // explicitly colored, don't let the system tint it
+        return image
     }
     
     // Extracted Login Item Logic for reuse
