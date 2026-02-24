@@ -57,6 +57,8 @@ class ConfigManager {
         } catch {
             print("Failed to save config: \(error)")
         }
+        
+        NotificationCenter.default.post(name: Notification.Name("ConfigChanged"), object: nil)
     }
     
     // MARK: - Keychain Methods

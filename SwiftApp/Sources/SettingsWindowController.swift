@@ -6,6 +6,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     let tokenField = NSTextField()
     let tokenSaveBtn = NSButton(title: Translations.get("ok"), target: nil, action: nil)
     let tokenDeleteBtn = NSButton(title: Translations.get("deleteToken"), target: nil, action: nil)
+    private let repoCountLabel = NSTextField(labelWithString: "")
     
     let intervalLabel = NSTextField(labelWithString: "")
     let intervalSlider = NSSlider()
@@ -43,6 +44,18 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         setupUI()
         loadCurrentSettings()
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(configDidUpdate), name: Notification.Name("ConfigChanged"), object: nil)
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    @objc private func configDidUpdate() {
+        DispatchQueue.main.async {
+            self.loadCurrentSettings()
+        }
     }
     
     private func setupUI() {
@@ -247,6 +260,12 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         spacer.translatesAutoresizingMaskIntoConstraints = false
         spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
         stackView.addArrangedSubview(spacer)
+        
+        // --- Bottom Repo Count ---
+        repoCountLabel.font = .systemFont(ofSize: 11)
+        repoCountLabel.textColor = .tertiaryLabelColor
+        repoCountLabel.alignment = .center
+        stackView.addArrangedSubview(repoCountLabel)
     }
     
     private func loadCurrentSettings() {
@@ -304,6 +323,15 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let layout = ConfigManager.shared.config.menuLayout ?? "columns"
         let layoutIndex = ["columns", "cards", "hybrid"].firstIndex(of: layout) ?? 0
         layoutSegment.selectedSegment = layoutIndex
+        
+        // Load Repo Count
+        let count = ConfigManager.shared.config.repos.count
+        if count == 1 {
+            repoCountLabel.stringValue = Translations.get("repoCountSingular")
+        } else {
+            let baseString = Translations.get("repoCount")
+            repoCountLabel.stringValue = baseString.replacingOccurrences(of: "{count}", with: "\(count)")
+        }
     }
     
     private func maskToken(_ t: String) -> String {

@@ -197,8 +197,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 formattedName = String(repoName.split(separator: "/").last ?? Substring(repoName))
             }
             
-            let isError = info.error != nil
-            let isLoading = !isError && info.version == nil
+            // error might be explicitly set to "" by default in some generic decoders, so check isEmpty
+            let isError = info.error != nil && !info.error!.isEmpty
+            let isLoading = info.version == nil && !isError
             
             let ageInfo = Utils.getReleaseAge(dateString: info.date)
             let daysDiff = ageInfo.seconds.isInfinite ? Int.max : Int(ageInfo.seconds / 86400)
