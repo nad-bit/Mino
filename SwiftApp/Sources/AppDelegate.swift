@@ -3,6 +3,7 @@ import Cocoa
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
+    var statusIndicatorDot: NSBox!
     var menu: NSMenu!
     
     var repoCache: [String: RepoInfo] = [:]
@@ -12,21 +13,42 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var isRefreshing = false
     var menuIsOpen = false
     
-    var refreshMenuItem: NSMenuItem!
-    var addRepoMenuItem: NSMenuItem!
+    var headerMenuItem: NSMenuItem!
+    var headerView: HeaderMenuItemView!
     
     var settingsWindowController: SettingsWindowController?
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
-        // Use SF Symbol "eye"
+        // Use SF Symbol "eye" as a template so it handles light/dark mode
         if let eyeImage = NSImage(systemSymbolName: "eye", accessibilityDescription: "GitHub Watcher") {
             eyeImage.isTemplate = true
             statusItem.button?.image = eyeImage
         } else {
             statusItem.button?.title = "GW"
         }
+        
+        // Add the red iris overlay
+        statusIndicatorDot = NSBox()
+        statusIndicatorDot.boxType = .custom
+        statusIndicatorDot.isTransparent = false
+        statusIndicatorDot.fillColor = .systemRed
+        statusIndicatorDot.cornerRadius = 2.5
+        statusIndicatorDot.translatesAutoresizingMaskIntoConstraints = false
+        statusIndicatorDot.isHidden = true
+        
+        if let btn = statusItem.button {
+            btn.addSubview(statusIndicatorDot)
+            NSLayoutConstraint.activate([
+                statusIndicatorDot.widthAnchor.constraint(equalToConstant: 5),
+                statusIndicatorDot.heightAnchor.constraint(equalToConstant: 5),
+                statusIndicatorDot.centerXAnchor.constraint(equalTo: btn.centerXAnchor),
+                statusIndicatorDot.centerYAnchor.constraint(equalTo: btn.centerYAnchor, constant: 1) // macOS coordinates y=0 is at bottom
+            ])
+        }
+        
+        updateStatusIcon(hasUpdates: false)
         
         menu = NSMenu()
         menu.delegate = self
@@ -80,7 +102,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.setupMenu()
         } else {
             // At minimum update the countdown text in the refresh item
-            refreshMenuItem?.title = getRefreshTitle()
+            headerView?.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
         }
         
         if nextRefreshSeconds <= 0 {
@@ -92,8 +114,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if isRefreshing { return }
         isRefreshing = true
         
-        self.refreshMenuItem.title = Translations.get("refreshing")
-        self.refreshMenuItem.action = nil
+        self.headerView?.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
         
         let reposToFetch = ConfigManager.shared.config.repos.map { $0.name }
         
@@ -128,23 +149,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func setupMenu() {
         menu.removeAllItems()
         
-        refreshMenuItem = NSMenuItem(title: getRefreshTitle(), action: #selector(triggerFullRefresh(_:)), keyEquivalent: "")
-        refreshMenuItem.target = self
-        refreshMenuItem.image = getIcon("arrow.clockwise")
-        menu.addItem(refreshMenuItem)
-        if isRefreshing {
-             refreshMenuItem.action = nil
-        }
-        
-        addRepoMenuItem = NSMenuItem(title: Translations.get("addRepoUnified"), action: #selector(unifiedAddRepoDialog(_:)), keyEquivalent: "")
-        addRepoMenuItem.target = self
-        addRepoMenuItem.image = getIcon("plus")
-        menu.addItem(addRepoMenuItem)
+        headerMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        headerView = HeaderMenuItemView(appDelegate: self)
+        headerView.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
+        headerMenuItem.view = headerView
+        menu.addItem(headerMenuItem)
         
         menu.addItem(NSMenuItem.separator())
         
         let config = ConfigManager.shared.config
         let isSortedByName = config.sortBy == "name"
+        let currentLayout = config.menuLayout ?? "compact"
         
         var sortedRepos = config.repos
         if isSortedByName {
@@ -160,76 +175,152 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if sortedRepos.isEmpty {
             let noRepos = NSMenuItem(title: Translations.get("noRepos"), action: nil, keyEquivalent: "")
             noRepos.isEnabled = false
-            noRepos.image = getIcon("slash.circle")
+            noRepos.image = NSImage(systemSymbolName: "slash.circle", accessibilityDescription: nil)
             menu.addItem(noRepos)
         }
         
-        // Two-pass approach: create all views first, then apply uniform width
-        var repoEntries: [(NSMenuItem, RepoMenuItemView)] = []
+        // Build display data for each repo
+        let indicatorEnabled = config.showNewIndicator ?? true
+        let thresholdDays = config.newIndicatorDays ?? Constants.newReleaseThresholdDays
+        
+        var displayDataList: [(RepoConfig, RepoDisplayData)] = []
+        var anyNewUpdates = false
+        
+        let lastSeenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
         
         for repoObj in sortedRepos {
             let repoName = repoObj.name
             let info = repoCache[repoName] ?? RepoInfo(name: repoName, error: nil)
             
-            var label = "\(repoName) - \(Translations.get("loading"))"
-            
-            if info.error != nil {
-                label = "⚠️ \(repoName) - \(Translations.get("error"))"
-            } else if let version = info.version {
-                let ageInfo = Utils.getReleaseAge(dateString: info.date)
-                let daysDiff = Int(ageInfo.seconds / 86400)
-                let indicatorEnabled = config.showNewIndicator ?? true
-                let thresholdDays = config.newIndicatorDays ?? Constants.newReleaseThresholdDays
-                let newIndicator = (indicatorEnabled && daysDiff <= thresholdDays) ? " \(Constants.newReleaseIndicator)" : ""
-                
-                var formattedName = repoName
-                if !config.showOwner {
-                    formattedName = String(repoName.split(separator: "/").last ?? Substring(repoName))
-                }
-                
-                label = "\(formattedName) (\(version)) · \(ageInfo.label)\(newIndicator)"
+            var formattedName = repoName
+            if !config.showOwner {
+                formattedName = String(repoName.split(separator: "/").last ?? Substring(repoName))
             }
             
+            let isError = info.error != nil
+            let isLoading = !isError && info.version == nil
+            
+            let ageInfo = Utils.getReleaseAge(dateString: info.date)
+            let daysDiff = ageInfo.seconds.isInfinite ? Int.max : Int(ageInfo.seconds / 86400)
+            let newIndicator = (indicatorEnabled && !isLoading && !isError && daysDiff <= thresholdDays) ? " \(Constants.newReleaseIndicator)" : ""
+            
+            if !isLoading && !isError {
+                if let currentVersion = info.version, lastSeenVersions[repoName] != currentVersion {
+                    anyNewUpdates = true
+                }
+            }
+            
+            // Freshness color for hybrid mode
+            let freshnessColor: NSColor
+            if isLoading || isError {
+                freshnessColor = .systemGray
+            } else if daysDiff <= thresholdDays {
+                freshnessColor = .systemGreen
+            } else if daysDiff <= 90 {
+                freshnessColor = .systemYellow
+            } else {
+                freshnessColor = .systemGray
+            }
+            
+            let data = RepoDisplayData(
+                repoName: repoName,
+                formattedName: formattedName,
+                version: info.version,
+                ageLabel: (isLoading || isError) ? nil : ageInfo.label,
+                ageSeconds: ageInfo.seconds,
+                newIndicator: newIndicator,
+                isError: isError,
+                isLoading: isLoading,
+                caskName: repoObj.cask,
+                freshnessColor: freshnessColor
+            )
+            displayDataList.append((repoObj, data))
+        }
+        
+        // Pre-compute column widths for columns/hybrid modes
+        var maxNameWidth: CGFloat = 0
+        var maxVersionWidth: CGFloat = 0
+        
+        if currentLayout == "columns" || currentLayout == "hybrid" {
+            let nameFont = NSFont.menuBarFont(ofSize: 0)
+            let versionFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+            let attrs: (NSFont) -> [NSAttributedString.Key: Any] = { [.font: $0] }
+            
+            for (_, data) in displayDataList {
+                let nameSize = (data.formattedName as NSString).size(withAttributes: attrs(nameFont))
+                maxNameWidth = max(maxNameWidth, nameSize.width)
+                let verText = data.version ?? "…"
+                let verSize = (verText as NSString).size(withAttributes: attrs(versionFont))
+                maxVersionWidth = max(maxVersionWidth, verSize.width)
+            }
+            maxNameWidth += 4  // small padding
+            maxVersionWidth += 4
+        }
+        
+        // Create views
+        let rowHeight: CGFloat = (currentLayout == "cards") ? 40 : 22
+        var repoEntries: [(NSMenuItem, RepoMenuItemView)] = []
+        
+        for (repoObj, data) in displayDataList {
             let repoMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-            let customView = RepoMenuItemView(repoName: repoName, labelText: label, caskName: repoObj.cask, appDelegate: self)
+            let customView = RepoMenuItemView(repoName: repoObj.name, displayData: data, layout: currentLayout, appDelegate: self)
+            
+            if currentLayout == "columns" || currentLayout == "hybrid" {
+                customView.nameColumnWidth = maxNameWidth
+                customView.versionColumnWidth = maxVersionWidth
+            }
+            
             repoMenuItem.view = customView
             repoEntries.append((repoMenuItem, customView))
         }
         
-        // Calculate uniform width: the widest repo view determines all widths
+        // Calculate uniform width
         let maxWidth = repoEntries.reduce(CGFloat(320)) { maxSoFar, entry in
             max(maxSoFar, entry.1.fittingSize.width + 30)
         }
         
         // Apply uniform width and add to menu
         for (menuItem, customView) in repoEntries {
-            customView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 22)
+            customView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: rowHeight)
             menu.addItem(menuItem)
         }
         
         menu.addItem(NSMenuItem.separator())
         
 
-        let prefTitle = Translations.get("preferences")
-        // Append zero-width space if no icons, to bypass macOS auto-injecting a gear icon
-        let finalPrefTitle = (ConfigManager.shared.config.showIcons ?? false) ? prefTitle : prefTitle + "\u{200B}"
+        // Apply uniform width to header
+        headerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 26)
         
-        let preferencesItem = NSMenuItem(title: finalPrefTitle, action: #selector(openSettingsWindow(_:)), keyEquivalent: ",")
-        preferencesItem.target = self
-        preferencesItem.image = getIcon("gearshape")
-        menu.addItem(preferencesItem)
+        // Add footer
+        let footerMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let footerView = FooterMenuItemView(appDelegate: self)
+        footerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 32)
+        footerMenuItem.view = footerView
+        menu.addItem(footerMenuItem)
         
-        menu.addItem(NSMenuItem.separator())
-        let quitItem = NSMenuItem(title: Translations.get("quit"), action: #selector(quitApp(_:)), keyEquivalent: "")
-        quitItem.target = self
-        quitItem.image = getIcon("xmark.circle")
-        menu.addItem(quitItem)
+        updateStatusIcon(hasUpdates: anyNewUpdates)
+    }
+    
+    private func updateStatusIcon(hasUpdates: Bool) {
+        // Show or hide the red pupil overlay
+        statusIndicatorDot.isHidden = !hasUpdates
     }
     
     // MARK: - NSMenuDelegate
     
     func menuWillOpen(_ menu: NSMenu) {
         menuIsOpen = true
+        
+        // Mark currently cached versions as seen
+        var seenVersions: [String: String] = [:]
+        for (repoName, info) in repoCache {
+            if let v = info.version {
+                seenVersions[repoName] = v
+            }
+        }
+        UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
+        
+        updateStatusIcon(hasUpdates: false) // Turn off red dot immediately upon opening
     }
     
     func menuDidClose(_ menu: NSMenu) {
@@ -243,18 +334,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for menuItem in menu.items {
             if let repoView = menuItem.view as? RepoMenuItemView {
                 repoView.menuDidChangeHighlight(highlightedItem: item)
+            } else if let headerView = menuItem.view as? HeaderMenuItemView {
+                headerView.menuDidChangeHighlight(highlightedItem: item)
+            } else if let footerView = menuItem.view as? FooterMenuItemView {
+                footerView.menuDidChangeHighlight(highlightedItem: item)
             }
         }
     }
 
     // MARK: - Handlers
-    
-    private func getIcon(_ name: String) -> NSImage? {
-        if ConfigManager.shared.config.showIcons ?? false {
-            return NSImage(systemSymbolName: name, accessibilityDescription: nil)
-        }
-        return nil
-    }
     
     @objc func quitApp(_ sender: Any) {
         countdownTimer?.invalidate()

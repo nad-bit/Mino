@@ -1,14 +1,14 @@
 import Foundation
 
 class Utils {
-    static func getReleaseAge(dateString: String?) -> (label: String, seconds: Double) {
-        guard let dateString = dateString else {
-            return ("N/A", .infinity)
-        }
-        
-        // El formato de GitHub es ISO8601, ej. "2023-10-18T15:00:00Z"
+    static func parseDate(dateString: String?) -> Date? {
+        guard let dateString = dateString else { return nil }
         let formatter = ISO8601DateFormatter()
-        guard let releaseDate = formatter.date(from: dateString) else {
+        return formatter.date(from: dateString)
+    }
+    
+    static func getReleaseAge(dateString: String?) -> (label: String, seconds: Double) {
+        guard let releaseDate = parseDate(dateString: dateString) else {
             return ("N/A", .infinity)
         }
         

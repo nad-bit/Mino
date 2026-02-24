@@ -1,9 +1,23 @@
 import Cocoa
 
+/// Holds the pre-parsed data for building any layout mode.
+struct RepoDisplayData {
+    let repoName: String
+    let formattedName: String
+    let version: String?          // e.g. "v2.12.5"
+    let ageLabel: String?         // e.g. "3 days"
+    let ageSeconds: Double
+    let newIndicator: String      // "✦" or ""
+    let isError: Bool
+    let isLoading: Bool
+    let caskName: String?
+    let freshnessColor: NSColor   // 🟢/🟡/⚪ mapped to NSColor
+}
+
 @MainActor
 class RepoMenuItemView: NSView {
     
-    // UI Elements
+    // UI Elements (common)
     private let titleLabel = NSTextField(labelWithString: "")
     private let installBtn = NSButton()
     private let openReleasesBtn = NSButton()
@@ -11,37 +25,57 @@ class RepoMenuItemView: NSView {
     private let deleteBtn = NSButton()
     private let buttonStack = NSStackView()
     
-    // Data constraints
+    // Extra labels for multi-element layouts
+    private let versionLabel = NSTextField(labelWithString: "")
+    private let ageLabel = NSTextField(labelWithString: "")
+    private let subtitleLabel = NSTextField(labelWithString: "")   // Cards mode line 2
+    private let dotLabel = NSTextField(labelWithString: "")        // Hybrid mode color dot
+    
+    // Data
     private let repoName: String
     private let caskName: String?
     private let appDelegate: AppDelegate
+    private let layout: String
     
-    // Track last known highlight state to avoid redundant updates
+    // Track last known highlight state
     private var lastHighlightState = false
     
-    init(repoName: String, labelText: String, caskName: String?, appDelegate: AppDelegate) {
+    // Column widths (for columns/hybrid modes, set from outside)
+    var nameColumnWidth: CGFloat = 0
+    var versionColumnWidth: CGFloat = 0
+    
+    init(repoName: String, displayData: RepoDisplayData, layout: String, appDelegate: AppDelegate) {
         self.repoName = repoName
-        self.caskName = caskName
+        self.caskName = displayData.caskName
         self.appDelegate = appDelegate
-        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 22))
+        self.layout = layout
         
-        setupView(labelText: labelText)
+        let rowHeight: CGFloat = (layout == "cards") ? 40 : 22
+        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: rowHeight))
+        
+        setupButtons()
+        
+        switch layout {
+        case "cards":
+            setupCardsView(data: displayData)
+        case "columns":
+            setupColumnsView(data: displayData)
+        case "hybrid":
+            setupHybridView(data: displayData)
+        default:
+            setupCompactView(data: displayData)
+        }
+        
+        applyHighlightState(false)
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
-    private func setupView(labelText: String) {
-        // Build Title Label
-        titleLabel.stringValue = labelText
-        titleLabel.font = .menuBarFont(ofSize: 0)
-        titleLabel.textColor = .labelColor
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.backgroundColor = .clear
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Build Buttons (only show install if Homebrew is available)
+    // MARK: - Button Setup (shared by all modes)
+    
+    private func setupButtons() {
         if caskName != nil && HomebrewManager.shared.brewPath != nil {
             setupButton(installBtn, icon: "shippingbox", action: #selector(installClicked), tooltip: Translations.get("installUpdate"))
         }
@@ -49,32 +83,12 @@ class RepoMenuItemView: NSView {
         setupButton(openReleasesBtn, icon: "arrow.up.right.square", action: #selector(openReleasesClicked), tooltip: Translations.get("openReleases"))
         setupButton(deleteBtn, icon: "trash", action: #selector(deleteClicked), tooltip: Translations.get("deleteRepo"))
         
-        // Layout Right-Side Stack
         let buttons = [installBtn, notesBtn, openReleasesBtn, deleteBtn].filter { $0.action != nil }
         buttonStack.setViews(buttons, in: .leading)
         buttonStack.orientation = .horizontal
         buttonStack.spacing = 8
         buttonStack.alignment = .centerY
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
-        
-        addSubview(titleLabel)
-        addSubview(buttonStack)
-        
-        // Priority: title truncates before buttons get compressed
-        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
-        
-        NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
-            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            
-            buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 8)
-        ])
-        
-        // Buttons start hidden, will be revealed on hover
-        applyHighlightState(false)
     }
     
     private func setupButton(_ btn: NSButton, icon: String, action: Selector, tooltip: String) {
@@ -85,6 +99,217 @@ class RepoMenuItemView: NSView {
         btn.action = action
         btn.toolTip = tooltip
         btn.contentTintColor = .secondaryLabelColor
+    }
+    
+    // MARK: - Layout: Compact (current/default)
+    
+    private func setupCompactView(data: RepoDisplayData) {
+        let label = buildCompactLabel(data: data)
+        titleLabel.stringValue = label
+        titleLabel.font = .menuBarFont(ofSize: 0)
+        titleLabel.textColor = .labelColor
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.backgroundColor = .clear
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        addSubview(titleLabel)
+        addSubview(buttonStack)
+        
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        
+        NSLayoutConstraint.activate([
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 8)
+        ])
+    }
+    
+    private func buildCompactLabel(data: RepoDisplayData) -> String {
+        if data.isLoading {
+            return "\(data.repoName) - \(Translations.get("loading"))"
+        }
+        if data.isError {
+            return "⚠️ \(data.repoName) - \(Translations.get("error"))"
+        }
+        if let ver = data.version, let age = data.ageLabel {
+            return "\(data.formattedName) (\(ver)) · \(age)\(data.newIndicator)"
+        }
+        return data.formattedName
+    }
+    
+    // MARK: - Layout: Cards (two-line)
+    
+    private func setupCardsView(data: RepoDisplayData) {
+        // Line 1: bold name + version pill
+        titleLabel.stringValue = data.formattedName
+        titleLabel.font = .boldSystemFont(ofSize: 13)
+        titleLabel.textColor = .labelColor
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Version pill
+        if let ver = data.version {
+            versionLabel.stringValue = ver
+            versionLabel.font = .monospacedSystemFont(ofSize: 10, weight: .medium)
+            versionLabel.textColor = .white
+            versionLabel.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.7)
+            versionLabel.isBezeled = false
+            versionLabel.drawsBackground = true
+            versionLabel.alignment = .center
+            versionLabel.wantsLayer = true
+            versionLabel.layer?.cornerRadius = 4
+            versionLabel.layer?.masksToBounds = true
+            versionLabel.translatesAutoresizingMaskIntoConstraints = false
+            versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+            versionLabel.setContentHuggingPriority(.required, for: .horizontal)
+        } else if data.isLoading {
+            versionLabel.stringValue = Translations.get("loading")
+            versionLabel.font = .systemFont(ofSize: 10)
+            versionLabel.textColor = .secondaryLabelColor
+            versionLabel.translatesAutoresizingMaskIntoConstraints = false
+        } else if data.isError {
+            versionLabel.stringValue = "⚠️"
+            versionLabel.font = .systemFont(ofSize: 10)
+            versionLabel.translatesAutoresizingMaskIntoConstraints = false
+        }
+        
+        // Line 2: age + indicator
+        if let age = data.ageLabel {
+            subtitleLabel.stringValue = "\(age)\(data.newIndicator)"
+        } else if data.isError {
+            subtitleLabel.stringValue = Translations.get("error")
+        } else {
+            subtitleLabel.stringValue = ""
+        }
+        subtitleLabel.font = .systemFont(ofSize: 11)
+        subtitleLabel.textColor = .secondaryLabelColor
+        subtitleLabel.lineBreakMode = .byTruncatingTail
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Top row: name + version pill
+        let topRow = NSStackView(views: [titleLabel, versionLabel])
+        topRow.orientation = .horizontal
+        topRow.spacing = 6
+        topRow.alignment = .firstBaseline
+        topRow.translatesAutoresizingMaskIntoConstraints = false
+        
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        
+        // Vertical stack: topRow + subtitle
+        let vStack = NSStackView(views: [topRow, subtitleLabel])
+        vStack.orientation = .vertical
+        vStack.alignment = .leading
+        vStack.spacing = 1
+        vStack.translatesAutoresizingMaskIntoConstraints = false
+        
+        addSubview(vStack)
+        addSubview(buttonStack)
+        
+        buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        
+        NSLayoutConstraint.activate([
+            vStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            vStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: vStack.trailingAnchor, constant: 8)
+        ])
+    }
+    
+    // MARK: - Layout: Columns (tabular)
+    
+    private func setupColumnsView(data: RepoDisplayData) {
+        setupColumnContent(data: data, showDot: false)
+    }
+    
+    // MARK: - Layout: Hybrid (columns + color dot)
+    
+    private func setupHybridView(data: RepoDisplayData) {
+        setupColumnContent(data: data, showDot: true)
+    }
+    
+    /// Shared setup for Columns and Hybrid modes
+    private func setupColumnContent(data: RepoDisplayData, showDot: Bool) {
+        // Name column
+        titleLabel.stringValue = data.formattedName
+        titleLabel.font = .menuBarFont(ofSize: 0)
+        titleLabel.textColor = .labelColor
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.alignment = .left
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Version column
+        if let ver = data.version {
+            versionLabel.stringValue = ver
+        } else if data.isLoading {
+            versionLabel.stringValue = "…"
+        } else if data.isError {
+            versionLabel.stringValue = "⚠️"
+        }
+        versionLabel.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        versionLabel.textColor = .secondaryLabelColor
+        versionLabel.alignment = .left
+        versionLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Age column
+        if let age = data.ageLabel {
+            ageLabel.stringValue = "\(age)\(data.newIndicator)"
+        } else {
+            ageLabel.stringValue = ""
+        }
+        ageLabel.font = .systemFont(ofSize: 11)
+        ageLabel.textColor = .tertiaryLabelColor
+        ageLabel.alignment = .right
+        ageLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Build row
+        var rowViews: [NSView] = []
+        
+        if showDot {
+            dotLabel.stringValue = "●"
+            dotLabel.font = .systemFont(ofSize: 8)
+            dotLabel.textColor = data.freshnessColor
+            dotLabel.alignment = .center
+            dotLabel.translatesAutoresizingMaskIntoConstraints = false
+            dotLabel.setContentHuggingPriority(.required, for: .horizontal)
+            dotLabel.widthAnchor.constraint(equalToConstant: 12).isActive = true
+            rowViews.append(dotLabel)
+        }
+        
+        rowViews.append(contentsOf: [titleLabel, versionLabel, ageLabel])
+        
+        let contentStack = NSStackView(views: rowViews)
+        contentStack.orientation = .horizontal
+        contentStack.spacing = 8
+        contentStack.alignment = .centerY
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        
+        addSubview(contentStack)
+        addSubview(buttonStack)
+        
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        versionLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        ageLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        
+        // Fixed-width columns for alignment across rows
+        if nameColumnWidth > 0 {
+            titleLabel.widthAnchor.constraint(equalToConstant: nameColumnWidth).isActive = true
+        }
+        if versionColumnWidth > 0 {
+            versionLabel.widthAnchor.constraint(equalToConstant: versionColumnWidth).isActive = true
+        }
+        
+        NSLayoutConstraint.activate([
+            contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: contentStack.trailingAnchor, constant: 8)
+        ])
     }
     
     // MARK: - Actions
@@ -122,8 +347,6 @@ class RepoMenuItemView: NSView {
     
     // MARK: - Highlight Drawing
     
-    /// Called by AppDelegate's menu(_:willHighlight:) via direct reference.
-    /// Receives the item that WILL be highlighted (willHighlight fires BEFORE isHighlighted updates).
     func menuDidChangeHighlight(highlightedItem: NSMenuItem?) {
         let highlighted = (highlightedItem === enclosingMenuItem)
         if highlighted != lastHighlightState {
@@ -134,20 +357,32 @@ class RepoMenuItemView: NSView {
     }
     
     private func applyHighlightState(_ highlighted: Bool) {
-        // Show/hide buttons
         let showButtons = highlighted
         installBtn.isHidden = (caskName == nil) ? true : !showButtons
         notesBtn.isHidden = !showButtons
         openReleasesBtn.isHidden = !showButtons
         deleteBtn.isHidden = !showButtons
         
-        // Adjust text/icon colors
-        titleLabel.textColor = highlighted ? .selectedMenuItemTextColor : .labelColor
+        // Text colors
+        let mainColor: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
+        let secondaryColor: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
+        let tertiaryColor: NSColor = highlighted ? .selectedMenuItemTextColor : .tertiaryLabelColor
         let btnTint: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
+        
+        titleLabel.textColor = mainColor
+        subtitleLabel.textColor = secondaryColor
+        versionLabel.textColor = (layout == "cards") ? (highlighted ? mainColor : .white) : secondaryColor
+        ageLabel.textColor = highlighted ? mainColor : tertiaryColor
+        
         installBtn.contentTintColor = btnTint
         notesBtn.contentTintColor = btnTint
         openReleasesBtn.contentTintColor = btnTint
         deleteBtn.contentTintColor = btnTint
+        
+        // In cards mode, adjust the version pill background
+        if layout == "cards" {
+            versionLabel.backgroundColor = highlighted ? .clear : NSColor.systemBlue.withAlphaComponent(0.7)
+        }
     }
     
     override func draw(_ dirtyRect: NSRect) {

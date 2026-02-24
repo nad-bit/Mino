@@ -1,0 +1,93 @@
+import Cocoa
+
+@MainActor
+class FooterMenuItemView: NSView {
+    
+    private let settingsBtn = NSButton()
+    private let quitBtn = NSButton()
+    private let appDelegate: AppDelegate
+    
+    // Track states
+    private var lastHighlightState = false
+    
+    init(appDelegate: AppDelegate) {
+        self.appDelegate = appDelegate
+        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 32)) // slightly taller for safe framing at bottom
+        
+        setupView()
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    private func setupView() {
+        // Settings Button
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        settingsBtn.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: Translations.get("preferences"))?.withSymbolConfiguration(config)
+        settingsBtn.isBordered = false
+        settingsBtn.target = self
+        settingsBtn.action = #selector(settingsClicked)
+        settingsBtn.toolTip = Translations.get("preferences")
+        settingsBtn.contentTintColor = .secondaryLabelColor
+        settingsBtn.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Quit Button
+        quitBtn.image = NSImage(systemSymbolName: "power", accessibilityDescription: Translations.get("quit"))?.withSymbolConfiguration(config)
+        quitBtn.isBordered = false
+        quitBtn.target = self
+        quitBtn.action = #selector(quitClicked)
+        quitBtn.toolTip = Translations.get("quit")
+        quitBtn.contentTintColor = .secondaryLabelColor
+        quitBtn.translatesAutoresizingMaskIntoConstraints = false
+        
+        addSubview(settingsBtn)
+        addSubview(quitBtn)
+        
+        NSLayoutConstraint.activate([
+            settingsBtn.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            settingsBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
+            
+            quitBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
+            quitBtn.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+    
+    @objc private func settingsClicked() {
+        if let menuItem = enclosingMenuItem {
+            appDelegate.menu.cancelTracking()
+            appDelegate.openSettingsWindow(menuItem)
+        }
+    }
+    
+    @objc private func quitClicked() {
+        if let menuItem = enclosingMenuItem {
+            appDelegate.menu.cancelTracking()
+            appDelegate.quitApp(menuItem)
+        }
+    }
+    
+    func menuDidChangeHighlight(highlightedItem: NSMenuItem?) {
+        let highlighted = (highlightedItem === enclosingMenuItem)
+        if highlighted != lastHighlightState {
+            lastHighlightState = highlighted
+            applyHighlightState(highlighted)
+            needsDisplay = true
+        }
+    }
+    
+    private func applyHighlightState(_ highlighted: Bool) {
+        let tintColor: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
+        settingsBtn.contentTintColor = tintColor
+        quitBtn.contentTintColor = tintColor
+    }
+    
+    override func draw(_ dirtyRect: NSRect) {
+        if lastHighlightState {
+            NSColor.selectedContentBackgroundColor.set()
+            let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
+            path.fill()
+        }
+        super.draw(dirtyRect)
+    }
+}

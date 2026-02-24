@@ -22,15 +22,16 @@ struct AppConfig: Codable {
     var showIcons: Bool?
     var showNewIndicator: Bool?
     var newIndicatorDays: Int?
+    var menuLayout: String? // "compact" | "cards" | "columns" | "hybrid"
     
     enum CodingKeys: String, CodingKey {
         case repos
         case refreshMinutes = "refresh_minutes"
         case sortBy = "sort_by"
         case showOwner = "show_owner"
-        case showIcons = "show_icons"
         case showNewIndicator = "show_new_indicator"
         case newIndicatorDays = "new_indicator_days"
+        case menuLayout = "menu_layout"
     }
     
     init() {
@@ -52,8 +53,8 @@ struct AppConfig: Codable {
         self.refreshMinutes = Constants.defaultRefreshIntervalMinutes
         self.sortBy = "date"
         self.showOwner = false
-        self.showIcons = false
         self.showNewIndicator = true
         self.newIndicatorDays = 7
+        self.menuLayout = "compact"
     }
 }

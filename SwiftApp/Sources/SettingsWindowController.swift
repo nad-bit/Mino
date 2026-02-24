@@ -13,11 +13,11 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     let loginSwitch = NSSwitch()
     let ownerSwitch = NSSwitch()
-    let iconsSwitch = NSSwitch()
     let newIndicatorSwitch = NSSwitch()
     let newIndicatorSlider = NSSlider()
     let newIndicatorLabel = NSTextField(labelWithString: "")
     let sortSegment = NSSegmentedControl()
+    let layoutSegment = NSSegmentedControl()
     
     var tempToken: String?
     
@@ -31,7 +31,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     convenience init() {
         // Adjust window height to accommodate the title and multi-line token
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 600),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 640),
                               styleMask: [.titled, .closable, .miniaturizable],
                               backing: .buffered,
                               defer: false)
@@ -178,14 +178,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         ownerRow.spacing = 10
         formStack.addArrangedSubview(ownerRow)
         
-        let iconsLabel = NSTextField(labelWithString: Translations.get("showIcons"))
-        iconsSwitch.target = self
-        iconsSwitch.action = #selector(toggleIcons(_:))
-        let iconsRow = NSStackView(views: [iconsSwitch, iconsLabel])
-        iconsRow.orientation = .horizontal
-        iconsRow.spacing = 10
-        formStack.addArrangedSubview(iconsRow)
-        
         // --- New Release Indicator Toggle ---
         let indicatorLabel = NSTextField(labelWithString: Translations.get("showNewIndicator"))
         newIndicatorSwitch.target = self
@@ -224,19 +216,27 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         sortRow.spacing = 10
         formStack.addArrangedSubview(sortRow)
         
-        // --- 5. Spacer & Bottom Button ---
+        // --- 5. Layout Mode Section ---
+        let layoutLabel = NSTextField(labelWithString: Translations.get("layoutLabel") + ":")
+        layoutSegment.segmentCount = 4
+        layoutSegment.setLabel(Translations.get("layoutCompact"), forSegment: 0)
+        layoutSegment.setLabel(Translations.get("layoutCards"), forSegment: 1)
+        layoutSegment.setLabel(Translations.get("layoutColumns"), forSegment: 2)
+        layoutSegment.setLabel(Translations.get("layoutHybrid"), forSegment: 3)
+        layoutSegment.segmentStyle = .rounded
+        layoutSegment.target = self
+        layoutSegment.action = #selector(layoutChanged(_:))
+        
+        let layoutRow = NSStackView(views: [layoutLabel, layoutSegment])
+        layoutRow.orientation = .horizontal
+        layoutRow.spacing = 10
+        formStack.addArrangedSubview(layoutRow)
+        
+        // Add a bottom spacer to push content up if needed and provide bottom margin
         let spacer = NSView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
         spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
         stackView.addArrangedSubview(spacer)
-        
-        let saveCloseBtn = NSButton(title: Translations.get("close"), target: self, action: #selector(closeWindow(_:)))
-        
-        let bottomRow = NSStackView(views: [saveCloseBtn])
-        bottomRow.alignment = .trailing
-        bottomRow.translatesAutoresizingMaskIntoConstraints = false
-        stackView.addArrangedSubview(bottomRow)
-        bottomRow.widthAnchor.constraint(equalTo: stackView.widthAnchor, constant: -40).isActive = true
     }
     
     private func loadCurrentSettings() {
@@ -275,9 +275,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         // Load Owner
         ownerSwitch.state = ConfigManager.shared.config.showOwner ? .on : .off
         
-        // Load Icons
-        iconsSwitch.state = (ConfigManager.shared.config.showIcons ?? false) ? .on : .off
-        
         // Load New Indicator
         newIndicatorSwitch.state = (ConfigManager.shared.config.showNewIndicator ?? true) ? .on : .off
         let days = ConfigManager.shared.config.newIndicatorDays ?? Constants.newReleaseThresholdDays
@@ -288,6 +285,11 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         // Load Sort
         let isSortedByName = ConfigManager.shared.config.sortBy == "name"
         sortSegment.selectedSegment = isSortedByName ? 1 : 0
+        
+        // Load Layout
+        let layoutModes = ["compact", "cards", "columns", "hybrid"]
+        let currentLayout = ConfigManager.shared.config.menuLayout ?? "compact"
+        layoutSegment.selectedSegment = layoutModes.firstIndex(of: currentLayout) ?? 0
     }
     
     private func maskToken(_ t: String) -> String {
@@ -408,14 +410,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         }
     }
     
-    @objc private func toggleIcons(_ sender: NSSwitch) {
-        ConfigManager.shared.config.showIcons = sender.state == .on
-        ConfigManager.shared.saveConfig()
-        if let delegate = NSApp.delegate as? AppDelegate {
-             delegate.setupMenu()
-        }
-    }
-    
     @objc private func sortChanged(_ sender: NSSegmentedControl) {
         let isByName = sender.selectedSegment == 1
         ConfigManager.shared.config.sortBy = isByName ? "name" : "date"
@@ -443,10 +437,22 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         }
     }
     
+    @objc private func layoutChanged(_ sender: NSSegmentedControl) {
+        let layoutModes = ["compact", "cards", "columns", "hybrid"]
+        ConfigManager.shared.config.menuLayout = layoutModes[sender.selectedSegment]
+        ConfigManager.shared.saveConfig()
+        if let delegate = NSApp.delegate as? AppDelegate {
+             delegate.setupMenu()
+        }
+    }
+    
     private func updateIndicatorDaysLabel() {
         let days = newIndicatorSlider.integerValue
-        let unit = days == 1 ? Translations.get("unitDay") : Translations.get("days")
-        newIndicatorLabel.stringValue = Translations.get("indicatorDays").format(with: ["days": "\(days)", "unit": unit])
+        if days == 1 {
+            newIndicatorLabel.stringValue = Translations.get("indicatorDaySingular")
+        } else {
+            newIndicatorLabel.stringValue = Translations.get("indicatorDays").format(with: ["days": "\(days)"])
+        }
     }
     
     private func updateIndicatorSliderVisibility() {
