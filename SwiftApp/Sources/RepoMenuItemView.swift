@@ -14,15 +14,53 @@ struct RepoDisplayData {
     let freshnessColor: NSColor   // 🟢/🟡/⚪ mapped to NSColor
 }
 
+class MenuActionButton: NSButton {
+    private var trackingArea: NSTrackingArea?
+    private var isHovered = false
+    
+    var baseColor: NSColor = .secondaryLabelColor {
+        didSet { if !isHovered { contentTintColor = baseColor } }
+    }
+    var hoverColor: NSColor = .labelColor {
+        didSet { if isHovered { contentTintColor = hoverColor } }
+    }
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea = self.trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways]
+        trackingArea = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
+        addTrackingArea(trackingArea!)
+    }
+    
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        isHovered = true
+        contentTintColor = hoverColor
+        wantsLayer = true
+        layer?.cornerRadius = 4
+        layer?.backgroundColor = hoverColor.withAlphaComponent(0.15).cgColor
+    }
+    
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        isHovered = false
+        contentTintColor = baseColor
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+}
+
 @MainActor
 class RepoMenuItemView: NSView {
     
     // UI Elements (common)
     private let titleLabel = NSTextField(labelWithString: "")
-    private let installBtn = NSButton()
-    private let openReleasesBtn = NSButton()
-    private let notesBtn = NSButton()
-    private let deleteBtn = NSButton()
+    private let installBtn = MenuActionButton()
+    private let openReleasesBtn = MenuActionButton()
+    private let notesBtn = MenuActionButton()
+    private let deleteBtn = MenuActionButton()
     private let buttonStack = NSStackView()
     
     // Extra labels for multi-element layouts
@@ -91,14 +129,15 @@ class RepoMenuItemView: NSView {
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
     }
     
-    private func setupButton(_ btn: NSButton, icon: String, action: Selector, tooltip: String) {
+    private func setupButton(_ btn: MenuActionButton, icon: String, action: Selector, tooltip: String) {
         let imageConfig = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
         btn.image = NSImage(systemSymbolName: icon, accessibilityDescription: tooltip)?.withSymbolConfiguration(imageConfig)
         btn.isBordered = false
         btn.target = self
         btn.action = action
         btn.toolTip = tooltip
-        btn.contentTintColor = .secondaryLabelColor
+        btn.baseColor = .secondaryLabelColor
+        btn.hoverColor = .labelColor
     }
     
     // MARK: - Layout: Compact (current/default)
@@ -367,17 +406,24 @@ class RepoMenuItemView: NSView {
         let mainColor: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
         let secondaryColor: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
         let tertiaryColor: NSColor = highlighted ? .selectedMenuItemTextColor : .tertiaryLabelColor
-        let btnTint: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
+        
+        // Button colors
+        let btnBase: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
+        let btnHover: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
         
         titleLabel.textColor = mainColor
         subtitleLabel.textColor = secondaryColor
         versionLabel.textColor = (layout == "cards") ? (highlighted ? mainColor : .white) : secondaryColor
         ageLabel.textColor = highlighted ? mainColor : tertiaryColor
         
-        installBtn.contentTintColor = btnTint
-        notesBtn.contentTintColor = btnTint
-        openReleasesBtn.contentTintColor = btnTint
-        deleteBtn.contentTintColor = btnTint
+        installBtn.baseColor = btnBase
+        installBtn.hoverColor = btnHover
+        notesBtn.baseColor = btnBase
+        notesBtn.hoverColor = btnHover
+        openReleasesBtn.baseColor = btnBase
+        openReleasesBtn.hoverColor = btnHover
+        deleteBtn.baseColor = btnBase
+        deleteBtn.hoverColor = btnHover
         
         // In cards mode, adjust the version pill background
         if layout == "cards" {

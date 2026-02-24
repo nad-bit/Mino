@@ -5,7 +5,7 @@ class HeaderMenuItemView: NSView {
     
     private let refreshLabel = NSTextField(labelWithString: "")
     private let refreshIcon = NSImageView()
-    private let addBtn = NSButton()
+    private let addBtn = MenuActionButton()
     
     // Transparent button overlay for the refresh section (so it's clickable)
     private let refreshHitArea = NSButton()
@@ -53,7 +53,8 @@ class HeaderMenuItemView: NSView {
         addBtn.target = self
         addBtn.action = #selector(addClicked)
         addBtn.toolTip = Translations.get("addRepoUnified")
-        addBtn.contentTintColor = .labelColor
+        addBtn.baseColor = .labelColor
+        addBtn.hoverColor = .labelColor
         addBtn.translatesAutoresizingMaskIntoConstraints = false
         
         let leftStack = NSStackView(views: [refreshIcon, refreshLabel])
@@ -103,7 +104,9 @@ class HeaderMenuItemView: NSView {
         
         refreshLabel.textColor = isRefreshingState ? tertiaryColor : secondaryColor
         refreshIcon.contentTintColor = isRefreshingState ? tertiaryColor : secondaryColor
-        addBtn.contentTintColor = mainColor
+        
+        addBtn.baseColor = mainColor
+        addBtn.hoverColor = mainColor
     }
     
     @objc private func refreshClicked() {

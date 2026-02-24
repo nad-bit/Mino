@@ -3,8 +3,8 @@ import Cocoa
 @MainActor
 class FooterMenuItemView: NSView {
     
-    private let settingsBtn = NSButton()
-    private let quitBtn = NSButton()
+    private let settingsBtn = MenuActionButton()
+    private let quitBtn = MenuActionButton()
     private let appDelegate: AppDelegate
     
     // Track states
@@ -29,7 +29,8 @@ class FooterMenuItemView: NSView {
         settingsBtn.target = self
         settingsBtn.action = #selector(settingsClicked)
         settingsBtn.toolTip = Translations.get("preferences")
-        settingsBtn.contentTintColor = .secondaryLabelColor
+        settingsBtn.baseColor = .secondaryLabelColor
+        settingsBtn.hoverColor = .labelColor
         settingsBtn.translatesAutoresizingMaskIntoConstraints = false
         
         // Quit Button
@@ -38,7 +39,8 @@ class FooterMenuItemView: NSView {
         quitBtn.target = self
         quitBtn.action = #selector(quitClicked)
         quitBtn.toolTip = Translations.get("quit")
-        quitBtn.contentTintColor = .secondaryLabelColor
+        quitBtn.baseColor = .secondaryLabelColor
+        quitBtn.hoverColor = .labelColor
         quitBtn.translatesAutoresizingMaskIntoConstraints = false
         
         addSubview(settingsBtn)
@@ -77,9 +79,13 @@ class FooterMenuItemView: NSView {
     }
     
     private func applyHighlightState(_ highlighted: Bool) {
-        let tintColor: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
-        settingsBtn.contentTintColor = tintColor
-        quitBtn.contentTintColor = tintColor
+        let btnBase: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
+        let btnHover: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
+        
+        settingsBtn.baseColor = btnBase
+        settingsBtn.hoverColor = btnHover
+        quitBtn.baseColor = btnBase
+        quitBtn.hoverColor = btnHover
     }
     
     override func draw(_ dirtyRect: NSRect) {
