@@ -90,7 +90,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         iconView.heightAnchor.constraint(equalToConstant: 64).isActive = true
         aboutStack.addArrangedSubview(iconView)
         
-        let appNameLabel = NSTextField(labelWithString: "GitHub Watcher")
+        let appNameLabel = NSTextField(labelWithString: "Mino")
         appNameLabel.font = .boldSystemFont(ofSize: 18)
         aboutStack.addArrangedSubview(appNameLabel)
         

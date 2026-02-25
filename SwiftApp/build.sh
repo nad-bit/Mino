@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-APP_NAME="GitHubWatcher"
+APP_NAME="Mino"
 BUILD_DIR="build"
 APP_DIR="$BUILD_DIR/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
@@ -24,7 +24,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>com.nad.githubwatcher</string>
+    <string>com.nad.mino</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

@@ -16,7 +16,7 @@ enum Constants {
     static let newReleaseIndicator = "✦"  // Monochromatically neutral sparkle
     
     // System Constants
-    static let launchAgentLabel = "com.nad.githubwatcher"
+    static let launchAgentLabel = "com.nad.mino"
     static let homebrewPaths = [
         "/opt/homebrew/bin/brew",  // Apple Silicon
         "/usr/local/bin/brew"      // Intel
@@ -24,5 +24,5 @@ enum Constants {
     
     // API Constants
     static let githubAPIBaseURL = "https://api.github.com"
-    static let userAgent = "Swift-AppKit-GitHubWatcher"
+    static let userAgent = "Swift-AppKit-Mino"
 }

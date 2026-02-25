@@ -50,7 +50,7 @@ class UIHandlers {
     func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "GitHub Watcher"
+        alert.messageText = "Mino"
         alert.informativeText = Translations.get("aboutMsg")
         alert.addButton(withTitle: Translations.get("ok"))
         alert.runModal()

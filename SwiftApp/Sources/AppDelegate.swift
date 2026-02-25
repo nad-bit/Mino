@@ -36,7 +36,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             btn.title = ""
             
             // Create a custom image view to support AppKit SF Symbol animations
-            let eyeImage = NSImage(systemSymbolName: "eye", accessibilityDescription: "GitHub Watcher")!
+            let eyeImage = NSImage(systemSymbolName: "eye", accessibilityDescription: "Mino")!
             eyeImage.isTemplate = true
             
             statusIconView = NSImageView(image: eyeImage)
@@ -450,7 +450,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             
             if result.success {
                 let msgId = result.message == "alreadyInstalled" ? "alreadyInstalled" : "installComplete"
-                self.sendNotification(title: "GitHub Watcher", subtitle: Translations.get(msgId).format(with: ["cask_name": caskName]))
+                self.sendNotification(title: "Mino", subtitle: Translations.get(msgId).format(with: ["cask_name": caskName]))
                 
                 // Reveal in Finder
                 self.revealCaskInFinder(caskName: caskName)

@@ -9,12 +9,12 @@ class ConfigManager {
     var config: AppConfig
     var token: String?
     
-    private let keychainService = "GitHub Watcher"
+    private let keychainService = "Mino"
     private let keychainAccount = "github_token"
     
     private init() {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        configDir = homeDir.appendingPathComponent(".config/GitHubWatcher")
+        configDir = homeDir.appendingPathComponent(".config/Mino")
         configFile = configDir.appendingPathComponent("repos.json")
         
         self.config = AppConfig()
