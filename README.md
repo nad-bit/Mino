@@ -7,7 +7,7 @@ A lightweight, native macOS menu bar app to track GitHub releases. Built entirel
 - **👀 Menu Bar Integration**: Unobtrusive status bar icon with inline repository information
 - **⚡️ Inline Actions**: Hover over any repository to reveal contextual action buttons — view release notes, open releases, install via Homebrew, or delete — all without submenus
 - **🍺 Homebrew Integration**: Detects installed Casks automatically and enables one-click install/update directly from the menu (only shown if Homebrew is installed)
-- **🧠 Smart Add**: Paste a GitHub URL or `owner/repo` string; the app auto-detects if a matching Homebrew Cask exists
+- **🧠 Smart Add**: Paste a repository in `owner/repo` format; the app auto-detects if a matching Homebrew Cask exists
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
 - **🔐 Secure Token Storage**: GitHub Personal Access Tokens stored in macOS Keychain — never in plain text
 - **✦ Configurable New Release Indicator**: Customizable threshold (1-30 days) with toggle, replacing the old fixed emoji
@@ -40,6 +40,11 @@ open build/GitHubWatcher.app
 
 > **Note**: No Xcode project needed. The `build.sh` script compiles all Swift sources directly with `swiftc`.
 
+> **Important**: If macOS blocks the compiled application from running (saying it's damaged or cannot be verified), remove the quarantine attribute by running:
+> ```bash
+> xattr -dr com.apple.quarantine /Applications/Mino.app
+> ```
+
 ## Usage
 
 ### Adding Repositories
@@ -48,8 +53,7 @@ Click **"Add Repository"** in the menu. You can:
 - **Manual**: Enter `owner/repo` format (e.g., `microsoft/vscode`)
 - **From Homebrew**: Select from your installed Homebrew Casks
 
-> **Tip**: Copy a GitHub URL to your clipboard before opening the dialog — it will be auto-detected!
-
+> **Tip**: Copy an `owner/repo` string to your clipboard before opening the dialog — it will be auto-detected!
 ### Menu Interface
 
 Each repository displays its name, latest version, and time since release. Hover over a row to reveal action buttons aligned to the right:
@@ -75,7 +79,6 @@ Accessible via the **Preferences** menu item (`⌘,`):
 | **Refresh Interval** | Slider: 1-24 hours between auto-checks |
 | **Start at Login** | Toggle macOS LaunchAgent |
 | **Show Owner Name** | Toggle `owner/` prefix in repo names |
-| **Show Icons** | Toggle SF Symbol icons in standard menu items |
 | **New Release Indicator** | Toggle the ✦ symbol and configure threshold (1-30 days) |
 | **Sort by** | Segmented control: Date or Name |
 
@@ -90,7 +93,7 @@ Your GitHub Personal Access Token is stored in **macOS Keychain**:
 
 Configuration is stored in:
 ```
-~/.config/GitHubWatcher/repos.json
+~/.config/Mino/repos.json
 ```
 
 > **Note**: Tokens are NOT stored in this file — they're in Keychain.

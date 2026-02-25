@@ -56,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All pip packages (`rumps`, `keyring`, `requests`)
 - PyInstaller build process
 
-## [0.7.0] - 2024-12-12
+## [0.7.0] - 2025-12-12
 
 ### Added
 - **Secure Token Storage**: GitHub tokens are now stored in macOS Keychain instead of plain text JSON
@@ -78,7 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tokens are now encrypted in macOS Keychain
 - Configuration file (`repos.json`) no longer contains sensitive data
 
-## [0.6.0] - 2024-11-23
+## [0.6.0] - 2025-11-23
 
 ### Added
 - Unified "Add Repository" dialog with Manual/Homebrew tabs
@@ -91,7 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced `print()` with proper `logging` module
 - Centralized constants in `constants.py`
 
-## [0.5.0] - 2024-11-22
+## [0.5.0] - 2025-11-22
 
 ### Added
 - Automatic Cask detection when adding repositories manually
@@ -102,7 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Menu not re-sorting after updates when sorted by date
 - Memory leaks from circular callback references
 
-## [0.4.0] - 2024-11-21
+## [0.4.0] - 2025-11-21
 
 ### Added
 - Homebrew Cask integration (install/update from menu)
@@ -112,21 +112,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Improved repository display format with version and age
 
-## [0.3.0] - 2024-11-20
+## [0.3.0] - 2025-11-20
 
 ### Added
 - GitHub Personal Access Token support
 - Token validation with user feedback
 - Configurable refresh interval (1-24 hours)
 
-## [0.2.0] - 2024-11-19
+## [0.2.0] - 2025-11-19
 
 ### Added
 - Start at Login functionality via LaunchAgent
 - Spanish localization
 - Preferences submenu
 
-## [0.1.0] - 2024-11-18
+## [0.1.0] - 2025-11-18
 
 ### Added
 - Initial release
