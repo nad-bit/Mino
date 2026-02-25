@@ -36,24 +36,22 @@ struct AppConfig: Codable {
     
     init() {
         self.repos = [
-            RepoConfig(name: "exelban/stats", source: "brew", cask: "stats"),
-            RepoConfig(name: "p0deje/Maccy", source: "brew", cask: "maccy"),
-            RepoConfig(name: "utmapp/UTM", source: "brew", cask: "utm"),
+            RepoConfig(name: "nad-bit/Mino", source: "manual"),
             RepoConfig(name: "objective-see/LuLu", source: "brew", cask: "lulu"),
-            RepoConfig(name: "alienator88/Pearcleaner", source: "brew", cask: "pearcleaner"),
+            RepoConfig(name: "exelban/stats", source: "brew", cask: "stats"),
             RepoConfig(name: "alienator88/Sentinel", source: "brew", cask: "alienator88-sentinel"),
-            RepoConfig(name: "upscayl/upscayl", source: "brew", cask: "upscayl"),
-            RepoConfig(name: "jorio/BillyFrontier", source: "brew", cask: "billy-frontier"),
-            RepoConfig(name: "Marginal/QLVideo", source: "brew", cask: "qlvideo"),
-            RepoConfig(name: "paulpacifico/shutter-encoder", source: "brew", cask: "shutter-encoder"),
-            RepoConfig(name: "xbmc/xbmc", source: "brew", cask: "kodi"),
-            RepoConfig(name: "ONLYOFFICE/DesktopEditors", source: "brew", cask: "onlyoffice"),
-            RepoConfig(name: "HandBrake/HandBrake", source: "brew", cask: "handbrake-app")
+            RepoConfig(name: "alienator88/Pearcleaner", source: "brew", cask: "pearcleaner"),
+            RepoConfig(name: "Caldis/Mos", source: "manual"),
+            RepoConfig(name: "homielab/mountmate", source: "brew", cask: "mountmate"),
+            RepoConfig(name: "ronitsingh10/FineTune", source: "brew", cask: "finetune"),
+            RepoConfig(name: "jsattler/BetterCapture", source: "brew", cask: "jsattler/tap/bettercapture"),
+            RepoConfig(name: "66HEX/frame", source: "manual"),
+            RepoConfig(name: "paolorotolo/GHomeBar", source: "manual")
         ]
         self.refreshMinutes = Constants.defaultRefreshIntervalMinutes
         self.sortBy = "name"
         self.showOwner = false
-        self.showNewIndicator = true
+        self.showNewIndicator = false
         self.newIndicatorDays = 7
         self.menuLayout = "columns"
     }
