@@ -43,8 +43,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSLayoutConstraint.activate([
                 statusIndicatorDot.widthAnchor.constraint(equalToConstant: 5),
                 statusIndicatorDot.heightAnchor.constraint(equalToConstant: 5),
-                statusIndicatorDot.centerXAnchor.constraint(equalTo: btn.centerXAnchor),
-                statusIndicatorDot.centerYAnchor.constraint(equalTo: btn.centerYAnchor, constant: 1) // macOS coordinates y=0 is at bottom
+                statusIndicatorDot.centerXAnchor.constraint(equalTo: btn.centerXAnchor, constant: 0), // Move 1px right
+                statusIndicatorDot.centerYAnchor.constraint(equalTo: btn.centerYAnchor, constant: 0) // Move 1px up (y=0 is at bottom)
             ])
         }
         

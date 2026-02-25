@@ -26,7 +26,7 @@ A lightweight, native macOS menu bar app to track GitHub releases. Built entirel
 ### Build from Source
 
 ```bash
-git clone https://github.com/yourusername/GitHub_Watcher.git
+git clone https://github.com/nad-bit/GitHub_Watcher.git
 cd GitHub_Watcher/SwiftApp
 chmod +x build.sh
 ./build.sh

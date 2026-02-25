@@ -118,7 +118,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         stackView.addArrangedSubview(formStack)
         
         // --- 1. Token Section ---
-        let tokenLabel = NSTextField(labelWithString: Translations.get("configureToken") + ":")
+        let tokenLabel = NSTextField(labelWithString: Translations.get("configureToken"))
         formStack.addArrangedSubview(tokenLabel)
         
         // Multi-line token field
@@ -143,10 +143,15 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         tokenDeleteBtn.target = self
         tokenDeleteBtn.action = #selector(deleteToken(_:))
         
-        let tokenBtnRow = NSStackView(views: [tokenSaveBtn, tokenDeleteBtn])
+        let tokenSpring = NSView()
+        tokenSpring.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        
+        let tokenBtnRow = NSStackView(views: [tokenSpring, tokenSaveBtn, tokenDeleteBtn])
         tokenBtnRow.orientation = .horizontal
         tokenBtnRow.spacing = 10
+        tokenBtnRow.translatesAutoresizingMaskIntoConstraints = false
         formStack.addArrangedSubview(tokenBtnRow)
+        tokenBtnRow.widthAnchor.constraint(equalToConstant: 380).isActive = true
         
         let sep1 = NSBox()
         sep1.boxType = .separator
@@ -179,18 +184,12 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let loginLabel = NSTextField(labelWithString: Translations.get("startAtLogin"))
         loginSwitch.target = self
         loginSwitch.action = #selector(toggleLogin(_:))
-        let loginRow = NSStackView(views: [loginSwitch, loginLabel])
-        loginRow.orientation = .horizontal
-        loginRow.spacing = 10
-        formStack.addArrangedSubview(loginRow)
+        addSettingsRow(to: formStack, label: loginLabel, controls: [loginSwitch])
         
         let ownerLabel = NSTextField(labelWithString: Translations.get("showOwner"))
         ownerSwitch.target = self
         ownerSwitch.action = #selector(toggleOwner(_:))
-        let ownerRow = NSStackView(views: [ownerSwitch, ownerLabel])
-        ownerRow.orientation = .horizontal
-        ownerRow.spacing = 10
-        formStack.addArrangedSubview(ownerRow)
+        addSettingsRow(to: formStack, label: ownerLabel, controls: [ownerSwitch])
         
         // --- New Release Indicator Toggle ---
         let indicatorLabel = NSTextField(labelWithString: Translations.get("showNewIndicator"))
@@ -206,10 +205,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         newIndicatorColorSegment.target = self
         newIndicatorColorSegment.action = #selector(indicatorColorChanged(_:))
         
-        let indicatorRow = NSStackView(views: [newIndicatorSwitch, indicatorLabel, newIndicatorColorSegment])
-        indicatorRow.orientation = .horizontal
-        indicatorRow.spacing = 10
-        formStack.addArrangedSubview(indicatorRow)
+        addSettingsRow(to: formStack, label: indicatorLabel, controls: [newIndicatorColorSegment, newIndicatorSwitch])
         
         // Indicator Days Slider
         newIndicatorLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -227,7 +223,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         formStack.addArrangedSubview(newIndicatorSlider)
         
         // --- 4. Sort Section ---
-        let sortLabel = NSTextField(labelWithString: Translations.get("sortLabel") + ":")
+        let sortLabel = NSTextField(labelWithString: Translations.get("sortLabel"))
         sortSegment.segmentCount = 2
         sortSegment.setLabel(Translations.get("sortNameOnly"), forSegment: 0)
         sortSegment.setLabel(Translations.get("sortDateOnly"), forSegment: 1)
@@ -235,13 +231,10 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         sortSegment.target = self
         sortSegment.action = #selector(sortChanged(_:))
         
-        let sortRow = NSStackView(views: [sortLabel, sortSegment])
-        sortRow.orientation = .horizontal
-        sortRow.spacing = 10
-        formStack.addArrangedSubview(sortRow)
+        addSettingsRow(to: formStack, label: sortLabel, controls: [sortSegment])
         
         // --- 5. Layout Mode Section ---
-        let layoutLabel = NSTextField(labelWithString: Translations.get("layoutLabel") + ":")
+        let layoutLabel = NSTextField(labelWithString: Translations.get("layoutLabel"))
         layoutSegment.segmentCount = 3
         layoutSegment.setLabel(Translations.get("layoutColumns"), forSegment: 0)
         layoutSegment.setLabel(Translations.get("layoutCards"), forSegment: 1)
@@ -250,10 +243,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         layoutSegment.target = self
         layoutSegment.action = #selector(layoutChanged(_:))
         
-        let layoutRow = NSStackView(views: [layoutLabel, layoutSegment])
-        layoutRow.orientation = .horizontal
-        layoutRow.spacing = 10
-        formStack.addArrangedSubview(layoutRow)
+        addSettingsRow(to: formStack, label: layoutLabel, controls: [layoutSegment])
         
         // Add a bottom spacer to push content up if needed and provide bottom margin
         let spacer = NSView()
@@ -534,6 +524,28 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         image.unlockFocus()
         image.isTemplate = false // explicitly colored, don't let the system tint it
         return image
+    }
+    
+    private func addSettingsRow(to stack: NSStackView, label: NSView, controls: [NSView]) {
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 10
+        row.translatesAutoresizingMaskIntoConstraints = false
+        
+        row.addArrangedSubview(label)
+        
+        let spring = NSView()
+        spring.translatesAutoresizingMaskIntoConstraints = false
+        spring.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        row.addArrangedSubview(spring)
+        
+        for control in controls {
+            row.addArrangedSubview(control)
+        }
+        
+        stack.addArrangedSubview(row)
+        row.widthAnchor.constraint(equalToConstant: 380).isActive = true
     }
     
     // Extracted Login Item Logic for reuse
