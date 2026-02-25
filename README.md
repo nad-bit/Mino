@@ -7,7 +7,7 @@ A lightweight, native macOS menu bar app to track GitHub releases. Built entirel
 - **👀 Menu Bar Integration**: Unobtrusive status bar icon with inline repository information
 - **⚡️ Inline Actions**: Hover over any repository to reveal contextual action buttons — view release notes, open releases, install via Homebrew, or delete — all without submenus
 - **🍺 Homebrew Integration**: Detects installed Casks automatically and enables one-click install/update directly from the menu (only shown if Homebrew is installed)
-- **🧠 Smart Add**: Paste a repository in `owner/repo` format; the app auto-detects if a matching Homebrew Cask exists
+- **🧠 Smart Add**: Paste a GitHub URL (the app auto-extracts the `owner/repo` format) or enter it directly; the app auto-detects if a matching Homebrew Cask exists
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
 - **🔐 Secure Token Storage**: GitHub Personal Access Tokens stored in macOS Keychain — never in plain text
 - **✦ Configurable New Release Indicator**: Customizable threshold (1-30 days) with toggle, replacing the old fixed emoji
@@ -26,16 +26,16 @@ A lightweight, native macOS menu bar app to track GitHub releases. Built entirel
 ### Build from Source
 
 ```bash
-git clone https://github.com/nad-bit/GitHub_Watcher.git
-cd GitHub_Watcher/SwiftApp
+git clone https://github.com/nad-bit/Mino.git
+cd Mino/SwiftApp
 chmod +x build.sh
 ./build.sh
 ```
 
-The compiled app bundle will be at `build/GitHubWatcher.app`. Move it to `/Applications` or run it directly:
+The compiled app bundle will be at `build/Mino.app`. Move it to `/Applications` or run it directly:
 
 ```bash
-open build/GitHubWatcher.app
+open build/Mino.app
 ```
 
 > **Note**: No Xcode project needed. The `build.sh` script compiles all Swift sources directly with `swiftc`.
@@ -53,7 +53,7 @@ Click **"Add Repository"** in the menu. You can:
 - **Manual**: Enter `owner/repo` format (e.g., `microsoft/vscode`)
 - **From Homebrew**: Select from your installed Homebrew Casks
 
-> **Tip**: Copy an `owner/repo` string to your clipboard before opening the dialog — it will be auto-detected!
+> **Tip**: Copy a GitHub repository URL to your clipboard before opening the dialog — it will be auto-detected and extracted!
 ### Menu Interface
 
 Each repository displays its name, latest version, and time since release. Hover over a row to reveal action buttons aligned to the right:
