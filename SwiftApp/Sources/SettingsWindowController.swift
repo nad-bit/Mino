@@ -94,7 +94,11 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         appNameLabel.font = .boldSystemFont(ofSize: 18)
         aboutStack.addArrangedSubview(appNameLabel)
         
-        let appVersionLabel = NSTextField(labelWithString: Translations.get("aboutMsg"))
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+        let aboutText = Translations.get("aboutMsg").format(with: ["version": version, "build": build])
+        
+        let appVersionLabel = NSTextField(labelWithString: aboutText)
         appVersionLabel.alignment = .center
         appVersionLabel.textColor = .secondaryLabelColor
         appVersionLabel.font = .systemFont(ofSize: 12)
