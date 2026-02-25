@@ -57,6 +57,7 @@ class FooterMenuItemView: NSView {
     
     @objc private func settingsClicked() {
         if let menuItem = enclosingMenuItem {
+            appDelegate.animateStatusIcon(with: .scale)
             appDelegate.menu.cancelTracking()
             appDelegate.openSettingsWindow(menuItem)
         }
@@ -64,6 +65,7 @@ class FooterMenuItemView: NSView {
     
     @objc private func quitClicked() {
         if let menuItem = enclosingMenuItem {
+            appDelegate.animateStatusIcon(with: .scale)
             appDelegate.menu.cancelTracking()
             appDelegate.quitApp(menuItem)
         }

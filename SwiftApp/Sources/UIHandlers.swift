@@ -96,6 +96,9 @@ class UIHandlers {
     }
     
     func showAlert(title: String, message: String) {
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.animateStatusIcon(with: .wiggle)
+        }
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = title

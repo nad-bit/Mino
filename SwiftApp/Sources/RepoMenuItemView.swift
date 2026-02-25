@@ -315,6 +315,7 @@ class RepoMenuItemView: NSView {
     // MARK: - Actions
     @objc private func installClicked() {
         if let menuItem = enclosingMenuItem {
+            appDelegate.animateStatusIcon(with: .scale)
             appDelegate.menu.cancelTracking()
             menuItem.representedObject = caskName
             appDelegate.handleInstallBrewCask(menuItem)
@@ -323,6 +324,7 @@ class RepoMenuItemView: NSView {
     
     @objc private func notesClicked() {
         if let menuItem = enclosingMenuItem {
+            appDelegate.animateStatusIcon(with: .scale)
             appDelegate.menu.cancelTracking()
             menuItem.representedObject = repoName
             appDelegate.handleShowNotes(menuItem)
@@ -331,6 +333,7 @@ class RepoMenuItemView: NSView {
     
     @objc private func openReleasesClicked() {
         if let menuItem = enclosingMenuItem {
+            appDelegate.animateStatusIcon(with: .scale)
             appDelegate.menu.cancelTracking()
             menuItem.representedObject = repoName
             appDelegate.handleOpenReleases(menuItem)
@@ -339,6 +342,7 @@ class RepoMenuItemView: NSView {
     
     @objc private func deleteClicked() {
         if let menuItem = enclosingMenuItem {
+            appDelegate.animateStatusIcon(with: .scale)
             appDelegate.menu.cancelTracking()
             menuItem.representedObject = repoName
             appDelegate.handleDeleteRepo(menuItem)
@@ -411,7 +415,7 @@ class RepoMenuItemView: NSView {
         attrStr.addAttribute(.foregroundColor, value: baseColor, range: fullRange)
         attrStr.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
         
-        if !highlighted, ConfigManager.shared.config.indicatorColor == "gold", text.contains(Constants.newReleaseIndicator) {
+        if !highlighted, text.contains(Constants.newReleaseIndicator) {
             let indicatorRange = (text as NSString).range(of: Constants.newReleaseIndicator)
             if indicatorRange.location != NSNotFound {
                 attrStr.addAttribute(.foregroundColor, value: NSColor.systemYellow, range: indicatorRange)
@@ -434,6 +438,7 @@ class RepoMenuItemView: NSView {
     // Click on row opens the repo's main GitHub page
     override func mouseUp(with event: NSEvent) {
         if enclosingMenuItem != nil {
+            appDelegate.animateStatusIcon(with: .scale)
             appDelegate.menu.cancelTracking()
             if let url = URL(string: "https://github.com/\(repoName)") {
                 NSWorkspace.shared.open(url)

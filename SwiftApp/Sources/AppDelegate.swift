@@ -1,8 +1,17 @@
 import Cocoa
 
+enum SymbolAnimation {
+    case bounce
+    case replaceWithSlash
+    case wiggle
+    case rotate
+    case scale
+}
+
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
+    var statusIconView: NSImageView!
     var statusIndicatorDot: NSBox!
     var menu: NSMenu!
     
@@ -19,32 +28,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var settingsWindowController: SettingsWindowController?
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
-        // Use SF Symbol "eye" as a template so it handles light/dark mode
-        if let eyeImage = NSImage(systemSymbolName: "eye", accessibilityDescription: "GitHub Watcher") {
-            eyeImage.isTemplate = true
-            statusItem.button?.image = eyeImage
-        } else {
-            statusItem.button?.title = "GW"
-        }
-        
-        // Add the red iris overlay
-        statusIndicatorDot = NSBox()
-        statusIndicatorDot.boxType = .custom
-        statusIndicatorDot.isTransparent = false
-        statusIndicatorDot.fillColor = .systemRed
-        statusIndicatorDot.cornerRadius = 2.5
-        statusIndicatorDot.translatesAutoresizingMaskIntoConstraints = false
-        statusIndicatorDot.isHidden = true
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         
         if let btn = statusItem.button {
+            // Remove default image and title to allow custom view
+            btn.image = nil
+            btn.title = ""
+            
+            // Create a custom image view to support AppKit SF Symbol animations
+            let eyeImage = NSImage(systemSymbolName: "eye", accessibilityDescription: "GitHub Watcher")!
+            eyeImage.isTemplate = true
+            
+            statusIconView = NSImageView(image: eyeImage)
+            statusIconView.translatesAutoresizingMaskIntoConstraints = false
+            statusIconView.wantsLayer = true // REQUIRED for layer-backed symbol effects
+            
+            btn.addSubview(statusIconView)
+            
+            NSLayoutConstraint.activate([
+                statusIconView.centerXAnchor.constraint(equalTo: btn.centerXAnchor),
+                statusIconView.centerYAnchor.constraint(equalTo: btn.centerYAnchor),
+                statusIconView.widthAnchor.constraint(equalToConstant: 18),
+                statusIconView.heightAnchor.constraint(equalToConstant: 16) // typical SF symbol aspect ratio inside button
+            ])
+            
+            // Add the red iris overlay
+            statusIndicatorDot = NSBox()
+            statusIndicatorDot.boxType = .custom
+            statusIndicatorDot.isTransparent = false
+            statusIndicatorDot.fillColor = .systemRed
+            statusIndicatorDot.cornerRadius = 2.0
+            statusIndicatorDot.translatesAutoresizingMaskIntoConstraints = false
+            statusIndicatorDot.isHidden = true
+            
             btn.addSubview(statusIndicatorDot)
             NSLayoutConstraint.activate([
-                statusIndicatorDot.widthAnchor.constraint(equalToConstant: 5),
-                statusIndicatorDot.heightAnchor.constraint(equalToConstant: 5),
-                statusIndicatorDot.centerXAnchor.constraint(equalTo: btn.centerXAnchor, constant: 0), // Move 1px right
-                statusIndicatorDot.centerYAnchor.constraint(equalTo: btn.centerYAnchor, constant: 0) // Move 1px up (y=0 is at bottom)
+                statusIndicatorDot.widthAnchor.constraint(equalToConstant: 4),
+                statusIndicatorDot.heightAnchor.constraint(equalToConstant: 4),
+                statusIndicatorDot.centerXAnchor.constraint(equalTo: statusIconView.centerXAnchor, constant: 0),
+                statusIndicatorDot.centerYAnchor.constraint(equalTo: statusIconView.centerYAnchor, constant: 0) 
             ])
         }
         
@@ -115,6 +137,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         isRefreshing = true
         
         self.headerView?.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
+        self.animateStatusIcon(with: .rotate)
         
         let reposToFetch = ConfigManager.shared.config.repos.map { $0.name }
         
@@ -307,6 +330,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusIndicatorDot.isHidden = !hasUpdates
     }
     
+    // MARK: - Animations
+    
+    func animateStatusIcon(with animation: SymbolAnimation) {
+        guard let imageView = statusIconView else { return }
+        
+        if #available(macOS 14.0, *) {
+            switch animation {
+            case .bounce:
+                imageView.addSymbolEffect(.bounce, options: .nonRepeating)
+            case .replaceWithSlash:
+                let slashImg = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: nil)!
+                let normalImg = NSImage(systemSymbolName: "eye", accessibilityDescription: nil)!
+                slashImg.isTemplate = true
+                normalImg.isTemplate = true
+                
+                imageView.setSymbolImage(slashImg, contentTransition: .replace.downUp.byLayer)
+                
+                // Revert after 2 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    imageView.setSymbolImage(normalImg, contentTransition: .replace.upUp.byLayer)
+                }
+            case .wiggle:
+                if #available(macOS 15.0, *) {
+                    imageView.addSymbolEffect(.wiggle, options: .nonRepeating)
+                } else {
+                    imageView.addSymbolEffect(.bounce, options: .nonRepeating) // Fallback
+                }
+            case .rotate:
+                if #available(macOS 15.0, *) {
+                    imageView.addSymbolEffect(.rotate, options: .nonRepeating)
+                } else {
+                    imageView.addSymbolEffect(.pulse, options: .nonRepeating) // Fallback
+                }
+            case .scale:
+                // Use a bounce.down effect to emulate a "click/scale" interaction
+                imageView.addSymbolEffect(.bounce.down, options: .nonRepeating)
+            }
+        }
+    }
+    
     // MARK: - NSMenuDelegate
     
     func menuWillOpen(_ menu: NSMenu) {
@@ -351,6 +414,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @objc func handleOpenReleases(_ sender: NSMenuItem) {
+        animateStatusIcon(with: .scale)
         guard let repoName = sender.representedObject as? String else { return }
         if let url = URL(string: "https://github.com/\(repoName)/releases") {
             NSWorkspace.shared.open(url)
@@ -358,22 +422,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @objc func handleShowNotes(_ sender: NSMenuItem) {
+        animateStatusIcon(with: .scale)
         guard let repoName = sender.representedObject as? String else { return }
         let info = repoCache[repoName] ?? RepoInfo(name: repoName, error: nil)
         UIHandlers.shared.showReleaseNotes(info: info)
     }
     
     @objc func handleDeleteRepo(_ sender: NSMenuItem) {
+        animateStatusIcon(with: .scale)
         guard let repoName = sender.representedObject as? String else { return }
         if UIHandlers.shared.confirmDeleteRepo(name: repoName) {
             ConfigManager.shared.config.repos.removeAll { $0.name == repoName }
             repoCache.removeValue(forKey: repoName)
             ConfigManager.shared.saveConfig()
             setupMenu()
+            animateStatusIcon(with: .replaceWithSlash)
         }
     }
     
     @objc func handleInstallBrewCask(_ sender: NSMenuItem) {
+        animateStatusIcon(with: .scale)
         guard let caskName = sender.representedObject as? String else { return }
         sendNotification(title: Translations.get("installingTitle"), subtitle: Translations.get("installingMsg").format(with: ["cask_name": caskName]))
         
@@ -417,10 +485,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @objc func showAbout(_ sender: Any) {
+        animateStatusIcon(with: .scale)
         UIHandlers.shared.showAbout()
     }
     
     @objc func openSettingsWindow(_ sender: Any) {
+        animateStatusIcon(with: .scale)
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController()
         }
@@ -430,6 +500,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @objc func unifiedAddRepoDialog(_ sender: Any) {
+        animateStatusIcon(with: .scale)
         let hasBrew = HomebrewManager.shared.brewPath != nil
         UIHandlers.shared.showUnifiedAddRepoDialog(hasBrew: hasBrew) { repoName, source, cask in
             if let repo = repoName, source == "manual" {
@@ -496,6 +567,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 
                 self.repoCache[repoName] = info
                 self.setupMenu()
+                self.animateStatusIcon(with: .bounce)
             }
         }
     }

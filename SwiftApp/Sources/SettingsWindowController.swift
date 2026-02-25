@@ -15,7 +15,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     let loginSwitch = NSSwitch()
     private let ownerSwitch = NSSwitch()
     private let newIndicatorSwitch = NSSwitch()
-    private let newIndicatorColorSegment = NSSegmentedControl()
     private let newIndicatorSlider = NSSlider(value: 1, minValue: 1, maxValue: 30, target: nil, action: nil)
     let newIndicatorLabel = NSTextField(labelWithString: "")
     let sortSegment = NSSegmentedControl()
@@ -196,16 +195,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         newIndicatorSwitch.target = self
         newIndicatorSwitch.action = #selector(toggleNewIndicator(_:))
         
-        newIndicatorColorSegment.segmentCount = 2
-        newIndicatorColorSegment.setImage(createIndicatorSwatch(color: .labelColor), forSegment: 0)
-        newIndicatorColorSegment.setImage(createIndicatorSwatch(color: .systemYellow), forSegment: 1)
-        newIndicatorColorSegment.segmentStyle = .rounded
-        newIndicatorColorSegment.setToolTip("Default", forSegment: 0)
-        newIndicatorColorSegment.setToolTip("Gold", forSegment: 1)
-        newIndicatorColorSegment.target = self
-        newIndicatorColorSegment.action = #selector(indicatorColorChanged(_:))
-        
-        addSettingsRow(to: formStack, label: indicatorLabel, controls: [newIndicatorColorSegment, newIndicatorSwitch])
+        addSettingsRow(to: formStack, label: indicatorLabel, controls: [newIndicatorSwitch])
         
         // Indicator Days Slider
         newIndicatorLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -294,12 +284,8 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         // Load Owner
         ownerSwitch.state = ConfigManager.shared.config.showOwner ? .on : .off
         
-        // Load New Indicator
         let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
         newIndicatorSwitch.state = showNewIndicator ? .on : .off
-        
-        let indicatorColor = ConfigManager.shared.config.indicatorColor ?? "default"
-        newIndicatorColorSegment.selectedSegment = (indicatorColor == "gold") ? 1 : 0
         
         let days = ConfigManager.shared.config.newIndicatorDays ?? Constants.newReleaseThresholdDays
         newIndicatorSlider.integerValue = days
@@ -460,15 +446,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         }
     }
     
-    @objc private func indicatorColorChanged(_ sender: NSSegmentedControl) {
-        let isGold = sender.selectedSegment == 1
-        ConfigManager.shared.config.indicatorColor = isGold ? "gold" : "default"
-        ConfigManager.shared.saveConfig()
-        if let delegate = NSApp.delegate as? AppDelegate {
-             delegate.setupMenu()
-        }
-    }
-    
     @objc private func indicatorDaysChanged(_ sender: NSSlider) {
         ConfigManager.shared.config.newIndicatorDays = sender.integerValue
         ConfigManager.shared.saveConfig()
@@ -499,33 +476,10 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     private func updateIndicatorSliderVisibility() {
         let isEnabled = newIndicatorSwitch.state == .on
         newIndicatorSlider.isEnabled = isEnabled
-        newIndicatorColorSegment.isEnabled = isEnabled
         newIndicatorLabel.textColor = isEnabled ? .labelColor : .disabledControlTextColor
     }
     
-    private func createIndicatorSwatch(color: NSColor) -> NSImage {
-        let text = Constants.newReleaseIndicator
-        let font = NSFont.systemFont(ofSize: 14, weight: .bold)
-        let attr: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
-        let attrString = NSAttributedString(string: text, attributes: attr)
-        
-        let size = NSSize(width: 14, height: 16)
-        let image = NSImage(size: size)
-        image.lockFocus()
-        // Draw the text centered
-        let stringSize = attrString.size()
-        let rect = NSRect(
-            x: (size.width - stringSize.width) / 2,
-            y: (size.height - stringSize.height) / 2,
-            width: stringSize.width,
-            height: stringSize.height
-        )
-        attrString.draw(in: rect)
-        image.unlockFocus()
-        image.isTemplate = false // explicitly colored, don't let the system tint it
-        return image
-    }
-    
+
     private func addSettingsRow(to stack: NSStackView, label: NSView, controls: [NSView]) {
         let row = NSStackView()
         row.orientation = .horizontal

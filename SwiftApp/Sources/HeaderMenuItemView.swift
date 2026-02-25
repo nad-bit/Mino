@@ -111,6 +111,7 @@ class HeaderMenuItemView: NSView {
     
     @objc private func refreshClicked() {
         if let menuItem = enclosingMenuItem {
+            appDelegate.animateStatusIcon(with: .scale)
             appDelegate.menu.cancelTracking()
             appDelegate.triggerFullRefresh(menuItem)
         }
@@ -118,6 +119,7 @@ class HeaderMenuItemView: NSView {
     
     @objc private func addClicked() {
         if let menuItem = enclosingMenuItem {
+            appDelegate.animateStatusIcon(with: .scale)
             appDelegate.menu.cancelTracking()
             appDelegate.unifiedAddRepoDialog(menuItem)
         }
