@@ -1,4 +1,4 @@
-# GitHub Watcher ✦
+# Mino ✦
 
 A lightweight, native macOS menu bar app to track GitHub releases. Built entirely with Swift and AppKit — no frameworks, no dependencies, no Xcode project required.
 
@@ -83,7 +83,7 @@ Accessible via the **Preferences** menu item (`⌘,`):
 
 Your GitHub Personal Access Token is stored in **macOS Keychain**:
 - Encrypted, never saved in config files
-- Visible in Keychain Access under "GitHub Watcher"
+- Visible in Keychain Access under "Mino"
 - Smart paste: copies token from clipboard automatically
 
 ## Configuration
