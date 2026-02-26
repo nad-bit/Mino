@@ -48,7 +48,14 @@ if [ -f "../icon.icns" ]; then
     cp "../icon.icns" "$RESOURCES_DIR/AppIcon.icns"
 fi
 
-echo "🔨 Compiling Swift sources..."
-swiftc -parse-as-library Sources/*.swift -o "$MACOS_DIR/$APP_NAME"
+echo "🔨 Compiling Swift sources for ARM64..."
+swiftc -parse-as-library Sources/*.swift -target arm64-apple-macosx12.0 -o "$MACOS_DIR/${APP_NAME}_arm64"
+
+echo "🔨 Compiling Swift sources for x86_64..."
+swiftc -parse-as-library Sources/*.swift -target x86_64-apple-macosx12.0 -o "$MACOS_DIR/${APP_NAME}_x86_64"
+
+echo "🔗 Creating Universal Binary..."
+lipo -create -output "$MACOS_DIR/$APP_NAME" "$MACOS_DIR/${APP_NAME}_arm64" "$MACOS_DIR/${APP_NAME}_x86_64"
+rm "$MACOS_DIR/${APP_NAME}_arm64" "$MACOS_DIR/${APP_NAME}_x86_64"
 
 echo "✅ Build complete: $APP_DIR"
