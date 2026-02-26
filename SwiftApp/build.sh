@@ -3,18 +3,21 @@ set -e
 
 APP_NAME="Mino"
 BUILD_DIR="build"
-APP_DIR="$BUILD_DIR/$APP_NAME.app"
-CONTENTS_DIR="$APP_DIR/Contents"
-MACOS_DIR="$CONTENTS_DIR/MacOS"
-RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 echo "🧹 Cleaning previous build..."
 rm -rf "$BUILD_DIR"
-mkdir -p "$MACOS_DIR"
-mkdir -p "$RESOURCES_DIR"
+mkdir -p "$BUILD_DIR"
 
-echo "📝 Creating Info.plist..."
-cat > "$CONTENTS_DIR/Info.plist" <<EOF
+function create_app_structure() {
+    local APP_PATH="$1"
+    local CONTENTS_DIR="$APP_PATH/Contents"
+    local MACOS_DIR="$CONTENTS_DIR/MacOS"
+    local RESOURCES_DIR="$CONTENTS_DIR/Resources"
+
+    mkdir -p "$MACOS_DIR"
+    mkdir -p "$RESOURCES_DIR"
+
+    cat > "$CONTENTS_DIR/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -43,19 +46,44 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
 </plist>
 EOF
 
-if [ -f "../icon.icns" ]; then
-    echo "🖼️ Copying App Icon..."
-    cp "../icon.icns" "$RESOURCES_DIR/AppIcon.icns"
-fi
+    if [ -f "../icon.icns" ]; then
+        cp "../icon.icns" "$RESOURCES_DIR/AppIcon.icns"
+    fi
+}
 
-echo "🔨 Compiling Swift sources for ARM64..."
-swiftc -parse-as-library Sources/*.swift -target arm64-apple-macosx12.0 -o "$MACOS_DIR/${APP_NAME}_arm64"
+APP_ARM64="$BUILD_DIR/${APP_NAME}_AppleSilicon.app"
+APP_X86_64="$BUILD_DIR/${APP_NAME}_Intel.app"
+APP_UNIVERSAL="$BUILD_DIR/${APP_NAME}_Universal.app"
 
-echo "🔨 Compiling Swift sources for x86_64..."
-swiftc -parse-as-library Sources/*.swift -target x86_64-apple-macosx12.0 -o "$MACOS_DIR/${APP_NAME}_x86_64"
+echo "📝 Creating App Structures..."
+create_app_structure "$APP_ARM64"
+create_app_structure "$APP_X86_64"
+create_app_structure "$APP_UNIVERSAL"
+
+echo "🔨 Compiling Swift sources for ARM64 (Apple Silicon)..."
+swiftc -parse-as-library Sources/*.swift -target arm64-apple-macosx12.0 -o "$APP_ARM64/Contents/MacOS/$APP_NAME"
+
+echo "🔨 Compiling Swift sources for x86_64 (Intel)..."
+swiftc -parse-as-library Sources/*.swift -target x86_64-apple-macosx12.0 -o "$APP_X86_64/Contents/MacOS/$APP_NAME"
 
 echo "🔗 Creating Universal Binary..."
-lipo -create -output "$MACOS_DIR/$APP_NAME" "$MACOS_DIR/${APP_NAME}_arm64" "$MACOS_DIR/${APP_NAME}_x86_64"
-rm "$MACOS_DIR/${APP_NAME}_arm64" "$MACOS_DIR/${APP_NAME}_x86_64"
+lipo -create -output "$APP_UNIVERSAL/Contents/MacOS/$APP_NAME" "$APP_ARM64/Contents/MacOS/$APP_NAME" "$APP_X86_64/Contents/MacOS/$APP_NAME"
 
-echo "✅ Build complete: $APP_DIR"
+echo "📦 Zipping packages..."
+cd "$BUILD_DIR"
+
+# Zip Apple Silicon build
+mv "${APP_NAME}_AppleSilicon.app" "$APP_NAME.app"
+zip -qr "${APP_NAME}_v1.0.6_AppleSilicon.zip" "$APP_NAME.app"
+mv "$APP_NAME.app" "${APP_NAME}_AppleSilicon.app"
+
+# Zip Intel build
+mv "${APP_NAME}_Intel.app" "$APP_NAME.app"
+zip -qr "${APP_NAME}_v1.0.6_Intel.zip" "$APP_NAME.app"
+mv "$APP_NAME.app" "${APP_NAME}_Intel.app"
+
+# Zip Universal build
+mv "${APP_NAME}_Universal.app" "$APP_NAME.app"
+zip -qr "${APP_NAME}_v1.0.6_Universal.zip" "$APP_NAME.app"
+
+echo "✅ Build complete! ZIP packages are in the build/ directory."
