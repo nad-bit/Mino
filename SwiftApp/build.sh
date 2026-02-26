@@ -61,10 +61,10 @@ create_app_structure "$APP_X86_64"
 create_app_structure "$APP_UNIVERSAL"
 
 echo "🔨 Compiling Swift sources for ARM64 (Apple Silicon)..."
-swiftc -parse-as-library Sources/*.swift -target arm64-apple-macosx12.0 -o "$APP_ARM64/Contents/MacOS/$APP_NAME"
+swiftc -Osize -parse-as-library Sources/*.swift -target arm64-apple-macosx12.0 -o "$APP_ARM64/Contents/MacOS/$APP_NAME"
 
 echo "🔨 Compiling Swift sources for x86_64 (Intel)..."
-swiftc -parse-as-library Sources/*.swift -target x86_64-apple-macosx12.0 -o "$APP_X86_64/Contents/MacOS/$APP_NAME"
+swiftc -Osize -parse-as-library Sources/*.swift -target x86_64-apple-macosx12.0 -o "$APP_X86_64/Contents/MacOS/$APP_NAME"
 
 echo "🔗 Creating Universal Binary..."
 lipo -create -output "$APP_UNIVERSAL/Contents/MacOS/$APP_NAME" "$APP_ARM64/Contents/MacOS/$APP_NAME" "$APP_X86_64/Contents/MacOS/$APP_NAME"
