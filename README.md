@@ -2,6 +2,8 @@
 
 A lightweight, native macOS menu bar app to track GitHub releases. Built entirely with Swift and AppKit — no frameworks, no dependencies, no Xcode project required.
 
+<video src="assets/Mino.mp4" width="100%" controls playsinline></video>
+
 ## Features
 
 - **👀 Menu Bar Integration**: Unobtrusive status bar icon with inline repository information
