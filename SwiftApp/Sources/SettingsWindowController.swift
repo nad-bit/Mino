@@ -21,6 +21,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     let layoutSegment = NSSegmentedControl()
     
     var tempToken: String?
+    private var isUpdatingSelf = false
     
     override init(window: NSWindow?) {
         super.init(window: window)
@@ -52,6 +53,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     @objc private func configDidUpdate() {
+        guard !isUpdatingSelf else { return }
         DispatchQueue.main.async {
             self.loadCurrentSettings()
         }
@@ -425,47 +427,57 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     @objc private func toggleOwner(_ sender: NSSwitch) {
+        isUpdatingSelf = true
         ConfigManager.shared.config.showOwner = sender.state == .on
         ConfigManager.shared.saveConfig()
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.setupMenu()
         }
+        isUpdatingSelf = false
     }
     
     @objc private func sortChanged(_ sender: NSSegmentedControl) {
+        isUpdatingSelf = true
         let isByName = sender.selectedSegment == 0 // Name is index 0
         ConfigManager.shared.config.sortBy = isByName ? "name" : "date"
         ConfigManager.shared.saveConfig()
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.setupMenu()
         }
+        isUpdatingSelf = false
     }
     
     @objc private func toggleNewIndicator(_ sender: NSSwitch) {
+        isUpdatingSelf = true
         ConfigManager.shared.config.showNewIndicator = sender.state == .on
         ConfigManager.shared.saveConfig()
         updateIndicatorSliderVisibility()
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.setupMenu()
         }
+        isUpdatingSelf = false
     }
     
     @objc private func indicatorDaysChanged(_ sender: NSSlider) {
+        isUpdatingSelf = true
         ConfigManager.shared.config.newIndicatorDays = sender.integerValue
         ConfigManager.shared.saveConfig()
         updateIndicatorDaysLabel()
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.setupMenu()
         }
+        isUpdatingSelf = false
     }
     
     @objc private func layoutChanged(_ sender: NSSegmentedControl) {
+        isUpdatingSelf = true
         let layoutModes = ["columns", "cards", "hybrid"]
         ConfigManager.shared.config.menuLayout = layoutModes[sender.selectedSegment]
         ConfigManager.shared.saveConfig()
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.setupMenu()
         }
+        isUpdatingSelf = false
     }
     
     private func updateIndicatorDaysLabel() {

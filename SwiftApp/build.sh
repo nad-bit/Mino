@@ -35,9 +35,9 @@ function create_app_structure() {
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.6</string>
+    <string>1.0.7</string>
     <key>CFBundleVersion</key>
-    <string>178</string>
+    <string>179</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSUIElement</key>
@@ -74,16 +74,16 @@ cd "$BUILD_DIR"
 
 # Zip Apple Silicon build
 mv "${APP_NAME}_AppleSilicon.app" "$APP_NAME.app"
-zip -qr "${APP_NAME}_v1.0.6_AppleSilicon.zip" "$APP_NAME.app"
+zip -qr "${APP_NAME}_v1.0.7_AppleSilicon.zip" "$APP_NAME.app"
 mv "$APP_NAME.app" "${APP_NAME}_AppleSilicon.app"
 
 # Zip Intel build
 mv "${APP_NAME}_Intel.app" "$APP_NAME.app"
-zip -qr "${APP_NAME}_v1.0.6_Intel.zip" "$APP_NAME.app"
+zip -qr "${APP_NAME}_v1.0.7_Intel.zip" "$APP_NAME.app"
 mv "$APP_NAME.app" "${APP_NAME}_Intel.app"
 
 # Zip Universal build
 mv "${APP_NAME}_Universal.app" "$APP_NAME.app"
-zip -qr "${APP_NAME}_v1.0.6_Universal.zip" "$APP_NAME.app"
+zip -qr "${APP_NAME}_v1.0.7_Universal.zip" "$APP_NAME.app"
 
 echo "✅ Build complete! ZIP packages are in the build/ directory."
