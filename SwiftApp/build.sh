@@ -119,3 +119,36 @@ if [ -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" ]; then
 fi
 
 echo "✅ Build complete! ZIP packages are in the build/ directory."
+
+# --- Homebrew Cask Generation ---
+VERSION="1.1.0"
+echo -e "\n🍺 Generating Homebrew Cask formula (mino.rb)..."
+
+SHA_ARM=$(shasum -a 256 "${APP_NAME}_v${VERSION}_AppleSilicon.zip" | awk '{print $1}')
+SHA_INTEL=$(shasum -a 256 "${APP_NAME}_v${VERSION}_Intel.zip" | awk '{print $1}')
+
+cat > "mino.rb" <<EOF
+cask "mino" do
+  version "${VERSION}"
+
+  on_arm do
+    sha256 "${SHA_ARM}"
+    url "https://github.com/nad-bit/Mino/releases/download/v#{version}/Mino_v#{version}_AppleSilicon.zip"
+  end
+
+  on_intel do
+    sha256 "${SHA_INTEL}"
+    url "https://github.com/nad-bit/Mino/releases/download/v#{version}/Mino_v#{version}_Intel.zip"
+  end
+
+  name "Mino"
+  desc "A lightweight, native macOS menu bar app to track GitHub releases"
+  homepage "https://github.com/nad-bit/Mino"
+
+  depends_on macos: ">= :monterey"
+
+  app "Mino.app"
+end
+EOF
+
+echo "✅ Generated mino.rb in build/ directory."
