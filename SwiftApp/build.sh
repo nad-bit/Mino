@@ -46,8 +46,22 @@ function create_app_structure() {
 </plist>
 EOF
 
-    if [ -f "../icon.icns" ]; then
-        cp "../icon.icns" "$RESOURCES_DIR/AppIcon.icns"
+    if [ -f "../icon.png" ]; then
+        echo "🎨 Generating AppIcon.icns from icon.png..."
+        ICONSET_DIR="/tmp/MinoIcon.iconset"
+        mkdir -p "$ICONSET_DIR"
+        sips -z 16 16 "../icon.png" --out "$ICONSET_DIR/icon_16x16.png" > /dev/null 2>&1
+        sips -z 32 32 "../icon.png" --out "$ICONSET_DIR/icon_16x16@2x.png" > /dev/null 2>&1
+        sips -z 32 32 "../icon.png" --out "$ICONSET_DIR/icon_32x32.png" > /dev/null 2>&1
+        sips -z 64 64 "../icon.png" --out "$ICONSET_DIR/icon_32x32@2x.png" > /dev/null 2>&1
+        sips -z 128 128 "../icon.png" --out "$ICONSET_DIR/icon_128x128.png" > /dev/null 2>&1
+        sips -z 256 256 "../icon.png" --out "$ICONSET_DIR/icon_128x128@2x.png" > /dev/null 2>&1
+        sips -z 256 256 "../icon.png" --out "$ICONSET_DIR/icon_256x256.png" > /dev/null 2>&1
+        sips -z 512 512 "../icon.png" --out "$ICONSET_DIR/icon_256x256@2x.png" > /dev/null 2>&1
+        sips -z 512 512 "../icon.png" --out "$ICONSET_DIR/icon_512x512.png" > /dev/null 2>&1
+        sips -z 1024 1024 "../icon.png" --out "$ICONSET_DIR/icon_512x512@2x.png" > /dev/null 2>&1
+        iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/AppIcon.icns"
+        rm -rf "$ICONSET_DIR"
     fi
 }
 
