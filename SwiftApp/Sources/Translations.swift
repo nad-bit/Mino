@@ -40,6 +40,15 @@ enum Translations {
             "manualOption": "Manual Input", "brewOption": "From Homebrew",
             "layoutLabel": "Menu layout",
             "layoutCards": "Cards", "layoutColumns": "Columns", "layoutHybrid": "Hybrid",
+            "connectGitHub": "Connect GitHub",
+            "connected": "Connected to GitHub",
+            "notConnected": "Not connected",
+            "connecting": "Waiting for authorization...",
+            "oauthInstructions": "Enter code: {code}",
+            "openBrowser": "Open GitHub",
+            "cancelAuth": "Cancel",
+            "copyCode": "Copy Code",
+            "authError": "Authorization failed.",
         ],
         "es": [
             "configureToken": "Configurar Token de GitHub",
@@ -79,6 +88,15 @@ enum Translations {
             "manualOption": "Entrada Manual", "brewOption": "Desde Homebrew",
             "layoutLabel": "Diseño del menú",
             "layoutCards": "Tarjetas", "layoutColumns": "Columnas", "layoutHybrid": "Híbrido",
+            "connectGitHub": "Conectar GitHub",
+            "connected": "Conectado a GitHub",
+            "notConnected": "No conectado",
+            "connecting": "Esperando autorización...",
+            "oauthInstructions": "Introduce el código: {code}",
+            "openBrowser": "Abrir GitHub",
+            "cancelAuth": "Cancelar",
+            "copyCode": "Copiar Código",
+            "authError": "Error de autorización.",
         ]
     ]
     

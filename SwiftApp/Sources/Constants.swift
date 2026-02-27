@@ -25,4 +25,5 @@ enum Constants {
     // API Constants
     static let githubAPIBaseURL = "https://api.github.com"
     static let userAgent = "Swift-AppKit-Mino"
+    static let githubClientID = "Ov23liW2PRuycPFESEpX"
 }

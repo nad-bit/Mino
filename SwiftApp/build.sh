@@ -35,9 +35,9 @@ function create_app_structure() {
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.8</string>
+    <string>1.1.0</string>
     <key>CFBundleVersion</key>
-    <string>180</string>
+    <string>181</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSUIElement</key>
@@ -101,20 +101,20 @@ if [ -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" ]; then
     if [ $? -eq 0 ]; then
         mv "$APP_NAME.app/Contents/MacOS/$APP_NAME" "${APP_NAME}_universal_temp"
         mv "${APP_NAME}_arm64" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
-        zip -qr "${APP_NAME}_v1.0.8_AppleSilicon.zip" "$APP_NAME.app"
+        zip -qr "${APP_NAME}_v1.1.0_AppleSilicon.zip" "$APP_NAME.app"
         echo "✅ Created Apple Silicon build"
         
         # 2. Intel (x86_64) Zip
         lipo -extract x86_64 "${APP_NAME}_universal_temp" -output "${APP_NAME}_x86_64" 2>/dev/null
         if [ $? -eq 0 ]; then
             mv "${APP_NAME}_x86_64" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
-            zip -qr "${APP_NAME}_v1.0.8_Intel.zip" "$APP_NAME.app"
+            zip -qr "${APP_NAME}_v1.1.0_Intel.zip" "$APP_NAME.app"
             echo "✅ Created Intel build"
         fi
         
         # 3. Universal Zip (Restore the fat binary)
         mv "${APP_NAME}_universal_temp" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
-        zip -qr "${APP_NAME}_v1.0.8_Universal.zip" "$APP_NAME.app"
+        zip -qr "${APP_NAME}_v1.1.0_Universal.zip" "$APP_NAME.app"
     fi
 fi
 

@@ -3,9 +3,15 @@ import Cocoa
 @MainActor
 class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindowDelegate {
     
-    let tokenField = NSTextField()
-    let tokenSaveBtn = NSButton(title: Translations.get("ok"), target: nil, action: nil)
+    let tokenStatusLabel = NSTextField(labelWithString: "")
+    let tokenConnectBtn = NSButton(title: Translations.get("connectGitHub"), target: nil, action: nil)
     let tokenDeleteBtn = NSButton(title: Translations.get("deleteToken"), target: nil, action: nil)
+    let oauthCodeLabel = NSTextField(labelWithString: "")
+    let oauthActionBtn = NSButton(title: Translations.get("openBrowser"), target: nil, action: nil)
+    let oauthCancelBtn = NSButton(title: Translations.get("cancelAuth"), target: nil, action: nil)
+    let oauthSpinner = NSProgressIndicator()
+    let oauthStack = NSStackView()
+    var currentVerificationUri: String?
     private let repoCountLabel = NSTextField(labelWithString: "")
     
     let intervalLabel = NSTextField(labelWithString: "")
@@ -126,37 +132,41 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let tokenLabel = NSTextField(labelWithString: Translations.get("configureToken"))
         formStack.addArrangedSubview(tokenLabel)
         
-        // Multi-line token field
-        tokenField.placeholderString = Translations.get("tokenPlaceholder")
-        tokenField.translatesAutoresizingMaskIntoConstraints = false
-        tokenField.delegate = self
-        tokenField.isEditable = true
-        tokenField.isSelectable = true
-        tokenField.cell?.wraps = true
-        tokenField.cell?.isScrollable = false
-        tokenField.maximumNumberOfLines = 2
+        tokenStatusLabel.textColor = .secondaryLabelColor
+        tokenStatusLabel.font = .systemFont(ofSize: 13)
+        formStack.addArrangedSubview(tokenStatusLabel)
         
-        NSLayoutConstraint.activate([
-            tokenField.widthAnchor.constraint(equalToConstant: 380),
-            tokenField.heightAnchor.constraint(equalToConstant: 45)
-        ])
-        formStack.addArrangedSubview(tokenField)
-        
-        tokenSaveBtn.target = self
-        tokenSaveBtn.action = #selector(saveToken(_:))
+        tokenConnectBtn.target = self
+        tokenConnectBtn.action = #selector(startOAuth(_:))
         
         tokenDeleteBtn.target = self
         tokenDeleteBtn.action = #selector(deleteToken(_:))
         
-        let tokenSpring = NSView()
-        tokenSpring.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        
-        let tokenBtnRow = NSStackView(views: [tokenSpring, tokenSaveBtn, tokenDeleteBtn])
+        let tokenBtnRow = NSStackView(views: [tokenConnectBtn, tokenDeleteBtn])
         tokenBtnRow.orientation = .horizontal
         tokenBtnRow.spacing = 10
-        tokenBtnRow.translatesAutoresizingMaskIntoConstraints = false
         formStack.addArrangedSubview(tokenBtnRow)
-        tokenBtnRow.widthAnchor.constraint(equalToConstant: 380).isActive = true
+        
+        oauthCodeLabel.font = .monospacedSystemFont(ofSize: 14, weight: .bold)
+        oauthCodeLabel.isSelectable = true
+        
+        oauthActionBtn.target = self
+        oauthActionBtn.action = #selector(openGitHubAuth(_:))
+        
+        oauthCancelBtn.target = self
+        oauthCancelBtn.action = #selector(cancelOAuth(_:))
+        
+        oauthSpinner.style = .spinning
+        oauthSpinner.controlSize = .small
+        oauthSpinner.isDisplayedWhenStopped = false
+        oauthSpinner.translatesAutoresizingMaskIntoConstraints = false
+        
+        oauthStack.setViews([oauthCodeLabel, oauthActionBtn, oauthCancelBtn, oauthSpinner], in: .leading)
+        oauthStack.orientation = .horizontal
+        oauthStack.spacing = 10
+        oauthStack.alignment = .centerY
+        oauthStack.isHidden = true
+        formStack.addArrangedSubview(oauthStack)
         
         let sep1 = NSBox()
         sep1.boxType = .separator
@@ -259,24 +269,21 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let hasToken = ConfigManager.shared.token != nil && !ConfigManager.shared.token!.isEmpty
         
         if hasToken {
-            // State: Token stored → read-only masked field, only Delete button
-            tokenField.stringValue = maskToken(ConfigManager.shared.token!)
-            tokenField.isEditable = false
-            tokenField.isSelectable = false
-            tokenField.textColor = .secondaryLabelColor
-            tokenSaveBtn.isHidden = true
+            tokenStatusLabel.stringValue = Translations.get("connected")
+            tokenStatusLabel.textColor = .systemGreen
+            tokenConnectBtn.isHidden = true
             tokenDeleteBtn.isHidden = false
         } else {
-            // State: No token → editable field, only OK button
-            tokenField.stringValue = ""
-            tokenField.isEditable = true
-            tokenField.isSelectable = true
-            tokenField.textColor = .labelColor
-            tokenSaveBtn.isHidden = false
+            tokenStatusLabel.stringValue = Translations.get("notConnected")
+            tokenStatusLabel.textColor = .secondaryLabelColor
+            tokenConnectBtn.isHidden = false
             tokenDeleteBtn.isHidden = true
-            self.tempToken = nil
-            checkClipboardForToken()
+            tokenConnectBtn.isEnabled = true
         }
+        
+        oauthStack.isHidden = true
+        oauthSpinner.stopAnimation(nil)
+        GitHubAuth.shared.cancelPolling()
         
         // Load Interval
         let mins = ConfigManager.shared.config.refreshMinutes
@@ -316,34 +323,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         }
     }
     
-    private func maskToken(_ t: String) -> String {
-        guard t.count > 4 else { return String(repeating: "•", count: t.count) }
-        return String(repeating: "•", count: 36) + t.suffix(4)
-    }
-    
-    private func isLikelyGitHubToken(_ t: String) -> Bool {
-        return t.hasPrefix("ghp_") || t.hasPrefix("github_pat_") || t.hasPrefix("gho_") || t.hasPrefix("ghu_") || t.hasPrefix("ghs_") || t.hasPrefix("ghr_")
-    }
-    
-    private func checkClipboardForToken() {
-        // Only auto-fill from clipboard if no token is currently stored
-        guard ConfigManager.shared.token == nil || ConfigManager.shared.token!.isEmpty else { return }
-        let pbString = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let t = pbString, isLikelyGitHubToken(t), t != self.tempToken {
-            self.tempToken = t
-            tokenField.stringValue = t
-        }
-    }
-    
-    func windowDidBecomeKey(_ notification: Notification) {
-        checkClipboardForToken()
-    }
-    
-    func controlTextDidChange(_ obj: Notification) {
-        if let textField = obj.object as? NSTextField, textField == tokenField {
-            self.tempToken = textField.stringValue
-        }
-    }
+
     
     @objc private func sliderChanged(_ sender: NSSlider) {
         updateIntervalLabel()
@@ -375,26 +355,59 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         self.window?.close()
     }
     
-    @objc private func saveToken(_ sender: NSButton) {
-        let t = (tempToken ?? tokenField.stringValue).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return }
+    @objc private func startOAuth(_ sender: NSButton) {
+        tokenConnectBtn.isEnabled = false
+        oauthStack.isHidden = false
+        oauthSpinner.startAnimation(nil)
+        oauthCodeLabel.stringValue = Translations.get("loading")
+        oauthActionBtn.isHidden = true
         
         Task {
-            let valid = await GitHubAPI.shared.validateToken(t)
-            DispatchQueue.main.async {
-                if valid {
-                    _ = ConfigManager.shared.saveTokenToKeychain(t)
-                    ConfigManager.shared.token = t
-                    self.loadCurrentSettings()
-                    HUDPanel.shared.show(title: Translations.get("configureToken"), subtitle: Translations.get("tokenValidationSuccess"))
-                    if let delegate = NSApp.delegate as? AppDelegate {
-                         delegate.triggerFullRefresh(nil)
+            do {
+                let response = try await GitHubAuth.shared.requestDeviceCode()
+                DispatchQueue.main.async {
+                    self.oauthCodeLabel.stringValue = Translations.get("oauthInstructions").format(with: ["code": response.userCode])
+                    self.currentVerificationUri = response.verificationUri
+                    self.oauthActionBtn.isHidden = false
+                    
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString(response.userCode, forType: .string)
+                }
+                
+                if let token = try await GitHubAuth.shared.pollForToken(deviceCode: response.deviceCode, interval: response.interval, expiresIn: response.expiresIn) {
+                    DispatchQueue.main.async {
+                        _ = ConfigManager.shared.saveTokenToKeychain(token)
+                        ConfigManager.shared.token = token
+                        self.loadCurrentSettings()
+                        HUDPanel.shared.show(title: Translations.get("configureToken"), subtitle: Translations.get("tokenValidationSuccess"))
+                        if let delegate = NSApp.delegate as? AppDelegate {
+                             delegate.triggerFullRefresh(nil)
+                        }
                     }
                 } else {
-                    UIHandlers.shared.showAlert(title: Translations.get("error"), message: Translations.get("tokenValidationError"))
+                    DispatchQueue.main.async {
+                        self.loadCurrentSettings()
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    UIHandlers.shared.showAlert(title: Translations.get("error"), message: Translations.get("authError"))
+                    self.loadCurrentSettings()
                 }
             }
         }
+    }
+    
+    @objc private func openGitHubAuth(_ sender: NSButton) {
+        if let uri = currentVerificationUri, let url = URL(string: uri) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+    
+    @objc private func cancelOAuth(_ sender: NSButton) {
+        GitHubAuth.shared.cancelPolling()
+        loadCurrentSettings()
     }
     
     @objc private func deleteToken(_ sender: NSButton) {
