@@ -161,10 +161,15 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         oauthSpinner.isDisplayedWhenStopped = false
         oauthSpinner.translatesAutoresizingMaskIntoConstraints = false
         
-        oauthStack.setViews([oauthCodeLabel, oauthActionBtn, oauthCancelBtn, oauthSpinner], in: .leading)
-        oauthStack.orientation = .horizontal
+        oauthStack.setViews([oauthCodeLabel], in: .leading)
+        let oauthButtonStack = NSStackView(views: [oauthActionBtn, oauthCancelBtn, oauthSpinner])
+        oauthButtonStack.orientation = .horizontal
+        oauthButtonStack.spacing = 10
+        oauthStack.addArrangedSubview(oauthButtonStack)
+        
+        oauthStack.orientation = .vertical
         oauthStack.spacing = 10
-        oauthStack.alignment = .centerY
+        oauthStack.alignment = .leading
         oauthStack.isHidden = true
         formStack.addArrangedSubview(oauthStack)
         
