@@ -3,7 +3,7 @@ import Foundation
 enum Translations {
     static let i18n: [String: [String: String]] = [
         "en": [
-            "configureToken": "Configure GitHub Token",
+            "configureToken": "GitHub Account",
             "selectCaskPlaceholder": "--- Select a Cask ---",
             "enterRepoMsg": "Enter repository (owner/name):",
             "deleteRepo": "Delete Repository", "openReleases": "Open Releases Page", "releaseNotes": "Release Notes",
@@ -19,7 +19,7 @@ enum Translations {
             "startAtLogin": "Start at Login",
             "addFromBrew": "Select a Homebrew Cask:", "loadingBrew": "Loading Homebrew Casks...",
             "noRepos": "No repositories added", "confirmDelete": "Are you sure you want to delete this repository?",
-            "confirmDeleteToken": "Are you sure you want to delete the stored token?",
+            "confirmDeleteToken": "Are you sure you want to disconnect your GitHub account?",
             "repoNotFound": "Repository not found", "repoExists": "This repository is already in the list.",
             "loading": "Loading...", "error": "Error", "noNotes": "No release notes provided.",
             "brewErrorTitle": "Homebrew Error",
@@ -34,7 +34,7 @@ enum Translations {
             "tokenValidationError": "Invalid token. Please check your GitHub Personal Access Token.",
             "tokenValidationEmpty": "Token cleared. Reverting to unauthenticated rate limit (60/hr).",
             "unitMin": "min", "unitHour": "hr", "unitDay": "day", "unitHoursPlural": "hrs",
-            "tokenPlaceholder": "Paste new token here...", "deleteToken": "Delete Token",
+            "tokenPlaceholder": "Paste new token here...", "deleteToken": "Disconnect",
             "repoCount": "Watching {count} repositories", "repoCountSingular": "Watching 1 repository",
             "addRepoUnified": "Add Repository",
             "manualOption": "Manual Input", "brewOption": "From Homebrew",
@@ -51,7 +51,7 @@ enum Translations {
             "authError": "Authorization failed.",
         ],
         "es": [
-            "configureToken": "Configurar Token de GitHub",
+            "configureToken": "Cuenta de GitHub",
             "selectCaskPlaceholder": "--- Selecciona un Cask ---",
             "enterRepoMsg": "Introduce el repositorio (owner/nombre):",
             "deleteRepo": "Eliminar Repositorio", "openReleases": "Abrir página de lanzamientos", "releaseNotes": "Notas de la versión",
@@ -67,7 +67,7 @@ enum Translations {
             "startAtLogin": "Arrancar al inicio",
             "addFromBrew": "Selecciona un Cask de Homebrew:", "loadingBrew": "Cargando Casks...",
             "noRepos": "No hay repositorios añadidos", "confirmDelete": "¿Seguro que quieres eliminar este repositorio?",
-            "confirmDeleteToken": "¿Seguro que quieres eliminar el token almacenado?",
+            "confirmDeleteToken": "¿Seguro que quieres desconectar tu cuenta de GitHub?",
             "repoNotFound": "Repositorio no encontrado", "repoExists": "Este repositorio ya está en la lista.",
             "loading": "Cargando...", "error": "Error", "noNotes": "No hay notas de la versión.",
             "brewErrorTitle": "Error de Homebrew",
@@ -82,7 +82,7 @@ enum Translations {
             "tokenValidationError": "Token inválido. Por favor revisa tu Token Personal de GitHub.",
             "tokenValidationEmpty": "Token eliminado. Volviendo al límite no autenticado (60/h).",
             "unitMin": "min", "unitHour": "hora", "unitDay": "día", "unitHoursPlural": "horas",
-            "tokenPlaceholder": "Pega el nuevo token aquí...", "deleteToken": "Borrar Token",
+            "tokenPlaceholder": "Pega el nuevo token aquí...", "deleteToken": "Desconectar",
             "repoCount": "Vigilando {count} repositorios", "repoCountSingular": "Vigilando 1 repositorio",
             "addRepoUnified": "Añadir Repositorio",
             "manualOption": "Entrada Manual", "brewOption": "Desde Homebrew",
