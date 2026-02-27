@@ -80,7 +80,7 @@ class HomebrewManager {
             DispatchQueue.global().async {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: path)
-                process.arguments = ["install", "--cask", cask]
+                process.arguments = ["install", "--cask", "--no-quarantine", cask]
                 
                 let pipe = Pipe()
                 process.standardOutput = pipe

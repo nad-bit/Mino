@@ -36,7 +36,7 @@ https://github.com/user-attachments/assets/9b7cbe6b-5d9e-49c8-817e-5ff761ee4fbe
 ### Homebrew (Recommended)
 
 ```bash
-brew install nad-bit/tap/mino
+brew install --no-quarantine nad-bit/tap/mino
 ```
 
 ### Build from Source

@@ -5,8 +5,12 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-02-27
+## [1.1.1] - 2026-02-27
 
+### Added
+- Homebrew installations (both via the README command and the in-app Install button) now automatically apply the `--no-quarantine` flag to prevent macOS Gatekeeper from blocking the app on first launch.
+
+## [1.1.0] - 2026-02-27
 ### Added
 - **GitHub Device Flow OAuth**: Users can now authenticate with a simple "Connect GitHub" button that opens their browser, eliminating the need to manually create and paste Personal Access Tokens.
 - Automated app icon generation from `icon.png` during the build process to reduce repository footprint.
