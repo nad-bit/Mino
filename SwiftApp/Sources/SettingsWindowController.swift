@@ -130,11 +130,9 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         // --- 1. Token Section ---
         let tokenLabel = NSTextField(labelWithString: Translations.get("configureToken"))
-        formStack.addArrangedSubview(tokenLabel)
         
         tokenStatusLabel.textColor = .secondaryLabelColor
         tokenStatusLabel.font = .systemFont(ofSize: 13)
-        formStack.addArrangedSubview(tokenStatusLabel)
         
         tokenConnectBtn.target = self
         tokenConnectBtn.action = #selector(startOAuth(_:))
@@ -142,10 +140,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         tokenDeleteBtn.target = self
         tokenDeleteBtn.action = #selector(deleteToken(_:))
         
-        let tokenBtnRow = NSStackView(views: [tokenConnectBtn, tokenDeleteBtn])
-        tokenBtnRow.orientation = .horizontal
-        tokenBtnRow.spacing = 10
-        formStack.addArrangedSubview(tokenBtnRow)
+        addSettingsRow(to: formStack, label: tokenLabel, controls: [tokenStatusLabel, tokenConnectBtn, tokenDeleteBtn])
         
         oauthCodeLabel.font = .monospacedSystemFont(ofSize: 14, weight: .bold)
         oauthCodeLabel.isSelectable = true
@@ -161,17 +156,34 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         oauthSpinner.isDisplayedWhenStopped = false
         oauthSpinner.translatesAutoresizingMaskIntoConstraints = false
         
-        oauthStack.setViews([oauthCodeLabel], in: .leading)
+        oauthStack.orientation = .horizontal
+        oauthStack.alignment = .top
+        oauthStack.translatesAutoresizingMaskIntoConstraints = false
+        
+        let emptyLabel = NSTextField(labelWithString: "")
+        emptyLabel.isBordered = false
+        emptyLabel.drawsBackground = false
+        emptyLabel.isEditable = false
+        oauthStack.addArrangedSubview(emptyLabel)
+        
+        let spring = NSView()
+        spring.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        oauthStack.addArrangedSubview(spring)
+        
         let oauthButtonStack = NSStackView(views: [oauthActionBtn, oauthCancelBtn, oauthSpinner])
         oauthButtonStack.orientation = .horizontal
         oauthButtonStack.spacing = 10
-        oauthStack.addArrangedSubview(oauthButtonStack)
         
-        oauthStack.orientation = .vertical
-        oauthStack.spacing = 10
-        oauthStack.alignment = .leading
+        let oauthContentStack = NSStackView(views: [oauthCodeLabel, oauthButtonStack])
+        oauthContentStack.orientation = .vertical
+        oauthContentStack.alignment = .trailing
+        oauthContentStack.spacing = 10
+        
+        oauthStack.addArrangedSubview(oauthContentStack)
         oauthStack.isHidden = true
+        
         formStack.addArrangedSubview(oauthStack)
+        oauthStack.widthAnchor.constraint(equalToConstant: 380).isActive = true
         
         let sep1 = NSBox()
         sep1.boxType = .separator
