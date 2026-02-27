@@ -33,6 +33,12 @@ https://github.com/user-attachments/assets/9b7cbe6b-5d9e-49c8-817e-5ff761ee4fbe
 - Xcode Command Line Tools (`xcode-select --install`)
 - [Homebrew](https://brew.sh/) (optional, for Cask integration)
 
+### Homebrew (Recommended)
+
+```bash
+brew install nad-bit/tap/mino
+```
+
 ### Build from Source
 
 ```bash
