@@ -42,6 +42,7 @@ class GitHubAuth {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let body = ["client_id": Constants.githubClientID, "scope": "repo"]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -64,6 +65,7 @@ class GitHubAuth {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let body = [
             "client_id": Constants.githubClientID,
@@ -86,6 +88,9 @@ class GitHubAuth {
                 try await Task.sleep(nanoseconds: UInt64((interval + 1) * 1_000_000_000))
             } else if response.error == "slow_down" {
                 try await Task.sleep(nanoseconds: UInt64((interval + 5) * 1_000_000_000))
+            } else if response.error == "expired_token" {
+                isPolling = false
+                throw NSError(domain: "GitHubAuth", code: 2, userInfo: [NSLocalizedDescriptionKey: "Code expired. Please try again."])
             } else {
                 // Other error, abort
                 isPolling = false
