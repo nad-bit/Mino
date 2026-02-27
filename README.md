@@ -85,7 +85,7 @@ Accessible via the **Preferences** menu item:
 
 | Option | Description |
 |--------|-------------|
-| **GitHub Token** | Add a PAT for 5,000 req/hr (vs 60/hr unauthenticated) |
+| **GitHub Account** | Connect via OAuth for 5,000 req/hr limit (vs 60/hr unauthenticated) |
 | **Refresh Interval** | Slider: 1-24 hours between auto-checks |
 | **Start at Login** | Toggle macOS LaunchAgent |
 | **Show Owner Name** | Toggle `owner/` prefix in repo names |
@@ -94,10 +94,10 @@ Accessible via the **Preferences** menu item:
 
 ### Security
 
-Your GitHub Personal Access Token is stored in **macOS Keychain**:
-- Encrypted, never saved in config files
+Your GitHub authentication token is stored securely in **macOS Keychain**:
+- Encrypted, never saved in raw config files
 - Visible in Keychain Access under "Mino"
-- Smart paste: copies token from clipboard automatically
+- Uses GitHub's official Device Authorization Flow (OAuth)
 
 ## Configuration
 
@@ -120,6 +120,7 @@ SwiftApp/
     ├── SettingsWindowController.swift  # Preferences window
     ├── ConfigManager.swift     # JSON config + Keychain management
     ├── GitHubAPI.swift         # GitHub REST API client
+    ├── GitHubAuth.swift        # GitHub Device Flow OAuth handling
     ├── HomebrewManager.swift   # Homebrew Cask detection and installation
     ├── HUDPanel.swift          # Floating notification panel
     ├── UIHandlers.swift        # Dialogs and alert helpers
