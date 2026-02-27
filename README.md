@@ -1,6 +1,12 @@
-# Mino ✦
-
-A lightweight, native macOS menu bar app to track GitHub releases. Built entirely with Swift and AppKit — no frameworks, no dependencies, no Xcode project required.
+<div align="center">
+  <img src="icon.png" width="128" alt="Mino Logo"/>
+  <h1>Mino ✦</h1>
+  <p>A lightweight, native macOS menu bar app to track GitHub releases. Built entirely with Swift and AppKit — no frameworks, no dependencies, no Xcode project required.</p>
+  
+  [![macOS](https://img.shields.io/badge/macOS-12.0+-000000?style=flat&logo=apple&logoColor=white)](https://apple.com/macos)
+  [![Swift](https://img.shields.io/badge/Swift-5.0+-FA7343?style=flat&logo=swift&logoColor=white)](https://swift.org)
+  [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+</div>
 
 
 https://github.com/user-attachments/assets/9b7cbe6b-5d9e-49c8-817e-5ff761ee4fbe
@@ -75,7 +81,7 @@ Repos with recent releases show a **✦** indicator (configurable in Preferences
 
 ### Preferences
 
-Accessible via the **Preferences** menu item (`⌘,`):
+Accessible via the **Preferences** menu item:
 
 | Option | Description |
 |--------|-------------|

@@ -71,9 +71,13 @@ class HUDPanel: NSPanel {
         self.alphaValue = 0.0
         self.orderFront(nil)
         
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.3
-            self.animator().alphaValue = 1.0
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            self.alphaValue = 1.0
+        } else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.3
+                self.animator().alphaValue = 1.0
+            }
         }
         
         // Setup hide timer
@@ -86,11 +90,16 @@ class HUDPanel: NSPanel {
     }
     
     private func hide() {
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.5
-            self.animator().alphaValue = 0.0
-        }) {
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            self.alphaValue = 0.0
             self.orderOut(nil)
+        } else {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.5
+                self.animator().alphaValue = 0.0
+            }) {
+                self.orderOut(nil)
+            }
         }
     }
 }

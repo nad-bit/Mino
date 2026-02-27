@@ -35,7 +35,7 @@ function create_app_structure() {
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.7</string>
+    <string>1.0.8</string>
     <key>CFBundleVersion</key>
     <string>179</string>
     <key>LSMinimumSystemVersion</key>
@@ -69,21 +69,39 @@ swiftc -Osize -parse-as-library Sources/*.swift -target x86_64-apple-macosx12.0 
 echo "🔗 Creating Universal Binary..."
 lipo -create -output "$APP_UNIVERSAL/Contents/MacOS/$APP_NAME" "$APP_ARM64/Contents/MacOS/$APP_NAME" "$APP_X86_64/Contents/MacOS/$APP_NAME"
 
-echo "📦 Zipping packages..."
+# The following section replaces the old zipping logic
+# and assumes the universal binary is the primary one to work with.
+# It also corrects the path for the universal app to be named simply "$APP_NAME.app"
+# for the lipo operations, as implied by the provided snippet.
+
+# Move the universal app to the standard name for processing
+mv "$APP_UNIVERSAL" "$BUILD_DIR/$APP_NAME.app"
+
 cd "$BUILD_DIR"
 
-# Zip Apple Silicon build
-mv "${APP_NAME}_AppleSilicon.app" "$APP_NAME.app"
-zip -qr "${APP_NAME}_v1.0.7_AppleSilicon.zip" "$APP_NAME.app"
-mv "$APP_NAME.app" "${APP_NAME}_AppleSilicon.app"
+echo -e "\n📦 Zipping applications..."
 
-# Zip Intel build
-mv "${APP_NAME}_Intel.app" "$APP_NAME.app"
-zip -qr "${APP_NAME}_v1.0.7_Intel.zip" "$APP_NAME.app"
-mv "$APP_NAME.app" "${APP_NAME}_Intel.app"
-
-# Zip Universal build
-mv "${APP_NAME}_Universal.app" "$APP_NAME.app"
-zip -qr "${APP_NAME}_v1.0.7_Universal.zip" "$APP_NAME.app"
+# 1. Apple Silicon (ARM64) Zip
+if [ -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" ]; then
+    lipo -extract arm64 "$APP_NAME.app/Contents/MacOS/$APP_NAME" -output "${APP_NAME}_arm64" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        mv "$APP_NAME.app/Contents/MacOS/$APP_NAME" "${APP_NAME}_universal_temp"
+        mv "${APP_NAME}_arm64" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
+        zip -qr "${APP_NAME}_v1.0.8_AppleSilicon.zip" "$APP_NAME.app"
+        echo "✅ Created Apple Silicon build"
+        
+        # 2. Intel (x86_64) Zip
+        lipo -extract x86_64 "${APP_NAME}_universal_temp" -output "${APP_NAME}_x86_64" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            mv "${APP_NAME}_x86_64" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
+            zip -qr "${APP_NAME}_v1.0.8_Intel.zip" "$APP_NAME.app"
+            echo "✅ Created Intel build"
+        fi
+        
+        # 3. Universal Zip (Restore the fat binary)
+        mv "${APP_NAME}_universal_temp" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
+        zip -qr "${APP_NAME}_v1.0.8_Universal.zip" "$APP_NAME.app"
+    fi
+fi
 
 echo "✅ Build complete! ZIP packages are in the build/ directory."

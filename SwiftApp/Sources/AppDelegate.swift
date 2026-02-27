@@ -335,6 +335,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func animateStatusIcon(with animation: SymbolAnimation) {
         guard let imageView = statusIconView else { return }
         
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            return
+        }
+        
         if #available(macOS 14.0, *) {
             switch animation {
             case .bounce:
