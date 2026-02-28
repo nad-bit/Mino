@@ -155,34 +155,38 @@ echo "✅ Generated mino.rb in build/ directory."
 echo "⚠️  CRITICAL: When uploading to your tap repository, ensure this file is placed in a 'Casks' directory (i.e., Casks/mino.rb)"
 
 # --- Auto-Push to Homebrew Tap ---
-echo -e "\n☁️  Updating Homebrew Tap repository..."
-TAP_REPO="https://github.com/nad-bit/homebrew-tap.git"
-TAP_CLONE_DIR="/tmp/homebrew-tap-mino"
-
-rm -rf "$TAP_CLONE_DIR"
-# Clone via HTTPS which will use the system keychain / git credential manager
-git clone "$TAP_REPO" "$TAP_CLONE_DIR" 2>/dev/null || true
-
-if [ -d "$TAP_CLONE_DIR" ]; then
-    mkdir -p "$TAP_CLONE_DIR/Casks"
-    cp "mino.rb" "$TAP_CLONE_DIR/Casks/mino.rb"
+if [ "$1" == "--release" ]; then
+    echo -e "\n☁️  Updating Homebrew Tap repository..."
+    TAP_REPO="https://github.com/nad-bit/homebrew-tap.git"
+    TAP_CLONE_DIR="/tmp/homebrew-tap-mino"
     
-    cd "$TAP_CLONE_DIR"
+    rm -rf "$TAP_CLONE_DIR"
+    # Clone via HTTPS which will use the system keychain / git credential manager
+    git clone "$TAP_REPO" "$TAP_CLONE_DIR" 2>/dev/null || true
     
-    # Check if there are any changes
-    if ! git diff --quiet || ! git diff --staged --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
-        git add Casks/mino.rb
-        git commit -m "Update Mino to v${VERSION}" >/dev/null 2>&1
+    if [ -d "$TAP_CLONE_DIR" ]; then
+        mkdir -p "$TAP_CLONE_DIR/Casks"
+        cp "mino.rb" "$TAP_CLONE_DIR/Casks/mino.rb"
         
-        echo "Pushing new Cask formula to GitHub..."
-        if git push origin main 2>/dev/null; then
-            echo "✅ Homebrew Tap updated successfully!"
+        cd "$TAP_CLONE_DIR"
+        
+        # Check if there are any changes
+        if ! git diff --quiet || ! git diff --staged --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            git add Casks/mino.rb
+            git commit -m "Update Mino to v${VERSION}" >/dev/null 2>&1
+            
+            echo "Pushing new Cask formula to GitHub..."
+            if git push origin main 2>/dev/null; then
+                echo "✅ Homebrew Tap updated successfully!"
+            else
+                echo "⚠️  Failed to push to Homebrew Tap. You may need to update the file manually."
+            fi
         else
-            echo "⚠️  Failed to push to Homebrew Tap. You may need to update the file manually."
+            echo "✅ Homebrew Tap is already up to date."
         fi
     else
-        echo "✅ Homebrew Tap is already up to date."
+         echo "⚠️  Could not clone Homebrew Tap. You may not have SSH access configured for this repo."
     fi
 else
-     echo "⚠️  Could not clone Homebrew Tap. You may not have SSH access configured for this repo."
+    echo -e "\n⏩ Skipping Homebrew Tap update. Use './build.sh --release' to push to the tap."
 fi

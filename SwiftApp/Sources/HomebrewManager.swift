@@ -81,7 +81,7 @@ class HomebrewManager {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: path)
                 // Use `reinstall` so aborted sudo stubs don't trick Homebrew into "already installed".
-                process.arguments = ["reinstall", "--cask", "--no-quarantine", cask]
+                process.arguments = ["reinstall", "--cask", cask]
                 
                 let pipeOut = Pipe()
                 process.standardOutput = pipeOut
