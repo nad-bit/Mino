@@ -344,6 +344,20 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     @objc private func sliderChanged(_ sender: NSSlider) {
         updateIntervalLabel()
+        
+        // Instantly save and apply the new interval
+        isUpdatingSelf = true
+        let currentHours = intervalSlider.integerValue
+        ConfigManager.shared.config.refreshMinutes = currentHours * 60
+        ConfigManager.shared.saveConfig()
+        
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.lastRefreshTime = Date() // Force a refresh evaluation timing
+            delegate.setupMenu()
+            delegate.updateCountdown()
+        }
+        initialIntervalHours = currentHours
+        isUpdatingSelf = false
     }
     
     private func updateIntervalLabel() {
@@ -353,19 +367,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     func windowWillClose(_ notification: Notification) {
-        let currentHours = intervalSlider.integerValue
-        if currentHours != initialIntervalHours {
-            ConfigManager.shared.config.refreshMinutes = currentHours * 60
-            ConfigManager.shared.saveConfig()
-            
-            // Re-setup timers to reflect interval
-            if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.lastRefreshTime = Date() // Force a refresh evaluation
-                delegate.setupMenu()
-                delegate.updateCountdown() // Trigger manually just in case
-            }
-            initialIntervalHours = currentHours
-        }
+        // Save handled instantly by individual control actions to prevent data loss on forced closures
     }
     
     @objc private func closeWindow(_ sender: NSButton) {
@@ -409,7 +411,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
                 }
             } catch {
                 DispatchQueue.main.async {
-                    UIHandlers.shared.showAlert(title: Translations.get("error"), message: Translations.get("authError"))
+                    HUDPanel.shared.show(title: Translations.get("error"), subtitle: Translations.get("authError"))
                     self.loadCurrentSettings()
                 }
             }

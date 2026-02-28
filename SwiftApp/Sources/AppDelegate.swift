@@ -619,7 +619,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     ConfigManager.shared.saveConfig()
                     setupMenu()
                 } else {
-                    UIHandlers.shared.showAlert(title: Translations.get("error"), message: Translations.get("repoExists"))
+                    self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoExists"))
                 }
             }
             return
@@ -630,7 +630,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let info = await GitHubAPI.shared.fetchRepoInfo(repo: repoName)
             if info.error != nil {
                 // Invalid repo, show error and do NOT add to array
-                UIHandlers.shared.showAlert(title: Translations.get("error"), message: Translations.get("repoNotFound"))
+                self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoNotFound"))
             } else {
                 // Valid repo, add to array and cache
                 let newRepo = RepoConfig(name: repoName, source: source, cask: cask)
@@ -676,11 +676,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     if let r = repoName {
                         self.addRepo(repoName: r, source: "brew", cask: caskName)
                     } else {
-                        UIHandlers.shared.showAlert(title: Translations.get("brewErrorTitle"), message: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
+                        self.sendNotification(title: Translations.get("brewErrorTitle"), subtitle: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
                     }
                 }
             } catch {
-                UIHandlers.shared.showAlert(title: Translations.get("error"), message: "Could not get info for \(caskName): \(error.localizedDescription)")
+                self.sendNotification(title: Translations.get("error"), subtitle: "Could not get info for \(caskName): \(error.localizedDescription)")
             }
         }
     }
