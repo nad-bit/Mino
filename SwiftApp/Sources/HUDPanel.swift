@@ -29,6 +29,7 @@ class HUDPanel: NSPanel {
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = true
+        self.hidesOnDeactivate = false
         
         let visualEffect = NSVisualEffectView()
         visualEffect.material = .hudWindow

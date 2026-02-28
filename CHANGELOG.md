@@ -5,6 +5,13 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-02-28
+### Added
+- **Clipboard Auto-Detect**: The application now seamlessly detects GitHub URLs copied to your clipboard while the "Add Repo" window is active.
+### Fixed
+- **Settings Sliders Stutter**: Refactored the interval and indicator sliders to offload filesystem saves onto an asynchronous rendering thread, removing trailing stutters on track jumps.
+- **Relased Notes Aesthetics**: Replaced the colorful Emoji fallback block character with a fully native, monochrome SF Symbol (\`shippingbox\`) matching the app styling.
+
 ## [1.2.2] - 2026-02-28
 ### Fixed
 - **Missing HUD Animations**: Restored the `.wiggle` (error) and `.bounce` (success) visual menu icon animations that were inadvertently removed when transitioning from native `NSAlert`s to HUD Notification panels.
