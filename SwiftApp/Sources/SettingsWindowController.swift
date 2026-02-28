@@ -345,19 +345,28 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     @objc private func sliderChanged(_ sender: NSSlider) {
         updateIntervalLabel()
         
-        // Instantly save and apply the new interval
-        isUpdatingSelf = true
-        let currentHours = intervalSlider.integerValue
-        ConfigManager.shared.config.refreshMinutes = currentHours * 60
-        ConfigManager.shared.saveConfig()
-        
-        if let delegate = NSApp.delegate as? AppDelegate {
-            delegate.lastRefreshTime = Date() // Force a refresh evaluation timing
-            delegate.setupMenu()
-            delegate.updateCountdown()
+        let shouldSave: Bool
+        if let event = NSApp.currentEvent {
+            shouldSave = (event.type == .leftMouseUp || event.type == .keyUp)
+        } else {
+            shouldSave = true
         }
-        initialIntervalHours = currentHours
-        isUpdatingSelf = false
+        
+        if shouldSave {
+            // Instantly save and apply the new interval
+            isUpdatingSelf = true
+            let currentHours = intervalSlider.integerValue
+            ConfigManager.shared.config.refreshMinutes = currentHours * 60
+            ConfigManager.shared.saveConfig()
+            
+            if let delegate = NSApp.delegate as? AppDelegate {
+                delegate.lastRefreshTime = Date() // Force a refresh evaluation timing
+                delegate.setupMenu()
+                delegate.updateCountdown()
+            }
+            initialIntervalHours = currentHours
+            isUpdatingSelf = false
+        }
     }
     
     private func updateIntervalLabel() {
@@ -494,14 +503,24 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     @objc private func indicatorDaysChanged(_ sender: NSSlider) {
-        isUpdatingSelf = true
-        ConfigManager.shared.config.newIndicatorDays = sender.integerValue
-        ConfigManager.shared.saveConfig()
         updateIndicatorDaysLabel()
-        if let delegate = NSApp.delegate as? AppDelegate {
-             delegate.setupMenu()
+        
+        let shouldSave: Bool
+        if let event = NSApp.currentEvent {
+            shouldSave = (event.type == .leftMouseUp || event.type == .keyUp)
+        } else {
+            shouldSave = true
         }
-        isUpdatingSelf = false
+        
+        if shouldSave {
+            isUpdatingSelf = true
+            ConfigManager.shared.config.newIndicatorDays = sender.integerValue
+            ConfigManager.shared.saveConfig()
+            if let delegate = NSApp.delegate as? AppDelegate {
+                 delegate.setupMenu()
+            }
+            isUpdatingSelf = false
+        }
     }
     
     @objc private func layoutChanged(_ sender: NSSegmentedControl) {

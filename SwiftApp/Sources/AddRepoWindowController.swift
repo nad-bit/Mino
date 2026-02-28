@@ -104,8 +104,22 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
     }
     
     func resetAndShow() {
+        checkClipboardForRepo()
+        
+        // Ensure manual is selected by default every time it opens
+        radioManual.state = .on
+        radioChanged(radioManual)
+        
+        self.showWindow(nil)
+    }
+    
+    func windowDidBecomeKey(_ notification: Notification) {
+        checkClipboardForRepo()
+    }
+    
+    private func checkClipboardForRepo() {
         // Pre-fill input from clipboard if valid GitHub repo
-        var prefillText = ""
+        var prefillText = inputField.stringValue
         if let clipboard = NSPasteboard.general.string(forType: .string) {
             let regex = try? NSRegularExpression(pattern: "(?:github\\.com/)?([^/\\s\"]+/[^/\\s\"]+)")
             let range = NSRange(location: 0, length: clipboard.utf16.count)
@@ -120,13 +134,10 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
                 }
             }
         }
-        inputField.stringValue = prefillText
         
-        // Ensure manual is selected by default every time it opens
-        radioManual.state = .on
-        radioChanged(radioManual)
-        
-        self.showWindow(nil)
+        if prefillText != inputField.stringValue {
+            inputField.stringValue = prefillText
+        }
     }
     
     @objc func radioChanged(_ sender: NSButton) {

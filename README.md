@@ -69,7 +69,7 @@ Click **"Add Repository"** in the menu. You can:
 - **Manual**: Enter `owner/repo` format (e.g., `microsoft/vscode`)
 - **From Homebrew**: Select from your installed Homebrew Casks
 
-> **Tip**: Copy a GitHub repository URL to your clipboard before opening the dialog — it will be auto-detected and extracted!
+> **Tip**: Copy a GitHub repository URL to your clipboard — it will be auto-detected and extracted!
 ### Menu Interface
 
 Each repository displays its name, latest version, and time since release. Hover over a row to reveal action buttons aligned to the right:
