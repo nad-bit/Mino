@@ -353,19 +353,21 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         }
         
         if shouldSave {
-            // Instantly save and apply the new interval
-            isUpdatingSelf = true
-            let currentHours = intervalSlider.integerValue
-            ConfigManager.shared.config.refreshMinutes = currentHours * 60
-            ConfigManager.shared.saveConfig()
-            
-            if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.lastRefreshTime = Date() // Force a refresh evaluation timing
-                delegate.setupMenu()
-                delegate.updateCountdown()
+            DispatchQueue.main.async {
+                // Instantly save and apply the new interval
+                self.isUpdatingSelf = true
+                let currentHours = self.intervalSlider.integerValue
+                ConfigManager.shared.config.refreshMinutes = currentHours * 60
+                ConfigManager.shared.saveConfig()
+                
+                if let delegate = NSApp.delegate as? AppDelegate {
+                    delegate.lastRefreshTime = Date() // Force a refresh evaluation timing
+                    delegate.setupMenu()
+                    delegate.updateCountdown()
+                }
+                self.initialIntervalHours = currentHours
+                self.isUpdatingSelf = false
             }
-            initialIntervalHours = currentHours
-            isUpdatingSelf = false
         }
     }
     
@@ -513,13 +515,15 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         }
         
         if shouldSave {
-            isUpdatingSelf = true
-            ConfigManager.shared.config.newIndicatorDays = sender.integerValue
-            ConfigManager.shared.saveConfig()
-            if let delegate = NSApp.delegate as? AppDelegate {
-                 delegate.setupMenu()
+            DispatchQueue.main.async {
+                self.isUpdatingSelf = true
+                ConfigManager.shared.config.newIndicatorDays = self.newIndicatorSlider.integerValue
+                ConfigManager.shared.saveConfig()
+                if let delegate = NSApp.delegate as? AppDelegate {
+                     delegate.setupMenu()
+                }
+                self.isUpdatingSelf = false
             }
-            isUpdatingSelf = false
         }
     }
     

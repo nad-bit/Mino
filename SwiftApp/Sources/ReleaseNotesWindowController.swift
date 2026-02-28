@@ -62,14 +62,37 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
     
     func loadNotes(for info: RepoInfo) {
         let caskName = ConfigManager.shared.config.repos.first(where: { $0.name == info.name && $0.source == "brew" })?.cask
-        var infoText = info.name
-        if let cask = caskName {
-            infoText += " (📦 \(cask))"
-        }
-        titleLabel.stringValue = infoText
-        textView.string = info.body ?? Translations.get("noNotes")
         
-        // Ensure scroll jumps back to top on recycle
+        let attrString = NSMutableAttributedString(string: info.name)
+        if let cask = caskName {
+            let space = NSAttributedString(string: "  ")
+            
+            // Create SF Symbol attachment
+            let attachment = NSTextAttachment()
+            if let image = NSImage(systemSymbolName: "shippingbox", accessibilityDescription: nil) {
+                // Adjust size to match font visually
+                let font = NSFont.boldSystemFont(ofSize: 16)
+                let yOffset = round((font.capHeight - image.size.height) / 2.0)
+                attachment.image = image
+                attachment.bounds = NSRect(x: 0, y: yOffset, width: image.size.width, height: image.size.height)
+            }
+            
+            attrString.append(space)
+            attrString.append(NSAttributedString(attachment: attachment))
+            attrString.append(NSAttributedString(string: " \(cask)"))
+            
+            // Align center properly
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.alignment = .center
+            attrString.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: attrString.length))
+            attrString.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 16), range: NSRange(location: 0, length: attrString.length))
+            
+            titleLabel.attributedStringValue = attrString
+        } else {
+            titleLabel.stringValue = info.name
+        }
+        
+        textView.string = info.body ?? Translations.get("noNotes")
         textView.scrollToBeginningOfDocument(nil)
     }
     
