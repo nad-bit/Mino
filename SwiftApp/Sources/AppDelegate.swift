@@ -511,6 +511,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else if result.message == "requires_sudo" {
                 // Aborted because Homebrew asked for a password
                 DispatchQueue.main.async {
+                    self.animateStatusIcon(with: .wiggle)
                     HUDPanel.shared.hide()
                     let alert = NSAlert()
                     alert.messageText = Translations.get("sudoRequiredTitle")
