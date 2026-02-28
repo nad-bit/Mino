@@ -618,6 +618,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     ConfigManager.shared.config.repos[index].cask = cask
                     ConfigManager.shared.saveConfig()
                     setupMenu()
+                    animateStatusIcon(with: .bounce)
                 } else {
                     self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoExists"))
                 }
