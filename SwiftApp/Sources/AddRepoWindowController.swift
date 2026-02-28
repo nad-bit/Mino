@@ -40,6 +40,9 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         eyeImageView.wantsLayer = true
         container.addSubview(eyeImageView)
         
+        let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(eyeClicked))
+        eyeImageView.addGestureRecognizer(clickGesture)
+        
         titleLabel = NSTextField(labelWithString: Translations.get("enterRepoMsg"))
         titleLabel.font = .boldSystemFont(ofSize: 14)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -154,6 +157,40 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         breatheAnimation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         
         eyeImageView.layer?.add(breatheAnimation, forKey: "breathingEye")
+    }
+    
+    @objc private func eyeClicked() {
+        // Stop the peaceful breathing
+        eyeImageView.layer?.removeAllAnimations()
+        eyeImageView.alphaValue = 1.0
+        
+        // Change icon to a slashed/hurt eye in red
+        if let strikeEye = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Ouch") {
+            let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
+            eyeImageView.image = strikeEye.withSymbolConfiguration(config)
+            eyeImageView.contentTintColor = .systemRed
+        }
+        
+        // Shake it in denial/pain if animations are allowed
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            let shake = CAKeyframeAnimation(keyPath: "transform.translation.x")
+            shake.timingFunction = CAMediaTimingFunction(name: .linear)
+            shake.duration = 0.4
+            shake.values = [-6.0, 6.0, -5.0, 5.0, -4.0, 4.0, -2.0, 2.0, 0.0]
+            eyeImageView.layer?.add(shake, forKey: "shakeNode")
+        }
+        
+        // Recover after 1.5 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self = self else { return }
+            if let normalEye = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
+                let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
+                self.eyeImageView.image = normalEye.withSymbolConfiguration(config)
+                self.eyeImageView.contentTintColor = .controlAccentColor
+            }
+            // Restart breathing
+            self.startEyeAnimation()
+        }
     }
     
     func windowDidBecomeKey(_ notification: Notification) {
