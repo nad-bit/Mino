@@ -6,12 +6,13 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
     private var radioManual: NSButton!
     private var radioBrew: NSButton!
     private var titleLabel: NSTextField!
+    private var eyeImageView: NSImageView!
     
     // Callback to pass data back to AppDelegate
     var completionHandler: ((String?, String?, String?) -> Void)?
     
     init() {
-        let windowRect = NSRect(x: 0, y: 0, width: 380, height: 200)
+        let windowRect = NSRect(x: 0, y: 0, width: 380, height: 260)
         let window = NSWindow(contentRect: windowRect,
                             styleMask: [.titled, .closable],
                             backing: .buffered,
@@ -24,6 +25,20 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         
         // Setup UI
         let container = NSView(frame: windowRect)
+        
+        // Animated Eye Icon
+        eyeImageView = NSImageView()
+        eyeImageView.translatesAutoresizingMaskIntoConstraints = false
+        if let eyeImage = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
+            // Apply a tint color to match the app's accent
+            let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
+            eyeImageView.image = eyeImage.withSymbolConfiguration(config)
+            eyeImageView.contentTintColor = .controlAccentColor
+        }
+        eyeImageView.imageScaling = .scaleProportionallyUpOrDown
+        // We will animate the layer
+        eyeImageView.wantsLayer = true
+        container.addSubview(eyeImageView)
         
         titleLabel = NSTextField(labelWithString: Translations.get("enterRepoMsg"))
         titleLabel.font = .boldSystemFont(ofSize: 14)
@@ -68,7 +83,12 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         container.addSubview(cancelButton)
         
         NSLayoutConstraint.activate([
-            titleLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 20),
+            eyeImageView.topAnchor.constraint(equalTo: container.topAnchor, constant: 20),
+            eyeImageView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            eyeImageView.widthAnchor.constraint(equalToConstant: 60),
+            eyeImageView.heightAnchor.constraint(equalToConstant: 45),
+            
+            titleLabel.topAnchor.constraint(equalTo: eyeImageView.bottomAnchor, constant: 15),
             titleLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             
             radioManual.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 15),
@@ -110,7 +130,30 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         radioManual.state = .on
         radioChanged(radioManual)
         
+        startEyeAnimation()
+        
         self.showWindow(nil)
+    }
+    
+    private func startEyeAnimation() {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            eyeImageView.layer?.removeAllAnimations()
+            eyeImageView.alphaValue = 1.0
+            return
+        }
+        
+        // Ensure any previous animation is removed before starting
+        eyeImageView.layer?.removeAllAnimations()
+        
+        let breatheAnimation = CABasicAnimation(keyPath: "opacity")
+        breatheAnimation.fromValue = 1.0
+        breatheAnimation.toValue = 0.4
+        breatheAnimation.duration = 2.0
+        breatheAnimation.autoreverses = true
+        breatheAnimation.repeatCount = .infinity
+        breatheAnimation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        
+        eyeImageView.layer?.add(breatheAnimation, forKey: "breathingEye")
     }
     
     func windowDidBecomeKey(_ notification: Notification) {
@@ -199,5 +242,6 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
     
     func windowWillClose(_ notification: Notification) {
         // Just hide it, keep instance alive
+        eyeImageView.layer?.removeAllAnimations()
     }
 }
