@@ -353,7 +353,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         }
         
         if shouldSave {
-            DispatchQueue.main.async {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 // Instantly save and apply the new interval
                 self.isUpdatingSelf = true
                 let currentHours = self.intervalSlider.integerValue
@@ -515,7 +515,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         }
         
         if shouldSave {
-            DispatchQueue.main.async {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 self.isUpdatingSelf = true
                 ConfigManager.shared.config.newIndicatorDays = self.newIndicatorSlider.integerValue
                 ConfigManager.shared.saveConfig()
