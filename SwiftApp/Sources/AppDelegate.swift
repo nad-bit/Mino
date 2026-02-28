@@ -693,5 +693,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func sendNotification(title: String, subtitle: String, message: String = "") {
         let fullSubtitle = message.isEmpty ? subtitle : "\(subtitle)\n\(message)"
         HUDPanel.shared.show(title: title, subtitle: fullSubtitle)
+        
+        if title == Translations.get("error") || title == Translations.get("brewErrorTitle") {
+            animateStatusIcon(with: .wiggle)
+        }
     }
 }

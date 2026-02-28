@@ -411,6 +411,9 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
                 }
             } catch {
                 DispatchQueue.main.async {
+                    if let appDelegate = NSApp.delegate as? AppDelegate {
+                        appDelegate.animateStatusIcon(with: .wiggle)
+                    }
                     HUDPanel.shared.show(title: Translations.get("error"), subtitle: Translations.get("authError"))
                     self.loadCurrentSettings()
                 }
