@@ -49,6 +49,8 @@ enum Translations {
             "cancelAuth": "Cancel",
             "copyCode": "Copy Code",
             "authError": "Authorization failed.",
+            "sudoRequiredTitle": "Administrator Privileges Required",
+            "sudoRequiredDesc": "The application '{cask_name}' requires system permissions (sudo) to be installed.\n\nPlease open your Terminal and run:\nbrew reinstall --cask {cask_name}",
         ],
         "es": [
             "configureToken": "Cuenta de GitHub",
@@ -97,6 +99,8 @@ enum Translations {
             "cancelAuth": "Cancelar",
             "copyCode": "Copiar Código",
             "authError": "Error de autorización.",
+            "sudoRequiredTitle": "Permisos de Administrador Requeridos",
+            "sudoRequiredDesc": "La aplicación '{cask_name}' necesita permisos del sistema (sudo) para instalarse.\n\nPor favor, abre tu Terminal y ejecuta:\nbrew reinstall --cask {cask_name}",
         ]
     ]
     

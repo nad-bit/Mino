@@ -5,6 +5,17 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-28
+
+### Added
+- **Automated Homebrew Cask Discovery**: Mino now checks in the background (every 24h) if manually added repositories have been published to the official Homebrew Cask catalog, and silently links them for one-click installation.
+- **Root Privilege Assistant**: Installing Homebrew Casks that require Administrator permissions (`sudo`) no longer causes the app to hang. Mino safely intercepts the security prompt and displays a native macOS warning with the exact Terminal command (`brew reinstall`) needed to proceed.
+
+### Changed
+- **Singleton UI Architecture**: Completely redesigned the window management system. 'Add Repository' and 'Release Notes' dialogs are now proper native floating windows (`NSWindowController`) instead of blocking modals.
+- Windows are now mutually exclusive; opening a new window automatically dismisses the previous one, and clicking the menu no longer duplicates windows if they were already open.
+- Fixed a z-index bug where the "Installing..." HUD panel would freeze behind macOS security alerts.
+
 ## [1.1.1] - 2026-02-27
 
 ### Added

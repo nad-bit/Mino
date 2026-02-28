@@ -80,34 +80,81 @@ class HomebrewManager {
             DispatchQueue.global().async {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: path)
-                process.arguments = ["install", "--cask", "--no-quarantine", cask]
+                // Use `reinstall` so aborted sudo stubs don't trick Homebrew into "already installed".
+                process.arguments = ["reinstall", "--cask", "--no-quarantine", cask]
                 
-                let pipe = Pipe()
-                process.standardOutput = pipe
-                let errorPipe = Pipe()
-                process.standardError = errorPipe
+                let pipeOut = Pipe()
+                process.standardOutput = pipeOut
+                let pipeErr = Pipe()
+                process.standardError = pipeErr
+                
+                var allOutput = ""
+                let outputLock = NSLock()
+                var requiresSudo = false
+                
+                let readGroup = DispatchGroup()
+                
+                let outHandler: (FileHandle, DispatchGroup) -> Void = { fileHandle, group in
+                    let data = fileHandle.availableData
+                    if data.isEmpty {
+                        fileHandle.readabilityHandler = nil
+                        group.leave()
+                        return
+                    }
+                    if let str = String(data: data, encoding: .utf8) {
+                        outputLock.lock()
+                        allOutput += str.lowercased()
+                        let currentOutput = allOutput
+                        outputLock.unlock()
+                        
+                        if currentOutput.contains("password:") || currentOutput.contains("sudo") {
+                            requiresSudo = true
+                            if process.isRunning {
+                                process.terminate()
+                            }
+                        }
+                    }
+                }
+                
+                readGroup.enter()
+                pipeOut.fileHandleForReading.readabilityHandler = { fh in
+                    outHandler(fh, readGroup)
+                }
+                
+                readGroup.enter()
+                pipeErr.fileHandleForReading.readabilityHandler = { fh in
+                    outHandler(fh, readGroup)
+                }
                 
                 do {
                     try process.run()
                     process.waitUntilExit()
                     
-                    let outData = pipe.fileHandleForReading.readDataToEndOfFile()
-                    let errData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    // Cancel readability handlers
+                    pipeOut.fileHandleForReading.readabilityHandler = nil
+                    pipeErr.fileHandleForReading.readabilityHandler = nil
                     
-                    let stdout = String(data: outData, encoding: .utf8) ?? ""
-                    let stderr = String(data: errData, encoding: .utf8) ?? ""
+                    // We don't strictly wait on the readGroup here to avoid deadlocks
+                    // as we already have the output we need in allOutput
                     
-                    let allOutput = (stdout + stderr).lowercased()
+                    outputLock.lock()
+                    let finalOutput = allOutput
+                    outputLock.unlock()
+                    
+                    if requiresSudo {
+                        continuation.resume(returning: (false, "requires_sudo"))
+                        return
+                    }
                     
                     if process.terminationStatus == 0 {
-                        let isAlreadyInstalled = allOutput.contains("already installed")
+                        let isAlreadyInstalled = finalOutput.contains("already installed")
                         if isAlreadyInstalled {
                             continuation.resume(returning: (true, "alreadyInstalled"))
                         } else {
                             continuation.resume(returning: (true, "installComplete"))
                         }
                     } else {
-                        continuation.resume(returning: (false, stderr))
+                        continuation.resume(returning: (false, finalOutput))
                     }
                     
                 } catch {
@@ -186,6 +233,64 @@ class HomebrewManager {
                 } catch {}
                 continuation.resume(returning: [])
             }
+        }
+    }
+    
+    func downloadGlobalCaskMap() async -> [String: String] {
+        guard let url = URL(string: "https://formulae.brew.sh/api/cask.json") else { return [:] }
+        
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = Constants.httpRequestTimeoutSeconds
+            request.setValue(Constants.userAgent, forHTTPHeaderField: "User-Agent")
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                return [:]
+            }
+            
+            guard let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                return [:]
+            }
+            
+            var map: [String: String] = [:]
+            let regex = try NSRegularExpression(pattern: "(?:github\\.com/)?([^/\\s\"]+/[^/\\s\"]+)")
+            
+            for item in jsonArray {
+                guard let token = item["token"] as? String else { continue }
+                
+                // Extract repository identifier from URLs (homepage or download url)
+                var repoName: String? = nil
+                
+                if let urlStr = item["url"] as? String {
+                    let range = NSRange(location: 0, length: urlStr.utf16.count)
+                    if let match = regex.firstMatch(in: urlStr, options: [], range: range) {
+                        if let r = Range(match.range(at: 1), in: urlStr) {
+                            repoName = String(urlStr[r]).replacingOccurrences(of: ".git", with: "")
+                        }
+                    }
+                }
+                
+                if repoName == nil, let hpStr = item["homepage"] as? String {
+                    let range = NSRange(location: 0, length: hpStr.utf16.count)
+                    if let match = regex.firstMatch(in: hpStr, options: [], range: range) {
+                         if let r = Range(match.range(at: 1), in: hpStr) {
+                             repoName = String(hpStr[r]).replacingOccurrences(of: ".git", with: "")
+                         }
+                    }
+                }
+                
+                if let r = repoName {
+                    map[r.lowercased()] = token
+                }
+            }
+            
+            return map
+            
+        } catch {
+            print("Failed to download global cask map: \(error)")
+            return [:]
         }
     }
 }

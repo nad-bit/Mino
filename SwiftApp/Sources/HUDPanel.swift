@@ -89,7 +89,7 @@ class HUDPanel: NSPanel {
         }
     }
     
-    private func hide() {
+    func hide() {
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             self.alphaValue = 0.0
             self.orderOut(nil)

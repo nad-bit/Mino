@@ -17,6 +17,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     var repoCache: [String: RepoInfo] = [:]
     var lastRefreshTime: Date = Date.distantPast
+    var lastCaskDiscoveryTime: Date = Date.distantPast
     
     var countdownTimer: Timer?
     var isRefreshing = false
@@ -26,6 +27,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var headerView: HeaderMenuItemView!
     
     var settingsWindowController: SettingsWindowController?
+    var releaseNotesWindowController: ReleaseNotesWindowController?
+    var addRepoWindowController: AddRepoWindowController?
+    
+    // Ensure only one of our custom windows is visible at a time
+    private func hideAllWindowsExcept(keep: NSWindowController?) {
+        // Force-close any blocking NSAlert or Modal Window
+        if let modal = NSApp.modalWindow {
+            NSApp.stopModal()
+            modal.orderOut(nil)
+        }
+        
+        if settingsWindowController !== keep { settingsWindowController?.window?.orderOut(nil) }
+        if releaseNotesWindowController !== keep { releaseNotesWindowController?.window?.orderOut(nil) }
+        if addRepoWindowController !== keep { addRepoWindowController?.window?.orderOut(nil) }
+    }
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -161,6 +177,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for (repo, info) in results {
                 self.repoCache[repo] = info
             }
+            
+            // --- Auto-Discovery of Homebrew Casks ---
+            let now = Date()
+            // Run on first launch (distantPast) or if 24 hours (86400 seconds) have passed
+            if now.timeIntervalSince(self.lastCaskDiscoveryTime) > 86400 {
+                let manualRepos = ConfigManager.shared.config.repos.filter { $0.source == "manual" }
+                if !manualRepos.isEmpty {
+                    let caskMap = await HomebrewManager.shared.downloadGlobalCaskMap()
+                    if !caskMap.isEmpty {
+                        var didUpdate = false
+                        for (index, repoConf) in ConfigManager.shared.config.repos.enumerated() {
+                            if repoConf.source == "manual", let discoveredCask = caskMap[repoConf.name.lowercased()] {
+                                ConfigManager.shared.config.repos[index].source = "brew"
+                                ConfigManager.shared.config.repos[index].cask = discoveredCask
+                                didUpdate = true
+                                print("Auto-discovered cask '\(discoveredCask)' for repo '\(repoConf.name)'")
+                            }
+                        }
+                        if didUpdate {
+                            ConfigManager.shared.saveConfig()
+                        }
+                    }
+                }
+                self.lastCaskDiscoveryTime = now
+            }
+            // ----------------------------------------
             
             self.isRefreshing = false
             self.lastRefreshTime = Date()
@@ -429,7 +471,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         animateStatusIcon(with: .scale)
         guard let repoName = sender.representedObject as? String else { return }
         let info = repoCache[repoName] ?? RepoInfo(name: repoName, error: nil)
-        UIHandlers.shared.showReleaseNotes(info: info)
+        
+        if releaseNotesWindowController == nil {
+            releaseNotesWindowController = ReleaseNotesWindowController()
+        }
+        
+        hideAllWindowsExcept(keep: releaseNotesWindowController)
+        NSApp.activate(ignoringOtherApps: true)
+        releaseNotesWindowController?.loadNotes(for: info)
+        releaseNotesWindowController?.showWindow(self)
     }
     
     @objc func handleDeleteRepo(_ sender: NSMenuItem) {
@@ -458,6 +508,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 
                 // Reveal in Finder
                 self.revealCaskInFinder(caskName: caskName)
+            } else if result.message == "requires_sudo" {
+                // Aborted because Homebrew asked for a password
+                DispatchQueue.main.async {
+                    HUDPanel.shared.hide()
+                    let alert = NSAlert()
+                    alert.messageText = Translations.get("sudoRequiredTitle")
+                    alert.informativeText = Translations.get("sudoRequiredDesc").format(with: ["cask_name": caskName])
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                }
             } else {
                 self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("installFailed").format(with: ["cask_name": caskName]), message: String(result.message.prefix(100)))
             }
@@ -499,20 +560,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             settingsWindowController = SettingsWindowController()
         }
         
+        hideAllWindowsExcept(keep: settingsWindowController)
         NSApp.activate(ignoringOtherApps: true)
         settingsWindowController?.showWindow(self)
     }
     
     @objc func unifiedAddRepoDialog(_ sender: Any) {
         animateStatusIcon(with: .scale)
-        let hasBrew = HomebrewManager.shared.brewPath != nil
-        UIHandlers.shared.showUnifiedAddRepoDialog(hasBrew: hasBrew) { repoName, source, cask in
-            if let repo = repoName, source == "manual" {
-                self.addRepoSmart(repoName: repo)
-            } else if source == "brew", let caskName = cask {
-                self.processBrewSelection(caskName: caskName)
+        if addRepoWindowController == nil {
+            addRepoWindowController = AddRepoWindowController()
+            addRepoWindowController?.completionHandler = { [weak self] repoName, source, cask in
+                if let repo = repoName, source == "manual" {
+                    self?.addRepoSmart(repoName: repo)
+                } else if source == "brew", let caskName = cask {
+                    self?.processBrewSelection(caskName: caskName)
+                }
             }
         }
+        
+        hideAllWindowsExcept(keep: addRepoWindowController)
+        NSApp.activate(ignoringOtherApps: true)
+        addRepoWindowController?.resetAndShow()
     }
     
     func addRepoSmart(repoName: String) {
