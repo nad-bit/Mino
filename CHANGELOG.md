@@ -5,6 +5,12 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-02-28
+### Added
+- **Major Localization Update**: Mino is now natively translated into French (`fr`), German (`de`), Italian (`it`), and Portuguese (`pt`), intelligently adapting to your macOS system language alongside English and Spanish.
+### Fixed
+- **HUD Visibility**: Prevented macOS from forcefully hiding the floating notification HUD when the `Finder` automatically opens to reveal newly installed Homebrew Casks.
+
 ## [1.2.3] - 2026-02-28
 ### Added
 - **Clipboard Auto-Detect**: The application now seamlessly detects GitHub URLs copied to your clipboard while the "Add Repo" window is active.

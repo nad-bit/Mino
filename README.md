@@ -21,7 +21,7 @@ https://github.com/user-attachments/assets/9b7cbe6b-5d9e-49c8-817e-5ff761ee4fbe
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
 - **🔐 Secure Token Storage**: GitHub Personal Access Tokens stored in macOS Keychain — never in plain text
 - **✦ Configurable New Release Indicator**: Customizable threshold (1-30 days) with toggle, replacing the old fixed emoji
-- **🌍 Localized**: English and Spanish, with automatic detection
+- **🌍 Localized**: English, Spanish, French, German, Italian, and Portuguese with automatic system detection
 - **🔄 Auto-Start**: Launch at login via native macOS LaunchAgent
 - **🎨 Light & Dark Mode**: Full support, including a forced-dark HUD panel for notifications
 
@@ -132,7 +132,7 @@ SwiftApp/
     ├── UIHandlers.swift        # Dialogs and alert helpers
     ├── Models.swift            # Data structures (RepoInfo, AppConfig)
     ├── Constants.swift         # App-wide constants
-    ├── Translations.swift      # i18n (English, Spanish)
+    ├── Translations.swift      # i18n (English, Spanish, French, German, Italian, Portuguese)
     └── Utils.swift             # Date formatting utilities
 ```
 
