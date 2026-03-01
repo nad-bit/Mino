@@ -1,45 +1,22 @@
 import Cocoa
 
-class ResponsiveTextView: NSTextView {
-    override func layout() {
-        super.layout()
-        
-        guard let textStorage = self.textStorage else { return }
-        let containerWidth = self.textContainer?.size.width ?? self.bounds.width
-        // Apply some padding to prevent the image from touching the exact edges
-        let maxImageWidth = max(containerWidth - 10, 0)
-        
-        var modifications = false
-        
-        textStorage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: textStorage.length), options: []) { value, range, stop in
-            if let attachment = value as? NSTextAttachment, let image = attachment.image {
-                let originalSize = image.size
-                
-                // Only scale down if the image is wider than our current container
-                if originalSize.width > maxImageWidth {
-                    let ratio = maxImageWidth / originalSize.width
-                    let newHeight = originalSize.height * ratio
-                    
-                    // Only update if bounds actually need to change to avoid endless layout loops
-                    let newBounds = NSRect(x: 0, y: 0, width: maxImageWidth, height: newHeight)
-                    if attachment.bounds != newBounds {
-                        attachment.bounds = newBounds
-                        modifications = true
-                    }
-                } else {
-                    // Reset to original size if the window grew back to be larger than the image
-                    let originalBounds = NSRect(x: 0, y: 0, width: originalSize.width, height: originalSize.height)
-                    if attachment.bounds != originalBounds {
-                        attachment.bounds = originalBounds
-                        modifications = true
-                    }
-                }
-            }
+class ResponsiveImageAttachment: NSTextAttachment {
+    override func attachmentBounds(for textContainer: NSTextContainer?, proposedLineFragment lineFrag: NSRect, glyphPosition position: CGPoint, characterIndex charIndex: Int) -> NSRect {
+        guard let image = self.image else {
+            return super.attachmentBounds(for: textContainer, proposedLineFragment: lineFrag, glyphPosition: position, characterIndex: charIndex)
         }
         
-        if modifications {
-            self.layoutManager?.ensureLayout(for: self.textContainer!)
+        let originalSize = image.size
+        // Use textContainer width, fallback to the line fragment width
+        let containerWidth = textContainer?.size.width ?? lineFrag.width
+        let maxWidth = max(containerWidth - 10, 0)
+        
+        if maxWidth > 0 && originalSize.width > maxWidth {
+            let ratio = maxWidth / originalSize.width
+            return NSRect(x: 0, y: 0, width: maxWidth, height: originalSize.height * ratio)
         }
+        
+        return NSRect(x: 0, y: 0, width: originalSize.width, height: originalSize.height)
     }
 }
 
@@ -100,7 +77,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
         
-        textView = ResponsiveTextView()
+        textView = NSTextView()
         textView.isEditable = false
         textView.drawsBackground = false // Transparent to show vibrancy
         // 4. Editorial Typography
@@ -196,6 +173,16 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
                 bodyStyle.lineSpacing = 4.0
                 htmlAttrStr.addAttribute(.paragraphStyle, value: bodyStyle, range: NSRange(location: 0, length: htmlAttrStr.length))
                 htmlAttrStr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: htmlAttrStr.length))
+                
+                // Swap standard NSTextAttachments for our dynamically resizing ResponsiveImageAttachment
+                htmlAttrStr.enumerateAttribute(.attachment, in: NSRange(location: 0, length: htmlAttrStr.length), options: []) { value, range, stop in
+                    if let oldAttachment = value as? NSTextAttachment, let image = oldAttachment.image {
+                        let dynamicAttachment = ResponsiveImageAttachment()
+                        dynamicAttachment.image = image
+                        htmlAttrStr.addAttribute(.attachment, value: dynamicAttachment, range: range)
+                    }
+                }
+                
                 textView.textStorage?.setAttributedString(htmlAttrStr)
                 textView.scrollToBeginningOfDocument(nil)
                 return
