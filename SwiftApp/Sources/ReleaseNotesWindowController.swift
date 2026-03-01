@@ -211,9 +211,12 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
                     }
                 }
                 
-                let bodyStyle = NSMutableParagraphStyle()
-                bodyStyle.lineSpacing = 4.0
-                htmlAttrStr.addAttribute(.paragraphStyle, value: bodyStyle, range: NSRange(location: 0, length: htmlAttrStr.length))
+                htmlAttrStr.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: htmlAttrStr.length), options: []) { value, range, stop in
+                    let bodyStyle = (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
+                    bodyStyle.lineSpacing = 4.0
+                    htmlAttrStr.addAttribute(.paragraphStyle, value: bodyStyle, range: range)
+                }
+                
                 htmlAttrStr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: htmlAttrStr.length))
                 
                 // Swap standard NSTextAttachments for our dynamically resizing ResponsiveImageAttachment
