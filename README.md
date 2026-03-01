@@ -17,7 +17,7 @@ https://github.com/user-attachments/assets/9b7cbe6b-5d9e-49c8-817e-5ff761ee4fbe
 - **👀 Menu Bar Integration**: Unobtrusive status bar icon with inline repository information
 - **⚡️ Inline Actions**: Hover over any repository to reveal contextual action buttons — view release notes, open releases, install via Homebrew, or delete — all without submenus
 - **🍺 Homebrew Integration**: Detects installed Casks automatically and enables one-click install/update directly from the menu (only shown if Homebrew is installed)
-- **🧠 Smart Add**: Paste a GitHub URL (the app auto-extracts the `owner/repo` format) or enter it directly; the app auto-detects if a matching Homebrew Cask exists
+- **🧠 Hybrid Quick Add**: Copy a GitHub repository URL, open the menu, and a 1-click "Quick Add" button intelligently appears at the top. Bypass the modal window completely!
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
 - **🔐 Secure Token Storage**: GitHub Personal Access Tokens stored in macOS Keychain — never in plain text
 - **✦ Configurable New Release Indicator**: Customizable threshold (1-30 days) with toggle, replacing the old fixed emoji
@@ -65,11 +65,16 @@ open build/Mino.app
 
 ### Adding Repositories
 
-Click **"Add Repository"** in the menu. You can:
-- **Manual**: Enter `owner/repo` format (e.g., `microsoft/vscode`)
-- **From Homebrew**: Select from your installed Homebrew Casks
+**Fastest Way (Hybrid Quick Add):**
+1. Copy any GitHub repository URL to your clipboard.
+2. Click the Mino menu bar icon. A **Quick Add** button will instantly appear at the top.
+3. Click it. You're done.
 
-> **Tip**: Copy a GitHub repository URL to your clipboard — it will be auto-detected and extracted!
+**Standard Way:**
+Click the `(+)` button in the menu. You can:
+- **Manual**: Enter `owner/repo` format (e.g., `microsoft/vscode`). If you have a URL in your clipboard, it will automatically populate the field.
+- **From Homebrew**: Select from your installed Homebrew Casks.
+
 ### Menu Interface
 
 Each repository displays its name, latest version, and time since release. Hover over a row to reveal action buttons aligned to the right:
