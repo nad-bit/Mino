@@ -154,6 +154,20 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
                 htmlAttrStr.addAttribute(.paragraphStyle, value: bodyStyle, range: NSRange(location: 0, length: htmlAttrStr.length))
                 htmlAttrStr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: htmlAttrStr.length))
                 
+                // Scale down excessively large images to fit the window bounds
+                let maxImageWidth: CGFloat = 420.0
+                htmlAttrStr.enumerateAttribute(.attachment, in: NSRange(location: 0, length: htmlAttrStr.length), options: []) { value, range, stop in
+                    if let attachment = value as? NSTextAttachment, let image = attachment.image {
+                        let originalSize = image.size
+                        if originalSize.width > maxImageWidth {
+                            let ratio = maxImageWidth / originalSize.width
+                            attachment.bounds = NSRect(x: 0, y: 0, width: maxImageWidth, height: originalSize.height * ratio)
+                        } else if attachment.bounds.size.width == 0 {
+                            attachment.bounds = NSRect(x: 0, y: 0, width: originalSize.width, height: originalSize.height)
+                        }
+                    }
+                }
+                
                 textView.textStorage?.setAttributedString(htmlAttrStr)
                 textView.scrollToBeginningOfDocument(nil)
                 return
