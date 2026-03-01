@@ -148,7 +148,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         let bodyText = info.body ?? Translations.get("noNotes")
         
         // 1. Heuristic HTML Detection
-        let hasHTML = bodyText.contains("<div") || bodyText.contains("<img") || bodyText.contains("<h1") || bodyText.contains("<p>")
+        let hasHTML = bodyText.contains("<div") || bodyText.contains("<img") || bodyText.contains("<h") || bodyText.contains("<p>") || bodyText.contains("<ul") || bodyText.contains("<li") || bodyText.contains("<strong")
         
         // 1b. Extract explicit HTML image dimensions because macOS TextKit ignores width/height HTML attributes
         var explicitImageSizes: [CGSize?] = []
@@ -212,6 +212,9 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
                 htmlAttrStr.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: htmlAttrStr.length), options: []) { value, range, stop in
                     let bodyStyle = (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
                     bodyStyle.lineSpacing = 4.0
+                    // GitHub HTML already writes the bullet/number into the text content.
+                    // Wipe WebKit's native text lists to prevent duplicate indices (e.g. "1. 1.").
+                    bodyStyle.textLists = []
                     htmlAttrStr.addAttribute(.paragraphStyle, value: bodyStyle, range: range)
                 }
                 
