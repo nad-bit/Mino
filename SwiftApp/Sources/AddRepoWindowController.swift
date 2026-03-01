@@ -196,10 +196,12 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
     func windowDidBecomeKey(_ notification: Notification) {
         checkClipboardForRepo()
     }
-    
     private func checkClipboardForRepo() {
         if let clipboardRepo = Utils.getGitHubRepoFromClipboard(), clipboardRepo != inputField.stringValue {
-            inputField.stringValue = clipboardRepo
+            // Only auto-fill if we aren't already tracking it
+            if !ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == clipboardRepo.lowercased() }) {
+                inputField.stringValue = clipboardRepo
+            }
         }
     }
     
