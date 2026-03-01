@@ -35,13 +35,13 @@ class Utils {
     
     static func getGitHubRepoFromClipboard() -> String? {
         if let clipboard = NSPasteboard.general.string(forType: .string) {
-            let regex = try? NSRegularExpression(pattern: "(?:github\\.com/)?([^/\\s\"]+/[^/\\s\"]+)")
+            // GitHub usernames and repos can only contain alphanumeric characters, hyphens, underscores, and periods.
+            // This strictly filters out typographic quotes (“, ”) and other surrounding sentence punctuation.
+            let regex = try? NSRegularExpression(pattern: "(?:github\\.com/)?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)")
             let range = NSRange(location: 0, length: clipboard.utf16.count)
             if let match = regex?.firstMatch(in: clipboard, options: [], range: range) {
                 if let r = Range(match.range(at: 1), in: clipboard) {
-                    var candidate = String(clipboard[r]).replacingOccurrences(of: ".git", with: "")
-                    if let index = candidate.firstIndex(of: "?") { candidate = String(candidate[..<index]) }
-                    if let index = candidate.firstIndex(of: "#") { candidate = String(candidate[..<index]) }
+                    let candidate = String(clipboard[r]).replacingOccurrences(of: ".git", with: "")
                     if candidate.split(separator: "/").count == 2 {
                         return candidate
                     }
