@@ -2,6 +2,7 @@
 set -e
 
 APP_NAME="Mino"
+VERSION="1.3.0"
 BUILD_DIR="build"
 
 echo "🧹 Cleaning previous build..."
@@ -108,31 +109,30 @@ if [ -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" ]; then
     if [ $? -eq 0 ]; then
         mv "$APP_NAME.app/Contents/MacOS/$APP_NAME" "${APP_NAME}_universal_temp"
         mv "${APP_NAME}_arm64" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
-        zip -qr "${APP_NAME}_v1.2.5_AppleSilicon.zip" "$APP_NAME.app"
+        zip -qr "${APP_NAME}_v${VERSION}_AppleSilicon.zip" "$APP_NAME.app"
         echo "✅ Created Apple Silicon build"
         
         # 2. Intel (x86_64) Zip
         lipo -extract x86_64 "${APP_NAME}_universal_temp" -output "${APP_NAME}_x86_64" 2>/dev/null
         if [ $? -eq 0 ]; then
             mv "${APP_NAME}_x86_64" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
-            zip -qr "${APP_NAME}_v1.2.5_Intel.zip" "$APP_NAME.app"
+            zip -qr "${APP_NAME}_v${VERSION}_Intel.zip" "$APP_NAME.app"
             echo "✅ Created Intel build"
         fi
         
         # 3. Universal Zip (Restore the fat binary)
         mv "${APP_NAME}_universal_temp" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
-        zip -qr "${APP_NAME}_v1.2.5_Universal.zip" "$APP_NAME.app"
+        zip -qr "${APP_NAME}_v${VERSION}_Universal.zip" "$APP_NAME.app"
     fi
 fi
 
 echo "✅ Build complete! ZIP packages are in the build/ directory."
 
 # --- Homebrew Cask Generation ---
-VERSION="1.2.5"
 echo -e "\n🍺 Generating Homebrew Cask formula (mino.rb)..."
 
-SHA_ARM=$(shasum -a 256 "${APP_NAME}_v1.2.5_AppleSilicon.zip" | awk '{print $1}')
-SHA_INTEL=$(shasum -a 256 "${APP_NAME}_v1.2.5_Intel.zip" | awk '{print $1}')
+SHA_ARM=$(shasum -a 256 "${APP_NAME}_v${VERSION}_AppleSilicon.zip" | awk '{print $1}')
+SHA_INTEL=$(shasum -a 256 "${APP_NAME}_v${VERSION}_Intel.zip" | awk '{print $1}')
 
 cat > "mino.rb" <<EOF
 cask "mino" do
