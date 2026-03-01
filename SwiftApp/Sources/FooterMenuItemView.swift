@@ -49,9 +49,13 @@ class FooterMenuItemView: NSView {
         NSLayoutConstraint.activate([
             settingsBtn.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             settingsBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
+            settingsBtn.widthAnchor.constraint(equalToConstant: 24),
+            settingsBtn.heightAnchor.constraint(equalToConstant: 24),
             
-            quitBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
-            quitBtn.centerYAnchor.constraint(equalTo: centerYAnchor)
+            quitBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            quitBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
+            quitBtn.widthAnchor.constraint(equalToConstant: 24),
+            quitBtn.heightAnchor.constraint(equalToConstant: 24)
         ])
     }
     

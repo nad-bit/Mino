@@ -108,7 +108,9 @@ class HeaderMenuItemView: NSView {
             quickAddHitArea.bottomAnchor.constraint(equalTo: bottomAnchor),
             
             addBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            addBtn.centerYAnchor.constraint(equalTo: centerYAnchor)
+            addBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
+            addBtn.widthAnchor.constraint(equalToConstant: 24),
+            addBtn.heightAnchor.constraint(equalToConstant: 24)
         ])
     }
     
