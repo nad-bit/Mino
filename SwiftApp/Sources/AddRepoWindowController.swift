@@ -14,7 +14,7 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
     init() {
         let windowRect = NSRect(x: 0, y: 0, width: 380, height: 260)
         let window = NSWindow(contentRect: windowRect,
-                            styleMask: [.titled, .closable],
+                            styleMask: [.titled, .closable, .fullSizeContentView],
                             backing: .buffered,
                             defer: false)
         window.title = Translations.get("addRepoUnified")
@@ -22,9 +22,14 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         
         super.init(window: window)
         window.delegate = self
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
         
-        // Setup UI
-        let container = NSView(frame: windowRect)
+        // Setup UI with Vibrancy
+        let container = NSVisualEffectView(frame: windowRect)
+        container.material = .popover
+        container.blendingMode = .behindWindow
+        container.state = .active
         
         // Animated Eye Icon
         eyeImageView = NSImageView()

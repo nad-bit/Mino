@@ -121,8 +121,46 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         versionLabel.stringValue = versionText
         versionLabel.isHidden = (info.version == nil || info.version == "N/A")
         
-        // --- TEXT BODY (Markdown) ---
+        // --- TEXT BODY (Markdown & HTML) ---
         let bodyText = info.body ?? Translations.get("noNotes")
+        
+        // 1. Heuristic HTML Detection
+        let hasHTML = bodyText.contains("<div") || bodyText.contains("<img") || bodyText.contains("<h1") || bodyText.contains("<p>")
+        
+        if hasHTML, let htmlData = bodyText.data(using: .utf8) {
+            // Attempt to parse as HTML format natively via WebKit engine bridge
+            let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+                .documentType: NSAttributedString.DocumentType.html,
+                .characterEncoding: String.Encoding.utf8.rawValue
+            ]
+            
+            do {
+                let htmlAttrStr = try NSMutableAttributedString(data: htmlData, options: options, documentAttributes: nil)
+                
+                // Set default foreground color and typography for the parsed HTML elements
+                htmlAttrStr.enumerateAttribute(.font, in: NSRange(location: 0, length: htmlAttrStr.length), options: .longestEffectiveRangeNotRequired) { value, range, stop in
+                    if let font = value as? NSFont {
+                        // Attempt to preserve bold/italic while standardizing the face
+                        let isBold = font.fontDescriptor.symbolicTraits.contains(.bold)
+                        let newFont = NSFont.systemFont(ofSize: 14, weight: isBold ? .bold : .regular)
+                        htmlAttrStr.addAttribute(.font, value: newFont, range: range)
+                    } else {
+                        htmlAttrStr.addAttribute(.font, value: NSFont.systemFont(ofSize: 14, weight: .regular), range: range)
+                    }
+                }
+                
+                let bodyStyle = NSMutableParagraphStyle()
+                bodyStyle.lineSpacing = 4.0
+                htmlAttrStr.addAttribute(.paragraphStyle, value: bodyStyle, range: NSRange(location: 0, length: htmlAttrStr.length))
+                htmlAttrStr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: htmlAttrStr.length))
+                
+                textView.textStorage?.setAttributedString(htmlAttrStr)
+                textView.scrollToBeginningOfDocument(nil)
+                return
+            } catch {
+                print("HTML Parsing failed: \(error), falling back to Markdown")
+            }
+        }
         
         if #available(macOS 12.0, *) {
             do {

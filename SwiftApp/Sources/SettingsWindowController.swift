@@ -40,13 +40,15 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     convenience init() {
         // Adjust window height to accommodate the title and multi-line token
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 640),
-                              styleMask: [.titled, .closable, .miniaturizable],
+                              styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
                               backing: .buffered,
                               defer: false)
         window.title = Translations.get("preferences")
         window.center()
         self.init(window: window)
         window.delegate = self
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
         
         setupUI()
         loadCurrentSettings()
@@ -66,7 +68,15 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     private func setupUI() {
-        guard let contentView = window?.contentView else { return }
+        guard let window = self.window else { return }
+        
+        let visualEffectView = NSVisualEffectView(frame: window.contentRect(forFrameRect: window.frame))
+        visualEffectView.material = .popover
+        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.state = .active
+        window.contentView = visualEffectView
+        
+        guard let contentView = window.contentView else { return }
         
         let stackView = NSStackView()
         stackView.orientation = .vertical
