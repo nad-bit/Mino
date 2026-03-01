@@ -13,7 +13,10 @@ class GitHubAPI {
     }
     
     func fetchRepoInfo(repo: String) async -> RepoInfo {
-        var requestHeaders: [String: String] = [:]
+        var requestHeaders: [String: String] = [
+            "Accept": "application/vnd.github.html+json"
+        ]
+        
         if let token = ConfigManager.shared.token {
             requestHeaders["Authorization"] = "Bearer \(token)"
         }
@@ -49,7 +52,9 @@ class GitHubAPI {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let version = json?["tag_name"] as? String
         let date = json?["published_at"] as? String
-        let body = json?["body"] as? String ?? ""
+        
+        // Prioritize the pre-rendered HTML if we requested it, fallback to raw body
+        let body = json?["body_html"] as? String ?? json?["body"] as? String ?? ""
         
         if version != nil && date != nil {
             return RepoInfo(name: repo, version: version, date: date, body: body)

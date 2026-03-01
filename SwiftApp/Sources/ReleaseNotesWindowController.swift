@@ -187,9 +187,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         }
         
         // Convert standard Markdown newlines to HTML breaks so text doesn't bunch up in WebKit
-        let htmlSafeBody = bodyText.replacingOccurrences(of: "\n", with: "<br>\n")
-        
-        if hasHTML, let htmlData = htmlSafeBody.data(using: .utf8) {
+        if hasHTML, let htmlData = bodyText.data(using: .utf8) {
             // Attempt to parse as HTML format natively via WebKit engine bridge
             let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
                 .documentType: NSAttributedString.DocumentType.html,
