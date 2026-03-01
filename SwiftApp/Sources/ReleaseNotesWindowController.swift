@@ -150,6 +150,42 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         // 1. Heuristic HTML Detection
         let hasHTML = bodyText.contains("<div") || bodyText.contains("<img") || bodyText.contains("<h1") || bodyText.contains("<p>")
         
+        // 1b. Extract explicit HTML image dimensions because macOS TextKit ignores width/height HTML attributes
+        var explicitImageSizes: [CGSize?] = []
+        if hasHTML {
+            let imgRegex = try? NSRegularExpression(pattern: "<img[^>]+>", options: .caseInsensitive)
+            let widthRegex = try? NSRegularExpression(pattern: "width=[\"']?(\\d+)[\"']?", options: .caseInsensitive)
+            let heightRegex = try? NSRegularExpression(pattern: "height=[\"']?(\\d+)[\"']?", options: .caseInsensitive)
+            
+            if let matches = imgRegex?.matches(in: bodyText, options: [], range: NSRange(location: 0, length: bodyText.utf16.count)) {
+                for match in matches {
+                    guard let range = Range(match.range, in: bodyText) else { continue }
+                    let imgTag = String(bodyText[range])
+                    
+                    var width: CGFloat?
+                    var height: CGFloat?
+                    
+                    if let wMatch = widthRegex?.firstMatch(in: imgTag, options: [], range: NSRange(location: 0, length: imgTag.utf16.count)),
+                       let wRange = Range(wMatch.range(at: 1), in: imgTag),
+                       let wVal = Double(String(imgTag[wRange])) {
+                        width = CGFloat(wVal)
+                    }
+                    
+                    if let hMatch = heightRegex?.firstMatch(in: imgTag, options: [], range: NSRange(location: 0, length: imgTag.utf16.count)),
+                       let hRange = Range(hMatch.range(at: 1), in: imgTag),
+                       let hVal = Double(String(imgTag[hRange])) {
+                        height = CGFloat(hVal)
+                    }
+                    
+                    if let w = width {
+                        explicitImageSizes.append(CGSize(width: w, height: height ?? 0))
+                    } else {
+                        explicitImageSizes.append(nil)
+                    }
+                }
+            }
+        }
+        
         if hasHTML, let htmlData = bodyText.data(using: .utf8) {
             // Attempt to parse as HTML format natively via WebKit engine bridge
             let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
@@ -178,6 +214,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
                 htmlAttrStr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: htmlAttrStr.length))
                 
                 // Swap standard NSTextAttachments for our dynamically resizing ResponsiveImageAttachment
+                var imageIndex = 0
                 htmlAttrStr.enumerateAttribute(.attachment, in: NSRange(location: 0, length: htmlAttrStr.length), options: []) { value, range, stop in
                     if let oldAttachment = value as? NSTextAttachment {
                         var extractedImage: NSImage? = oldAttachment.image
@@ -191,13 +228,19 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
                             let dynamicAttachment = ResponsiveImageAttachment()
                             dynamicAttachment.image = image
                             
-                            // Inherit bounds if WebKit parsed them from HTML attributes like width="120"
-                            if oldAttachment.bounds.width > 0 {
+                            // Inherit bounds if we parsed them manually from HTML width/height attributes
+                            if imageIndex < explicitImageSizes.count, let explicitSize = explicitImageSizes[imageIndex] {
+                                let w = explicitSize.width
+                                let h = explicitSize.height > 0 ? explicitSize.height : (image.size.height * (w / image.size.width))
+                                dynamicAttachment.bounds = NSRect(x: 0, y: 0, width: w, height: h)
+                            } else if oldAttachment.bounds.width > 0 {
                                 dynamicAttachment.bounds = oldAttachment.bounds
                             }
                             
                             htmlAttrStr.addAttribute(.attachment, value: dynamicAttachment, range: range)
                         }
+                        
+                        imageIndex += 1
                     }
                 }
                 
