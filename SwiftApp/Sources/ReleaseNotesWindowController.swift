@@ -1,5 +1,48 @@
 import Cocoa
 
+class ResponsiveTextView: NSTextView {
+    override func layout() {
+        super.layout()
+        
+        guard let textStorage = self.textStorage else { return }
+        let containerWidth = self.textContainer?.size.width ?? self.bounds.width
+        // Apply some padding to prevent the image from touching the exact edges
+        let maxImageWidth = max(containerWidth - 10, 0)
+        
+        var modifications = false
+        
+        textStorage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: textStorage.length), options: []) { value, range, stop in
+            if let attachment = value as? NSTextAttachment, let image = attachment.image {
+                let originalSize = image.size
+                
+                // Only scale down if the image is wider than our current container
+                if originalSize.width > maxImageWidth {
+                    let ratio = maxImageWidth / originalSize.width
+                    let newHeight = originalSize.height * ratio
+                    
+                    // Only update if bounds actually need to change to avoid endless layout loops
+                    let newBounds = NSRect(x: 0, y: 0, width: maxImageWidth, height: newHeight)
+                    if attachment.bounds != newBounds {
+                        attachment.bounds = newBounds
+                        modifications = true
+                    }
+                } else {
+                    // Reset to original size if the window grew back to be larger than the image
+                    let originalBounds = NSRect(x: 0, y: 0, width: originalSize.width, height: originalSize.height)
+                    if attachment.bounds != originalBounds {
+                        attachment.bounds = originalBounds
+                        modifications = true
+                    }
+                }
+            }
+        }
+        
+        if modifications {
+            self.layoutManager?.ensureLayout(for: self.textContainer!)
+        }
+    }
+}
+
 class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
     private var textView: NSTextView!
     private var titleLabel: NSTextField!
@@ -57,7 +100,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
         
-        textView = NSTextView()
+        textView = ResponsiveTextView()
         textView.isEditable = false
         textView.drawsBackground = false // Transparent to show vibrancy
         // 4. Editorial Typography
@@ -153,21 +196,6 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
                 bodyStyle.lineSpacing = 4.0
                 htmlAttrStr.addAttribute(.paragraphStyle, value: bodyStyle, range: NSRange(location: 0, length: htmlAttrStr.length))
                 htmlAttrStr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: htmlAttrStr.length))
-                
-                // Scale down excessively large images to fit the window bounds
-                let maxImageWidth: CGFloat = 420.0
-                htmlAttrStr.enumerateAttribute(.attachment, in: NSRange(location: 0, length: htmlAttrStr.length), options: []) { value, range, stop in
-                    if let attachment = value as? NSTextAttachment, let image = attachment.image {
-                        let originalSize = image.size
-                        if originalSize.width > maxImageWidth {
-                            let ratio = maxImageWidth / originalSize.width
-                            attachment.bounds = NSRect(x: 0, y: 0, width: maxImageWidth, height: originalSize.height * ratio)
-                        } else if attachment.bounds.size.width == 0 {
-                            attachment.bounds = NSRect(x: 0, y: 0, width: originalSize.width, height: originalSize.height)
-                        }
-                    }
-                }
-                
                 textView.textStorage?.setAttributedString(htmlAttrStr)
                 textView.scrollToBeginningOfDocument(nil)
                 return
