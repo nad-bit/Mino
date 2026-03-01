@@ -1,6 +1,8 @@
 <div align="center">
-  <img src="icon.png" width="128" alt="Mino Logo"/>
-  <h1>Mino ✦</h1>
+  <p align="center">
+    <img src="docs/icon.png" width="150" alt="Mino Logo">
+  </p>
+  <h1 align="center">Mino (ex-GitHub Watcher)</h1>
   <p>A lightweight, native macOS menu bar app to track GitHub releases. Built entirely with Swift and AppKit — no frameworks, no dependencies, no Xcode project required.</p>
   
   [![macOS](https://img.shields.io/badge/macOS-12.0+-000000?style=flat&logo=apple&logoColor=white)](https://apple.com/macos)

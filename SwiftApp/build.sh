@@ -65,6 +65,8 @@ EOF
         sips -z 1024 1024 "../icon.png" --out "$ICONSET_DIR/icon_512x512@2x.png" > /dev/null 2>&1
         iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/AppIcon.icns" > /dev/null 2>&1
         rm -rf "$ICONSET_DIR"
+        mkdir -p ../docs
+        mv ../icon.png ../docs/icon.png
     else
         echo "⚠️  Warning: icon.png generation failed; falling back to default icon."
     fi
