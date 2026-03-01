@@ -6,17 +6,20 @@ class ResponsiveImageAttachment: NSTextAttachment {
             return super.attachmentBounds(for: textContainer, proposedLineFragment: lineFrag, glyphPosition: position, characterIndex: charIndex)
         }
         
-        let originalSize = image.size
+        // If the attachment has explicit bounds (e.g., set by WebKit from HTML width/height attributes), respect them.
+        // Otherwise, use the intrinsic size of the raw image.
+        let baseSize = (self.bounds.width > 0 && self.bounds.height > 0) ? self.bounds.size : image.size
+        
         // Use textContainer width, fallback to the line fragment width
         let containerWidth = textContainer?.size.width ?? lineFrag.width
         let maxWidth = max(containerWidth - 10, 0)
         
-        if maxWidth > 0 && originalSize.width > maxWidth {
-            let ratio = maxWidth / originalSize.width
-            return NSRect(x: 0, y: 0, width: maxWidth, height: originalSize.height * ratio)
+        if maxWidth > 0 && baseSize.width > maxWidth {
+            let ratio = maxWidth / baseSize.width
+            return NSRect(x: 0, y: 0, width: maxWidth, height: baseSize.height * ratio)
         }
         
-        return NSRect(x: 0, y: 0, width: originalSize.width, height: originalSize.height)
+        return NSRect(x: 0, y: 0, width: baseSize.width, height: baseSize.height)
     }
 }
 
@@ -187,6 +190,12 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
                         if let image = extractedImage {
                             let dynamicAttachment = ResponsiveImageAttachment()
                             dynamicAttachment.image = image
+                            
+                            // Inherit bounds if WebKit parsed them from HTML attributes like width="120"
+                            if oldAttachment.bounds.width > 0 {
+                                dynamicAttachment.bounds = oldAttachment.bounds
+                            }
+                            
                             htmlAttrStr.addAttribute(.attachment, value: dynamicAttachment, range: range)
                         }
                     }
