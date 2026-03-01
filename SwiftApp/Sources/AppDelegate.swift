@@ -420,17 +420,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     func menuWillOpen(_ menu: NSMenu) {
         menuIsOpen = true
-        
-        // Mark currently cached versions as seen
-        var seenVersions: [String: String] = [:]
-        for (repoName, info) in repoCache {
-            if let v = info.version {
-                seenVersions[repoName] = v
-            }
-        }
-        UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
-        
-        updateStatusIcon(hasUpdates: false) // Turn off red dot immediately upon opening
+        updateStatusIcon(hasUpdates: false) // Turn off red dot immediately upon physical click for responsiveness
         
         // Hybrid Quick Add interceptor
         if let header = headerView {
@@ -445,6 +435,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     func menuDidClose(_ menu: NSMenu) {
         menuIsOpen = false
+        
+        // Mark currently cached versions as definitively seen upon closing the menu block
+        // This ensures async fetches that resolved while the menu was open are caught
+        var seenVersions: [String: String] = [:]
+        for (repoName, info) in repoCache {
+            if let v = info.version {
+                seenVersions[repoName] = v
+            }
+        }
+        UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
+        updateStatusIcon(hasUpdates: false)
+        
         // Rebuild the menu now that it's closed, to pick up any missed countdown updates
         setupMenu()
     }
