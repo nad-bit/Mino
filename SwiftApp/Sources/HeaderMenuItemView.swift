@@ -10,8 +10,9 @@ class HeaderMenuItemView: NSView {
     private let quickAddLabel = NSTextField(labelWithString: "")
     private var quickAddRepoStr: String? = nil
     
-    // Transparent button overlay for the refresh section (so it's clickable)
+    private let leftStack = NSStackView()
     private let refreshHitArea = NSButton()
+    private let quickAddHitArea = NSButton()
     
     private let appDelegate: AppDelegate
     
@@ -43,7 +44,7 @@ class HeaderMenuItemView: NSView {
         refreshLabel.translatesAutoresizingMaskIntoConstraints = false
         refreshLabel.lineBreakMode = .byTruncatingTail
         
-        // Hit area for refreshing
+        // Refresh Hit area
         refreshHitArea.isTransparent = true
         refreshHitArea.target = self
         refreshHitArea.action = #selector(refreshClicked)
@@ -60,8 +61,6 @@ class HeaderMenuItemView: NSView {
         addBtn.hoverColor = .labelColor
         addBtn.translatesAutoresizingMaskIntoConstraints = false
         
-        addBtn.translatesAutoresizingMaskIntoConstraints = false
-        
         // Quick Add Label (Clipboard)
         quickAddLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         quickAddLabel.textColor = .controlAccentColor
@@ -69,7 +68,15 @@ class HeaderMenuItemView: NSView {
         quickAddLabel.lineBreakMode = .byTruncatingMiddle
         quickAddLabel.isHidden = true
         
-        let leftStack = NSStackView(views: [refreshIcon, refreshLabel])
+        // Quick Add Hit Area (makes the text clickable)
+        quickAddHitArea.isTransparent = true
+        quickAddHitArea.target = self
+        quickAddHitArea.action = #selector(addClicked)
+        quickAddHitArea.translatesAutoresizingMaskIntoConstraints = false
+        quickAddHitArea.isHidden = true
+        
+        leftStack.addArrangedSubview(refreshIcon)
+        leftStack.addArrangedSubview(refreshLabel)
         leftStack.orientation = .horizontal
         leftStack.spacing = 6
         leftStack.alignment = .centerY
@@ -78,21 +85,27 @@ class HeaderMenuItemView: NSView {
         addSubview(leftStack)
         addSubview(refreshHitArea)
         addSubview(quickAddLabel)
+        addSubview(quickAddHitArea)
         addSubview(addBtn)
         
         NSLayoutConstraint.activate([
             leftStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            leftStack.trailingAnchor.constraint(lessThanOrEqualTo: addBtn.leadingAnchor, constant: -10),
             leftStack.centerYAnchor.constraint(equalTo: centerYAnchor),
             
-            // Hit area covers the left stack entirely
             refreshHitArea.leadingAnchor.constraint(equalTo: leadingAnchor),
-            refreshHitArea.trailingAnchor.constraint(equalTo: leftStack.trailingAnchor, constant: 10),
+            refreshHitArea.trailingAnchor.constraint(equalTo: leftStack.trailingAnchor, constant: 5),
             refreshHitArea.topAnchor.constraint(equalTo: topAnchor),
             refreshHitArea.bottomAnchor.constraint(equalTo: bottomAnchor),
             
+            quickAddLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             quickAddLabel.trailingAnchor.constraint(equalTo: addBtn.leadingAnchor, constant: -10),
             quickAddLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            quickAddLabel.leadingAnchor.constraint(greaterThanOrEqualTo: refreshHitArea.trailingAnchor, constant: 10),
+            
+            quickAddHitArea.leadingAnchor.constraint(equalTo: leadingAnchor),
+            quickAddHitArea.trailingAnchor.constraint(equalTo: addBtn.leadingAnchor),
+            quickAddHitArea.topAnchor.constraint(equalTo: topAnchor),
+            quickAddHitArea.bottomAnchor.constraint(equalTo: bottomAnchor),
             
             addBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
             addBtn.centerYAnchor.constraint(equalTo: centerYAnchor)
@@ -102,15 +115,30 @@ class HeaderMenuItemView: NSView {
     func updateClipboardState(repo: String?) {
         self.quickAddRepoStr = repo
         if let r = repo {
+            // Hide Refresh
+            leftStack.isHidden = true
+            refreshHitArea.isHidden = true
+            
+            // Show Quick Add
             quickAddLabel.stringValue = r
             quickAddLabel.isHidden = false
-            addBtn.toolTip = "Quick Add \(r)"
+            quickAddHitArea.isHidden = false
+            
+            let tip = Translations.get("quickAdd").replacingOccurrences(of: "{repo}", with: r)
+            addBtn.toolTip = tip
+            quickAddHitArea.toolTip = tip
             addBtn.baseColor = .controlAccentColor
             addBtn.hoverColor = .controlAccentColor
         } else {
+            // Show Refresh
+            leftStack.isHidden = false
+            refreshHitArea.isHidden = false
+            
+            // Hide Quick Add
             quickAddLabel.isHidden = true
+            quickAddHitArea.isHidden = true
+            
             addBtn.toolTip = Translations.get("addRepoUnified")
-            // Reset to default colors
             applyHighlightState(lastHighlightState)
         }
     }
@@ -136,8 +164,6 @@ class HeaderMenuItemView: NSView {
         let tertiaryColor: NSColor = highlighted ? .selectedMenuItemTextColor : .tertiaryLabelColor
         
         refreshLabel.textColor = isRefreshingState ? tertiaryColor : secondaryColor
-        refreshIcon.contentTintColor = isRefreshingState ? tertiaryColor : secondaryColor
-        
         refreshIcon.contentTintColor = isRefreshingState ? tertiaryColor : secondaryColor
         
         if quickAddRepoStr == nil {
