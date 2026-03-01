@@ -23,7 +23,7 @@ class HeaderMenuItemView: NSView {
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
         super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 26))
-        
+        self.autoresizingMask = [.width]
         setupView()
     }
     
