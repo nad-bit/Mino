@@ -46,8 +46,11 @@ function create_app_structure() {
 </plist>
 EOF
 
+    echo "🎨 Generating icon.png from SF Symbol..."
+    swift GenerateIcon.swift
+    
     if [ -f "../icon.png" ]; then
-        echo "🎨 Generating AppIcon.icns from icon.png..."
+        echo "🎨 Scaling icon.png to AppIcon.icns bundle..."
         ICONSET_DIR="/tmp/MinoIcon.iconset"
         mkdir -p "$ICONSET_DIR"
         sips -z 16 16 "../icon.png" --out "$ICONSET_DIR/icon_16x16.png" > /dev/null 2>&1
@@ -60,8 +63,10 @@ EOF
         sips -z 512 512 "../icon.png" --out "$ICONSET_DIR/icon_256x256@2x.png" > /dev/null 2>&1
         sips -z 512 512 "../icon.png" --out "$ICONSET_DIR/icon_512x512.png" > /dev/null 2>&1
         sips -z 1024 1024 "../icon.png" --out "$ICONSET_DIR/icon_512x512@2x.png" > /dev/null 2>&1
-        iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/AppIcon.icns"
+        iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/AppIcon.icns" > /dev/null 2>&1
         rm -rf "$ICONSET_DIR"
+    else
+        echo "⚠️  Warning: icon.png generation failed; falling back to default icon."
     fi
 }
 
