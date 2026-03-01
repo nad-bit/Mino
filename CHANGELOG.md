@@ -5,6 +5,14 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.5] - 2026-03-01
+### Added
+- **Hybrid Quick Add System**: Dramatically sped up the repository addition process. If you have a valid, untracked GitHub URL in your clipboard, Mino will now transform the top "Refresh" menu area into a fully clickable, edge-to-edge "Quick Add" button containing the repository name. Adding repos is now a stealthy 2-click operation with zero modal windows.
+- **Dynamic Translation Space**: Reduced all localized "Refresh Repositories" strings simply to "Refresh" to maximize horizontal menu real estate for the new feature.
+### Fixed
+- **Duplicate Prevention**: The standard "Add Repository" window now securely ignores clipboard URLs that are already tracked by Mino, preventing accidental duplicate repo attempts.
+- **Menu Alignment Stability**: Hardcoded precise constraint masks to the custom menu items (Header and Footer) to enforce strict right-justification, preventing macOS's standard flexible menu stretching from center-aligning the icon controls.
+
 ## [1.2.4] - 2026-02-28
 ### Added
 - **Major Localization Update**: Mino is now natively translated into French (`fr`), German (`de`), Italian (`it`), and Portuguese (`pt`), intelligently adapting to your macOS system language alongside English and Spanish.
