@@ -5,7 +5,16 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.5] - 2026-03-01
+## [1.3.0] - Ojo - 2026-03-01
+### Added
+- **Dynamic SF Symbol Icon**: Removed the static `icon.png` asset from the repository. Mino now programmatically compiles its own `AppIcon.icns` bundle directly from the native `eye.fill` SF Symbol upon every local build.
+- **Native WebKit Renderer:** Migrated the Release Notes window from a simple Markdown string parser to a complete HTML WebKit bridge. Mino now securely requests pre-compiled `application/vnd.github.html+json` markup from GitHub's servers to flawlessly render complex lists, nested formatting, explicit image dimensions, and text alignments verbatim.
+- **Glass Vibrancy Interfaces:** Add Repo and Preferences windows now employ native, system-adaptive `NSVisualEffectView` popover materials, blending seamlessly with dynamic macOS desktop backgrounds and respecting system accessibility contrast settings.
+### Fixed
+- **HUD Animating Freeze:** Fixed a critical RunLoop collision where opening the top menu bar paused macOS main-thread timers, permanently freezing the HUD success panel on the screen. The custom timer now safely executes on `.common` modes across event blockages.
+- **Weak Regex Parser:** Rewrote the Quick Add algorithm using a strict inclusion array (`[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+`) to prevent the capture of typographic curly-quotes and extraneous punctuation marks from sentence boundaries.
+
+## [1.2.5] - Hunter - 2026-03-01
 ### Added
 - **Hybrid Quick Add System**: Dramatically sped up the repository addition process. If you have a valid, untracked GitHub URL in your clipboard, Mino will now transform the top "Refresh" menu area into a fully clickable, edge-to-edge "Quick Add" button containing the repository name. Adding repos is now a stealthy 2-click operation with zero modal windows.
 - **Dynamic Translation Space**: Reduced all localized "Refresh Repositories" strings simply to "Refresh" to maximize horizontal menu real estate for the new feature.

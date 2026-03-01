@@ -35,9 +35,9 @@ function create_app_structure() {
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.2.5</string>
+    <string>1.3.0</string>
     <key>CFBundleVersion</key>
-    <string>185</string>
+    <string>186</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSUIElement</key>
