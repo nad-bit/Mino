@@ -81,13 +81,15 @@ class HUDPanel: NSPanel {
             }
         }
         
-        // Setup hide timer
+        // Setup hide timer and attach to .common runloop mode so it fires even if an NSMenu is open
         hideTimer?.invalidate()
-        hideTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
+        let newTimer = Timer(timeInterval: duration, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.hide()
             }
         }
+        RunLoop.current.add(newTimer, forMode: .common)
+        hideTimer = newTimer
     }
     
     func hide() {
