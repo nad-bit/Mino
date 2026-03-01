@@ -1,4 +1,4 @@
-import Foundation
+import Cocoa
 
 class Utils {
     static func parseDate(dateString: String?) -> Date? {
@@ -31,5 +31,23 @@ class Utils {
             let daysLabel = daysCount == 1 ? Translations.get("unitDay") : Translations.get("days")
             return ("\(daysCount) \(daysLabel)", secondsDiff)
         }
+    }
+    
+    static func getGitHubRepoFromClipboard() -> String? {
+        if let clipboard = NSPasteboard.general.string(forType: .string) {
+            let regex = try? NSRegularExpression(pattern: "(?:github\\.com/)?([^/\\s\"]+/[^/\\s\"]+)")
+            let range = NSRange(location: 0, length: clipboard.utf16.count)
+            if let match = regex?.firstMatch(in: clipboard, options: [], range: range) {
+                if let r = Range(match.range(at: 1), in: clipboard) {
+                    var candidate = String(clipboard[r]).replacingOccurrences(of: ".git", with: "")
+                    if let index = candidate.firstIndex(of: "?") { candidate = String(candidate[..<index]) }
+                    if let index = candidate.firstIndex(of: "#") { candidate = String(candidate[..<index]) }
+                    if candidate.split(separator: "/").count == 2 {
+                        return candidate
+                    }
+                }
+            }
+        }
+        return nil
     }
 }

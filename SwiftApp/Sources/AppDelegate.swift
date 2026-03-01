@@ -431,6 +431,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
         
         updateStatusIcon(hasUpdates: false) // Turn off red dot immediately upon opening
+        
+        // Hybrid Quick Add interceptor
+        if let header = headerView {
+            if let clipboardRepo = Utils.getGitHubRepoFromClipboard(),
+               !ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == clipboardRepo.lowercased() }) {
+                header.updateClipboardState(repo: clipboardRepo)
+            } else {
+                header.updateClipboardState(repo: nil)
+            }
+        }
     }
     
     func menuDidClose(_ menu: NSMenu) {

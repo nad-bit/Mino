@@ -198,25 +198,8 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
     }
     
     private func checkClipboardForRepo() {
-        // Pre-fill input from clipboard if valid GitHub repo
-        var prefillText = inputField.stringValue
-        if let clipboard = NSPasteboard.general.string(forType: .string) {
-            let regex = try? NSRegularExpression(pattern: "(?:github\\.com/)?([^/\\s\"]+/[^/\\s\"]+)")
-            let range = NSRange(location: 0, length: clipboard.utf16.count)
-            if let match = regex?.firstMatch(in: clipboard, options: [], range: range) {
-                if let r = Range(match.range(at: 1), in: clipboard) {
-                    var candidate = String(clipboard[r]).replacingOccurrences(of: ".git", with: "")
-                    if let index = candidate.firstIndex(of: "?") { candidate = String(candidate[..<index]) }
-                    if let index = candidate.firstIndex(of: "#") { candidate = String(candidate[..<index]) }
-                    if candidate.split(separator: "/").count == 2 {
-                        prefillText = candidate
-                    }
-                }
-            }
-        }
-        
-        if prefillText != inputField.stringValue {
-            inputField.stringValue = prefillText
+        if let clipboardRepo = Utils.getGitHubRepoFromClipboard(), clipboardRepo != inputField.stringValue {
+            inputField.stringValue = clipboardRepo
         }
     }
     
