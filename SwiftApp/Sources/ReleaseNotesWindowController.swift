@@ -3,57 +3,89 @@ import Cocoa
 class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
     private var textView: NSTextView!
     private var titleLabel: NSTextField!
+    private var versionLabel: NSTextField!
+    private var scrollContainer: NSVisualEffectView!
     
     init() {
-        let windowRect = NSRect(x: 0, y: 0, width: 500, height: 400)
+        let windowRect = NSRect(x: 0, y: 0, width: 540, height: 460)
         let window = NSWindow(contentRect: windowRect,
-                            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+                            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
                             backing: .buffered,
                             defer: false)
         window.title = Translations.get("releaseNotes")
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
         window.center()
         
         super.init(window: window)
         window.delegate = self
         
-        // Setup UI
-        let container = NSView(frame: windowRect)
+        // 1. Vibrancy Background
+        let visualEffectView = NSVisualEffectView(frame: windowRect)
+        visualEffectView.material = .popover
+        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.state = .active
         
+        // Setup UI
         titleLabel = NSTextField(labelWithString: "")
-        titleLabel.font = .boldSystemFont(ofSize: 16)
+        titleLabel.font = .systemFont(ofSize: 24, weight: .bold)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.alignment = .center
-        container.addSubview(titleLabel)
+        visualEffectView.addSubview(titleLabel)
+        
+        // 3. Metadata Pill (Version & Date)
+        versionLabel = NSTextField(labelWithString: "")
+        versionLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        versionLabel.textColor = .white
+        versionLabel.backgroundColor = NSColor.controlAccentColor
+        versionLabel.drawsBackground = true
+        versionLabel.isBordered = false
+        versionLabel.alignment = .center
+        versionLabel.wantsLayer = true
+        versionLabel.layer?.cornerRadius = 10
+        versionLabel.layer?.masksToBounds = true
+        versionLabel.translatesAutoresizingMaskIntoConstraints = false
+        visualEffectView.addSubview(versionLabel)
+        
+        // Inner padding for the pill (achieved via constraints on an invisible wrapper or just wide text)
+        // We'll just pad the string with spaces, or rely on intrinsic size.
         
         // ScrollView for notes
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasVerticalScroller = true
-        scrollView.borderType = .bezelBorder
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
         
         textView = NSTextView()
         textView.isEditable = false
-        textView.font = .systemFont(ofSize: 13)
-        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.drawsBackground = false // Transparent to show vibrancy
+        // 4. Editorial Typography
+        textView.font = .systemFont(ofSize: 14, weight: .regular)
+        textView.textContainerInset = NSSize(width: 24, height: 24)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
         
         scrollView.documentView = textView
-        container.addSubview(scrollView)
+        visualEffectView.addSubview(scrollView)
         
         NSLayoutConstraint.activate([
-            titleLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 16),
-            titleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-            titleLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+            titleLabel.topAnchor.constraint(equalTo: visualEffectView.topAnchor, constant: 36),
+            titleLabel.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor, constant: 20),
+            titleLabel.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor, constant: -20),
             
-            scrollView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 16),
-            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
-            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -20)
+            versionLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+            versionLabel.centerXAnchor.constraint(equalTo: visualEffectView.centerXAnchor),
+            versionLabel.heightAnchor.constraint(equalToConstant: 20),
+            
+            scrollView.topAnchor.constraint(equalTo: versionLabel.bottomAnchor, constant: 20),
+            scrollView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor, constant: 0),
+            scrollView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor, constant: 0),
+            scrollView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor, constant: -10)
         ])
         
-        window.contentView = container
+        window.contentView = visualEffectView
     }
     
     required init?(coder: NSCoder) {
@@ -63,41 +95,74 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
     func loadNotes(for info: RepoInfo) {
         let caskName = ConfigManager.shared.config.repos.first(where: { $0.name == info.name && $0.source == "brew" })?.cask
         
+        // --- TITLE ---
         let attrString = NSMutableAttributedString(string: info.name)
         if let cask = caskName {
             let space = NSAttributedString(string: "  ")
-            
-            // Create SF Symbol attachment
             let attachment = NSTextAttachment()
             if let image = NSImage(systemSymbolName: "shippingbox", accessibilityDescription: nil) {
-                // Adjust size to match font visually
-                let font = NSFont.boldSystemFont(ofSize: 16)
+                let font = NSFont.systemFont(ofSize: 24, weight: .bold)
                 let yOffset = round((font.capHeight - image.size.height) / 2.0)
                 attachment.image = image
                 attachment.bounds = NSRect(x: 0, y: yOffset, width: image.size.width, height: image.size.height)
             }
-            
             attrString.append(space)
             attrString.append(NSAttributedString(attachment: attachment))
             attrString.append(NSAttributedString(string: " \(cask)"))
-            
-            // Align center properly
-            let paragraphStyle = NSMutableParagraphStyle()
-            paragraphStyle.alignment = .center
-            attrString.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: attrString.length))
-            attrString.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 16), range: NSRange(location: 0, length: attrString.length))
-            
-            titleLabel.attributedStringValue = attrString
+        }
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        attrString.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: attrString.length))
+        attrString.addAttribute(.font, value: NSFont.systemFont(ofSize: 24, weight: .bold), range: NSRange(location: 0, length: attrString.length))
+        titleLabel.attributedStringValue = attrString
+        
+        // --- METADATA PILL ---
+        let versionText = "  \(info.version ?? "N/A")  "
+        versionLabel.stringValue = versionText
+        versionLabel.isHidden = (info.version == nil || info.version == "N/A")
+        
+        // --- TEXT BODY (Markdown) ---
+        let bodyText = info.body ?? Translations.get("noNotes")
+        
+        if #available(macOS 12.0, *) {
+            do {
+                // 2. Markdown Rendering
+                var options = AttributedString.MarkdownParsingOptions()
+                options.interpretedSyntax = .inlineOnlyPreservingWhitespace // Basic formatting
+                
+                let attrStr = try AttributedString(markdown: bodyText, options: options)
+                
+                // Convert back to NSAttributedString for NSTextView, preserving markdown formatting,
+                // but applying our base editorial font to the unformatted chunks
+                let nsAttrStr = NSMutableAttributedString(attrStr)
+                
+                // Increase line height for editorial feel
+                let bodyStyle = NSMutableParagraphStyle()
+                bodyStyle.lineSpacing = 4.0
+                nsAttrStr.addAttribute(.paragraphStyle, value: bodyStyle, range: NSRange(location: 0, length: nsAttrStr.length))
+                
+                // Add a default font to the whole range if a specific one wasn't applied by Markdown (like bold)
+                nsAttrStr.enumerateAttribute(.font, in: NSRange(location: 0, length: nsAttrStr.length), options: .longestEffectiveRangeNotRequired) { value, range, stop in
+                    if value == nil {
+                        nsAttrStr.addAttribute(.font, value: NSFont.systemFont(ofSize: 14, weight: .regular), range: range)
+                    }
+                }
+                // Also set text color to adapt to Dark Mode vibrancy
+                nsAttrStr.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: nsAttrStr.length))
+                
+                textView.textStorage?.setAttributedString(nsAttrStr)
+            } catch {
+                // Fallback to plain text if Markdown parsing fails
+                textView.string = bodyText
+            }
         } else {
-            titleLabel.stringValue = info.name
+            textView.string = bodyText
         }
         
-        textView.string = info.body ?? Translations.get("noNotes")
         textView.scrollToBeginningOfDocument(nil)
     }
     
     func windowWillClose(_ notification: Notification) {
-        // Just hide it, do not destroy
         self.window?.orderOut(nil)
     }
 }
