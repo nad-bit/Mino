@@ -35,16 +35,28 @@ class Utils {
     
     static func getGitHubRepoFromClipboard() -> String? {
         if let clipboard = NSPasteboard.general.string(forType: .string) {
-            // GitHub usernames and repos can only contain alphanumeric characters, hyphens, underscores, and periods.
-            // This strictly filters out typographic quotes (“, ”) and other surrounding sentence punctuation.
-            let regex = try? NSRegularExpression(pattern: "(?:github\\.com/)?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)")
-            let range = NSRange(location: 0, length: clipboard.utf16.count)
-            if let match = regex?.firstMatch(in: clipboard, options: [], range: range) {
-                if let r = Range(match.range(at: 1), in: clipboard) {
-                    let candidate = String(clipboard[r]).replacingOccurrences(of: ".git", with: "")
-                    if candidate.split(separator: "/").count == 2 {
-                        return candidate
-                    }
+            let text = clipboard.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // 1. Try finding a full GitHub URL in the string (e.g., inside a sentence or rich text payload)
+            // The owner portion strictly forbids periods to filter out app bundles like "Mino.app"
+            let urlRegex = try? NSRegularExpression(pattern: "github\\.com/([A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9_.-]+)")
+            if let match = urlRegex?.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)),
+               let r = Range(match.range(at: 1), in: text) {
+                let candidate = String(text[r]).replacingOccurrences(of: ".git", with: "")
+                if candidate.split(separator: "/").count == 2 {
+                    return candidate
+                }
+            }
+            
+            // 2. If no URL is found, check if the ENTIRE string is "owner/repo" isolated.
+            // Using ^ and $ ensures we don't accidentally match local paths inside a longer text,
+            // and the alphanumeric start ensures we reject starting slashes or periods like "./".
+            let exactRegex = try? NSRegularExpression(pattern: "^([A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9_.-]+)$")
+            if let match = exactRegex?.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)),
+               let r = Range(match.range(at: 1), in: text) {
+                let candidate = String(text[r]).replacingOccurrences(of: ".git", with: "")
+                if candidate.split(separator: "/").count == 2 {
+                    return candidate
                 }
             }
         }
