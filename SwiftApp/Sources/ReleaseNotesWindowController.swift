@@ -176,10 +176,19 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
                 
                 // Swap standard NSTextAttachments for our dynamically resizing ResponsiveImageAttachment
                 htmlAttrStr.enumerateAttribute(.attachment, in: NSRange(location: 0, length: htmlAttrStr.length), options: []) { value, range, stop in
-                    if let oldAttachment = value as? NSTextAttachment, let image = oldAttachment.image {
-                        let dynamicAttachment = ResponsiveImageAttachment()
-                        dynamicAttachment.image = image
-                        htmlAttrStr.addAttribute(.attachment, value: dynamicAttachment, range: range)
+                    if let oldAttachment = value as? NSTextAttachment {
+                        var extractedImage: NSImage? = oldAttachment.image
+                        
+                        // WebKit HTML parsers often store images in the fileWrapper instead of the direct .image property
+                        if extractedImage == nil, let wrapper = oldAttachment.fileWrapper, let data = wrapper.regularFileContents {
+                            extractedImage = NSImage(data: data)
+                        }
+                        
+                        if let image = extractedImage {
+                            let dynamicAttachment = ResponsiveImageAttachment()
+                            dynamicAttachment.image = image
+                            htmlAttrStr.addAttribute(.attachment, value: dynamicAttachment, range: range)
+                        }
                     }
                 }
                 
