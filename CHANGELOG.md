@@ -5,6 +5,12 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-03-02
+### Fixed
+- **Unread Status Syncing**: Relocated the background "Last Seen" chronometer trigger from the menu-open event to the menu-close event, guaranteeing that any active asynchronous background fetches that complete while the menu is visually held open will be correctly stamped as "read", eliminating phantom red indicator dots.
+- **Installing Notification Persistence**: Abolished the strict 3.0-second fade-out timer on the "Installing Cask" HUD Notification. The processing indicator now persists indefinitely directly on screen throughout lengthy Homebrew auto-updates, remaining visible until the explicit completion-callback overrides the display with the final success panel.
+- **Singleton Window Loophole**: Stripped the `.miniaturizable` style flag from all native popup interfaces (Preferences, Release Notes). This surgically disables the macOS Dock minimize feature, eliminating a loophole where users could evade the strict "Only one floating window allowed" application constraint by hiding active UI elements in their Dock.
+
 ## [1.3.0] - Ojo - 2026-03-01
 ### Added
 - **Dynamic SF Symbol Icon**: Removed the static `icon.png` asset from the repository. Mino now programmatically compiles its own `AppIcon.icns` bundle directly from the native `eye.fill` SF Symbol upon every local build.

@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="Mino"
-VERSION="1.3.0"
+VERSION="1.3.1"
 BUILD_DIR="build"
 
 echo "🧹 Cleaning previous build..."
@@ -36,9 +36,9 @@ function create_app_structure() {
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.3.0</string>
+    <string>1.3.1</string>
     <key>CFBundleVersion</key>
-    <string>186</string>
+    <string>187</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSUIElement</key>
