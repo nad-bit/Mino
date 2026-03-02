@@ -32,7 +32,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
     init() {
         let windowRect = NSRect(x: 0, y: 0, width: 540, height: 460)
         let window = NSWindow(contentRect: windowRect,
-                            styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
+                            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
                             backing: .buffered,
                             defer: false)
         window.title = Translations.get("releaseNotes")
