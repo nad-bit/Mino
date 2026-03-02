@@ -509,7 +509,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func handleInstallBrewCask(_ sender: NSMenuItem) {
         animateStatusIcon(with: .scale)
         guard let caskName = sender.representedObject as? String else { return }
-        sendNotification(title: Translations.get("installingTitle"), subtitle: Translations.get("installingMsg").format(with: ["cask_name": caskName]))
+        
+        // Show indefinite persistent installing notification while Brew works
+        HUDPanel.shared.show(title: Translations.get("installingTitle"), subtitle: Translations.get("installingMsg").format(with: ["cask_name": caskName]), duration: nil)
         
         Task {
             let result = await HomebrewManager.shared.installCask(cask: caskName)

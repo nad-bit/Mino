@@ -7,6 +7,7 @@ class HUDPanel: NSPanel {
     private let textLabel: NSTextField
     private let subtitleLabel: NSTextField
     private var hideTimer: Timer?
+    private var presentationToken = UUID()
     
     private init() {
         textLabel = NSTextField(labelWithString: "")
@@ -61,7 +62,7 @@ class HUDPanel: NSPanel {
         ])
     }
     
-    func show(title: String, subtitle: String = "", duration: TimeInterval = 3.0) {
+    func show(title: String, subtitle: String = "", duration: TimeInterval? = 3.0) {
         textLabel.stringValue = title
         subtitleLabel.stringValue = subtitle
         subtitleLabel.isHidden = subtitle.isEmpty
@@ -72,6 +73,8 @@ class HUDPanel: NSPanel {
         self.alphaValue = 0.0
         self.orderFront(nil)
         
+        presentationToken = UUID()
+        
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             self.alphaValue = 1.0
         } else {
@@ -81,18 +84,20 @@ class HUDPanel: NSPanel {
             }
         }
         
-        // Setup hide timer and attach to .common runloop mode so it fires even if an NSMenu is open
         hideTimer?.invalidate()
-        let newTimer = Timer(timeInterval: duration, repeats: false) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.hide()
+        if let dur = duration {
+            let newTimer = Timer(timeInterval: dur, repeats: false) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.hide()
+                }
             }
+            RunLoop.current.add(newTimer, forMode: .common)
+            hideTimer = newTimer
         }
-        RunLoop.current.add(newTimer, forMode: .common)
-        hideTimer = newTimer
     }
     
     func hide() {
+        let currentToken = presentationToken
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             self.alphaValue = 0.0
             self.orderOut(nil)
@@ -100,8 +105,12 @@ class HUDPanel: NSPanel {
             NSAnimationContext.runAnimationGroup({ context in
                 context.duration = 0.5
                 self.animator().alphaValue = 0.0
-            }) {
-                self.orderOut(nil)
+            }) { [weak self] in
+                Task { @MainActor in
+                    if self?.presentationToken == currentToken {
+                        self?.orderOut(nil)
+                    }
+                }
             }
         }
     }
