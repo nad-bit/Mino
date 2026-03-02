@@ -5,6 +5,16 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-03-02
+### Added
+- **Multi-Hunt Repository Hub:** The "Add Repository" window now functions as a persistent, `.floating` background-aware targeting hub. It actively monitors your clipboard while you browse Safari, seamlessly queuing sequential GitHub URLs for one-click ingestion without dismissing the window. 
+- **Zarpazo Interaction:** Successfully added repositories trigger a native, animated "cat swipe" (`pawprint`) visual confirmation to provide satisfying tactile feedback.
+- **Pluralized Tooltips:** Semantic updates across English and Spanish localized files to reflect sequential addition capabilities ("Add Repositories...").
+
+### Changed
+- **Modern Segmented UI:** Stripped the legacy radio buttons and instructional text from the Add Repository window in favor of a clean, highly compact `NSSegmentedControl` layout.
+- **Expanded Interaction Targets:** Dramatically increased the clickable surface area (`intrinsicContentSize` override to 26x26) for inline hover actions (Install, Delete, Notes) in the repository menu, removing frustrating dead zones and making them immensely easier to trigger.
+
 ## [1.3.1] - 2026-03-02
 ### Fixed
 - **Unread Status Syncing**: Relocated the background "Last Seen" chronometer trigger from the menu-open event to the menu-close event, guaranteeing that any active asynchronous background fetches that complete while the menu is visually held open will be correctly stamped as "read", eliminating phantom red indicator dots.

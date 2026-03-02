@@ -17,9 +17,10 @@ https://github.com/user-attachments/assets/9b7cbe6b-5d9e-49c8-817e-5ff761ee4fbe
 ## Features
 
 - **👀 Menu Bar Integration**: Unobtrusive status bar icon with inline repository information
-- **⚡️ Inline Actions**: Hover over any repository to reveal contextual action buttons — view release notes, open releases, install via Homebrew, or delete — all without submenus
+- **⚡️ Inline Actions**: Hover over any repository to reveal contextual action buttons with expanded, easy-to-click target areas — view release notes, open releases, install via Homebrew, or delete
 - **🍺 Homebrew Integration**: Detects installed Casks automatically and enables one-click install/update directly from the menu (only shown if Homebrew is installed)
 - **🧠 Hybrid Quick Add**: Copy a GitHub repository URL, open the menu, and a 1-click "Quick Add" button intelligently appears at the top. Bypass the modal window completely!
+- **🎯 Multi-Hunt Window**: The floating "Add Repositories..." window acts as a persistent tracking hub. Keep it open while you browse Safari, and simply hit `CMD+C` on sequential GitHub URLs. Mino automatically sniffs your clipboard and queues them up for rapid batch-ingestion without ever losing focus.
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
 - **🔐 Secure Token Storage**: GitHub Personal Access Tokens stored in macOS Keychain — never in plain text
 - **✦ Configurable New Release Indicator**: Customizable threshold (1-30 days) with toggle, replacing the old fixed emoji
@@ -72,10 +73,16 @@ open build/Mino.app
 2. Click the Mino menu bar icon. A **Quick Add** button will instantly appear at the top.
 3. Click it. You're done.
 
-**Standard Way:**
-Click the `(+)` button in the menu. You can:
-- **Manual**: Enter `owner/repo` format (e.g., `microsoft/vscode`). If you have a URL in your clipboard, it will automatically populate the field.
-- **From Homebrew**: Select from your installed Homebrew Casks.
+**Multi-Hunt Way (Batch Processing):**
+Click the `(+)` button in the menu to open the floating Window.
+- Don't close the window! Keep it hovering on your screen.
+- Go to your browser, copy a URL (`CMD+C`). Watch Mino automatically catch the link. Click the Add button.
+- The window remains open and the text field clears. Cycle through your browser tabs, copying and adding rapidly.
+- Includes a cute, animated visual confirmation (`paw swipe`) for successful additions.
+
+**Standard Manual Input:**
+- Enter `owner/repo` format (e.g., `microsoft/vscode`).
+- Toggle the segment to Homebrew to select from your installed Casks.
 
 ### Menu Interface
 

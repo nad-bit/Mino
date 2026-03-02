@@ -188,7 +188,7 @@ class HeaderMenuItemView: NSView {
             appDelegate.menu.cancelTracking()
             
             if let repo = quickAddRepoStr {
-                appDelegate.addRepoSmart(repoName: repo)
+                Task { let _ = await appDelegate.addRepoSmart(repoName: repo) }
             } else {
                 appDelegate.unifiedAddRepoDialog(menuItem)
             }

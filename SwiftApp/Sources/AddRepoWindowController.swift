@@ -3,16 +3,16 @@ import Cocoa
 class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
     private var inputField: NSTextField!
     private var brewPopup: NSPopUpButton!
-    private var radioManual: NSButton!
-    private var radioBrew: NSButton!
-    private var titleLabel: NSTextField!
+    private var segmentedControl: NSSegmentedControl!
     private var eyeImageView: NSImageView!
+    private var clipboardTimer: Timer?
+    private var okButton: NSButton!
     
     // Callback to pass data back to AppDelegate
-    var completionHandler: ((String?, String?, String?) -> Void)?
+    var completionHandler: ((String?, String?, String?, @escaping (Bool) -> Void) -> Void)?
     
     init() {
-        let windowRect = NSRect(x: 0, y: 0, width: 380, height: 260)
+        let windowRect = NSRect(x: 0, y: 0, width: 380, height: 210)
         let window = NSWindow(contentRect: windowRect,
                             styleMask: [.titled, .closable, .fullSizeContentView],
                             backing: .buffered,
@@ -24,6 +24,7 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         window.delegate = self
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
+        window.level = .floating
         
         // Setup UI with Vibrancy
         let container = NSVisualEffectView(frame: windowRect)
@@ -48,25 +49,13 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(eyeClicked))
         eyeImageView.addGestureRecognizer(clickGesture)
         
-        titleLabel = NSTextField(labelWithString: Translations.get("enterRepoMsg"))
-        titleLabel.font = .boldSystemFont(ofSize: 14)
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.alignment = .center
-        container.addSubview(titleLabel)
-        
-        radioManual = NSButton(radioButtonWithTitle: Translations.get("manualOption"), target: self, action: #selector(radioChanged(_:)))
-        radioManual.tag = 1
-        radioManual.state = .on
-        radioManual.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(radioManual)
-        
-        radioBrew = NSButton(radioButtonWithTitle: Translations.get("brewOption"), target: self, action: #selector(radioChanged(_:)))
-        radioBrew.tag = 2
-        radioBrew.translatesAutoresizingMaskIntoConstraints = false
+        segmentedControl = NSSegmentedControl(labels: ["GitHub", "Homebrew"], trackingMode: .selectOne, target: self, action: #selector(segmentedChanged(_:)))
+        segmentedControl.selectedSegment = 0
+        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
         if HomebrewManager.shared.brewPath == nil {
-            radioBrew.isEnabled = false
+            segmentedControl.setEnabled(false, forSegment: 1)
         }
-        container.addSubview(radioBrew)
+        container.addSubview(segmentedControl)
         
         inputField = NSTextField()
         inputField.placeholderString = "owner/repo-name"
@@ -81,47 +70,34 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         brewPopup.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(brewPopup)
         
-        let okButton = NSButton(title: Translations.get("ok"), target: self, action: #selector(okClicked))
+        let okButton = NSButton(title: Translations.get("add"), target: self, action: #selector(okClicked))
         okButton.keyEquivalent = "\r" // Enter key
         okButton.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(okButton)
-        
-        let cancelButton = NSButton(title: Translations.get("cancel"), target: self, action: #selector(cancelClicked))
-        cancelButton.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(cancelButton)
+        self.okButton = okButton
         
         NSLayoutConstraint.activate([
-            eyeImageView.topAnchor.constraint(equalTo: container.topAnchor, constant: 20),
+            eyeImageView.topAnchor.constraint(equalTo: container.topAnchor, constant: 15),
             eyeImageView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             eyeImageView.widthAnchor.constraint(equalToConstant: 60),
             eyeImageView.heightAnchor.constraint(equalToConstant: 45),
             
-            titleLabel.topAnchor.constraint(equalTo: eyeImageView.bottomAnchor, constant: 15),
-            titleLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            segmentedControl.topAnchor.constraint(equalTo: eyeImageView.bottomAnchor, constant: 10),
+            segmentedControl.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             
-            radioManual.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 15),
-            radioManual.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 40),
-            
-            radioBrew.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 15),
-            radioBrew.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -40),
-            
-            inputField.topAnchor.constraint(equalTo: radioManual.bottomAnchor, constant: 20),
+            inputField.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 15),
             inputField.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 40),
             inputField.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -40),
             inputField.heightAnchor.constraint(equalToConstant: 24),
             
-            brewPopup.topAnchor.constraint(equalTo: radioManual.bottomAnchor, constant: 20),
+            brewPopup.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 15),
             brewPopup.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 40),
             brewPopup.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -40),
             brewPopup.heightAnchor.constraint(equalToConstant: 24),
             
             okButton.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -20),
-            okButton.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -40),
-            okButton.widthAnchor.constraint(equalToConstant: 80),
-            
-            cancelButton.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -20),
-            cancelButton.trailingAnchor.constraint(equalTo: okButton.leadingAnchor, constant: -10),
-            cancelButton.widthAnchor.constraint(equalToConstant: 80)
+            okButton.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            okButton.widthAnchor.constraint(equalToConstant: 80)
         ])
         
         window.contentView = container
@@ -134,9 +110,17 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
     func resetAndShow() {
         checkClipboardForRepo()
         
+        // Start live polling while floating
+        clipboardTimer?.invalidate()
+        clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            if self?.window?.isVisible == true {
+                self?.checkClipboardForRepo()
+            }
+        }
+        
         // Ensure manual is selected by default every time it opens
-        radioManual.state = .on
-        radioChanged(radioManual)
+        segmentedControl.selectedSegment = 0
+        segmentedChanged(segmentedControl)
         
         startEyeAnimation()
         
@@ -198,9 +182,6 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         }
     }
     
-    func windowDidBecomeKey(_ notification: Notification) {
-        checkClipboardForRepo()
-    }
     private func checkClipboardForRepo() {
         if let clipboardRepo = Utils.getGitHubRepoFromClipboard(), clipboardRepo != inputField.stringValue {
             // Only auto-fill if we aren't already tracking it
@@ -210,15 +191,13 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         }
     }
     
-    @objc func radioChanged(_ sender: NSButton) {
-        if sender.tag == 1 {
+    @objc func segmentedChanged(_ sender: NSSegmentedControl) {
+        if sender.selectedSegment == 0 {
             inputField.isHidden = false
             brewPopup.isHidden = true
-            titleLabel.stringValue = Translations.get("enterRepoMsg")
-        } else if sender.tag == 2 {
+        } else if sender.selectedSegment == 1 {
             inputField.isHidden = true
             brewPopup.isHidden = false
-            titleLabel.stringValue = Translations.get("addFromBrew")
             
             if brewPopup.numberOfItems <= 1 {
                 // Fetch brews asynchronously
@@ -245,22 +224,78 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
     }
     
     @objc func okClicked() {
-        self.window?.orderOut(nil)
+        guard okButton.isEnabled else { return }
+        okButton.isEnabled = false
         
-        if radioManual.state == .on {
+        let handler: (Bool) -> Void = { [weak self] success in
+            guard let self = self else { return }
+            self.okButton.isEnabled = true
+            if success {
+                self.inputField.stringValue = ""
+                self.playSuccessZarpazo()
+            }
+        }
+        
+        if segmentedControl.selectedSegment == 0 {
             let repo = inputField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             if !repo.isEmpty {
-                completionHandler?(repo, "manual", nil)
+                completionHandler?(repo, "manual", nil, handler)
+            } else {
+                okButton.isEnabled = true
             }
         } else {
             if brewPopup.indexOfSelectedItem > 0 {
                 let selectedCask = brewPopup.titleOfSelectedItem
-                completionHandler?(nil, "brew", selectedCask)
+                completionHandler?(nil, "brew", selectedCask, handler)
+            } else {
+                okButton.isEnabled = true
             }
         }
+    }
+    
+    private func playSuccessZarpazo() {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         
-        // Empty the field after submitting
-        inputField.stringValue = ""
+        eyeImageView.layer?.removeAllAnimations()
+        
+        if let pawImage = NSImage(systemSymbolName: "pawprint", accessibilityDescription: "Success") {
+            let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
+            eyeImageView.image = pawImage.withSymbolConfiguration(config)
+            eyeImageView.contentTintColor = .systemGreen
+        }
+        
+        let swipe = CABasicAnimation(keyPath: "transform.translation.y")
+        swipe.fromValue = 50
+        swipe.toValue = -50
+        
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1.0
+        fade.toValue = 0.0
+        
+        let zarpazoGroup = CAAnimationGroup()
+        zarpazoGroup.animations = [swipe, fade]
+        zarpazoGroup.duration = 0.25
+        zarpazoGroup.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        zarpazoGroup.fillMode = .forwards
+        zarpazoGroup.isRemovedOnCompletion = false
+        
+        eyeImageView.layer?.add(zarpazoGroup, forKey: "pawScratch")
+        
+        // Revert to normal eye and breathing immediately after animation finishes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self = self else { return }
+            if self.window?.isVisible == true {
+                self.eyeImageView.layer?.removeAllAnimations()
+                self.eyeImageView.alphaValue = 1.0
+                
+                if let normalEye = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
+                    let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
+                    self.eyeImageView.image = normalEye.withSymbolConfiguration(config)
+                    self.eyeImageView.contentTintColor = .controlAccentColor
+                }
+                self.startEyeAnimation()
+            }
+        }
     }
     
     @objc func cancelClicked() {
@@ -268,7 +303,9 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
     }
     
     func windowWillClose(_ notification: Notification) {
-        // Just hide it, keep instance alive
+        // Stop background activities
+        clipboardTimer?.invalidate()
+        clipboardTimer = nil
         eyeImageView.layer?.removeAllAnimations()
     }
 }

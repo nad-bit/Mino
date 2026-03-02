@@ -584,11 +584,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         animateStatusIcon(with: .scale)
         if addRepoWindowController == nil {
             addRepoWindowController = AddRepoWindowController()
-            addRepoWindowController?.completionHandler = { [weak self] repoName, source, cask in
-                if let repo = repoName, source == "manual" {
-                    self?.addRepoSmart(repoName: repo)
-                } else if source == "brew", let caskName = cask {
-                    self?.processBrewSelection(caskName: caskName)
+            addRepoWindowController?.completionHandler = { [weak self] repoName, source, cask, completion in
+                guard let self = self else { return }
+                Task {
+                    var success = false
+                    if let repo = repoName, source == "manual" {
+                        success = await self.addRepoSmart(repoName: repo)
+                    } else if source == "brew", let caskName = cask {
+                        success = await self.processBrewSelection(caskName: caskName)
+                    }
+                    await MainActor.run {
+                        completion(success)
+                    }
                 }
             }
         }
@@ -598,107 +605,112 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         addRepoWindowController?.resetAndShow()
     }
     
-    func addRepoSmart(repoName: String) {
+    func addRepoSmart(repoName: String) async -> Bool {
         if HomebrewManager.shared.brewPath == nil {
-            addRepo(repoName: repoName, source: "manual")
-            return
+            return await addRepo(repoName: repoName, source: "manual")
         }
         
         if ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == repoName.lowercased() }) {
-            addRepo(repoName: repoName, source: "manual")
-            return
+            return await addRepo(repoName: repoName, source: "manual")
         }
         
         let parts = repoName.split(separator: "/")
         if parts.count != 2 {
-            addRepo(repoName: repoName, source: "manual")
-            return
+            return await addRepo(repoName: repoName, source: "manual")
         }
         
-        Task {
-            // Very simplistic check, without fetching headers explicitly as in Python.
-            if let cask = await HomebrewManager.shared.findCaskForRepo(repoName: repoName) {
-                self.addRepo(repoName: repoName, source: "brew", cask: cask)
-            } else {
-                self.addRepo(repoName: repoName, source: "manual")
-            }
+        if let cask = await HomebrewManager.shared.findCaskForRepo(repoName: repoName) {
+            return await addRepo(repoName: repoName, source: "brew", cask: cask)
+        } else {
+            return await addRepo(repoName: repoName, source: "manual")
         }
     }
     
-    func addRepo(repoName: String, source: String, cask: String? = nil) {
+    func addRepo(repoName: String, source: String, cask: String? = nil) async -> Bool {
         if ConfigManager.shared.config.repos.contains(where: { $0.name == repoName }) {
             if let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
                 if ConfigManager.shared.config.repos[index].source == "manual" && source == "brew" {
                     ConfigManager.shared.config.repos[index].source = "brew"
                     ConfigManager.shared.config.repos[index].cask = cask
                     ConfigManager.shared.saveConfig()
-                    setupMenu()
-                    animateStatusIcon(with: .bounce)
+                    await MainActor.run {
+                        self.setupMenu()
+                        self.animateStatusIcon(with: .bounce)
+                    }
+                    return true
                 } else {
-                    self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoExists"))
+                    await MainActor.run {
+                        self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoExists"))
+                    }
+                    return false
                 }
             }
-            return
+            return false
         }
         
-        // Fix: Do not add to config/cache immediately. Fetch first to validate.
-        Task {
-            let info = await GitHubAPI.shared.fetchRepoInfo(repo: repoName)
-            if info.error != nil {
-                // Invalid repo, show error and do NOT add to array
+        let info = await GitHubAPI.shared.fetchRepoInfo(repo: repoName)
+        if info.error != nil {
+            await MainActor.run {
                 self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoNotFound"))
-            } else {
-                // Valid repo, add to array and cache
-                let newRepo = RepoConfig(name: repoName, source: source, cask: cask)
-                ConfigManager.shared.config.repos.append(newRepo)
-                ConfigManager.shared.saveConfig()
-                
+            }
+            return false
+        } else {
+            let newRepo = RepoConfig(name: repoName, source: source, cask: cask)
+            ConfigManager.shared.config.repos.append(newRepo)
+            ConfigManager.shared.saveConfig()
+            
+            await MainActor.run {
                 self.repoCache[repoName] = info
                 self.setupMenu()
                 self.animateStatusIcon(with: .bounce)
             }
+            return true
         }
     }
     
-    func processBrewSelection(caskName: String) {
-        Task {
-            guard let url = URL(string: "https://formulae.brew.sh/api/cask/\(caskName).json") else { return }
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    var repoName: String? = nil
-                    let regex = try NSRegularExpression(pattern: "github\\.com/([^/]+/[^/\\s\"]+)")
+    func processBrewSelection(caskName: String) async -> Bool {
+        guard let url = URL(string: "https://formulae.brew.sh/api/cask/\(caskName).json") else { return false }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                var repoName: String? = nil
+                let regex = try NSRegularExpression(pattern: "github\\.com/([^/]+/[^/\\s\"]+)")
+                
+                let searchKeys = ["verified", "homepage", "url"]
+                for key in searchKeys {
+                    if repoName != nil { break }
+                    var urlString = ""
+                    if key == "verified" {
+                        urlString = (json["url_specs"] as? [String: Any])?["verified"] as? String ?? ""
+                    } else {
+                        urlString = json[key] as? String ?? ""
+                    }
                     
-                    let searchKeys = ["verified", "homepage", "url"]
-                    for key in searchKeys {
-                        if repoName != nil { break }
-                        var urlString = ""
-                        if key == "verified" {
-                            urlString = (json["url_specs"] as? [String: Any])?["verified"] as? String ?? ""
-                        } else {
-                            urlString = json[key] as? String ?? ""
-                        }
-                        
-                        if !urlString.isEmpty {
-                            let range = NSRange(location: 0, length: urlString.utf16.count)
-                            if let match = regex.firstMatch(in: urlString, options: [], range: range) {
-                                if let r = Range(match.range(at: 1), in: urlString) {
-                                    repoName = String(urlString[r]).replacingOccurrences(of: ".git", with: "")
-                                }
+                    if !urlString.isEmpty {
+                        let range = NSRange(location: 0, length: urlString.utf16.count)
+                        if let match = regex.firstMatch(in: urlString, options: [], range: range) {
+                            if let r = Range(match.range(at: 1), in: urlString) {
+                                repoName = String(urlString[r]).replacingOccurrences(of: ".git", with: "")
                             }
                         }
                     }
-                    
-                    if let r = repoName {
-                        self.addRepo(repoName: r, source: "brew", cask: caskName)
-                    } else {
+                }
+                
+                if let r = repoName {
+                    return await addRepo(repoName: r, source: "brew", cask: caskName)
+                } else {
+                    await MainActor.run {
                         self.sendNotification(title: Translations.get("brewErrorTitle"), subtitle: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
                     }
+                    return false
                 }
-            } catch {
+            }
+        } catch {
+            await MainActor.run {
                 self.sendNotification(title: Translations.get("error"), subtitle: "Could not get info for \(caskName): \(error.localizedDescription)")
             }
         }
+        return false
     }
     
     // MARK: - Preferences Logics

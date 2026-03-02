@@ -25,6 +25,11 @@ class MenuActionButton: NSButton {
         didSet { if isHovered { contentTintColor = hoverColor } }
     }
     
+    // Provide a consistently large hit area regardless of the small icon size
+    override var intrinsicContentSize: NSSize {
+        return NSSize(width: 26, height: 26) // Matches typical menu action height
+    }
+    
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let trackingArea = self.trackingArea {
@@ -125,7 +130,7 @@ class RepoMenuItemView: NSView {
         let buttons = [installBtn, notesBtn, openReleasesBtn, deleteBtn].filter { $0.action != nil }
         buttonStack.setViews(buttons, in: .leading)
         buttonStack.orientation = .horizontal
-        buttonStack.spacing = 8
+        buttonStack.spacing = 0
         buttonStack.alignment = .centerY
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
     }
