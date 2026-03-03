@@ -5,6 +5,10 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4] - Argos Hotfix - 2026-03-03
+### Fixed
+- **Pure Stealth Mode:** Removed experimental `NSApp` activation policies that were causing Mino's icon to temporarily pop into the macOS Dock when opening windows like Settings or Add Repository. Mino is now perfectly invisible in the Dock again while retaining the WindowServer fix from 1.3.3.
+
 ## [1.3.3] - Argos - 2026-03-03
 
 ### Fixed
