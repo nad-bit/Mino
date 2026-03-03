@@ -268,10 +268,11 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         // --- 5. Layout Mode Section ---
         let layoutLabel = NSTextField(labelWithString: Translations.get("layoutLabel"))
-        layoutSegment.segmentCount = 3
-        layoutSegment.setLabel(Translations.get("layoutColumns"), forSegment: 0)
-        layoutSegment.setLabel(Translations.get("layoutCards"), forSegment: 1)
-        layoutSegment.setLabel(Translations.get("layoutHybrid"), forSegment: 2)
+        layoutSegment.segmentCount = 4
+        layoutSegment.setLabel("1", forSegment: 0)
+        layoutSegment.setLabel("2", forSegment: 1)
+        layoutSegment.setLabel("3", forSegment: 2)
+        layoutSegment.setLabel("4", forSegment: 3)
         layoutSegment.segmentStyle = .rounded
         layoutSegment.target = self
         layoutSegment.action = #selector(layoutChanged(_:))
@@ -324,6 +325,14 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         // Load Owner
         ownerSwitch.state = ConfigManager.shared.config.showOwner ? .on : .off
         
+        // Load Sort By
+        sortSegment.selectedSegment = (ConfigManager.shared.config.sortBy == "name") ? 0 : 1
+        
+        // Load Layout
+        let layout = ConfigManager.shared.config.menuLayout ?? "columns"
+        let layoutIndex = ["columns", "cards", "hybrid", "tags"].firstIndex(of: layout) ?? 0
+        layoutSegment.selectedSegment = layoutIndex
+        
         let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
         newIndicatorSwitch.state = showNewIndicator ? .on : .off
         
@@ -331,14 +340,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         newIndicatorSlider.integerValue = days
         updateIndicatorDaysLabel()
         updateIndicatorSliderVisibility()
-        
-        // Load Sort By
-        sortSegment.selectedSegment = (ConfigManager.shared.config.sortBy == "name") ? 0 : 1
-        
-        // Load Layout
-        let layout = ConfigManager.shared.config.menuLayout ?? "columns"
-        let layoutIndex = ["columns", "cards", "hybrid"].firstIndex(of: layout) ?? 0
-        layoutSegment.selectedSegment = layoutIndex
         
         // Load Repo Count
         let count = ConfigManager.shared.config.repos.count
@@ -389,6 +390,8 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     func windowWillClose(_ notification: Notification) {
         // Save handled instantly by individual control actions to prevent data loss on forced closures
+        // Return to accessory mode so Dock auto-hide works
+        (NSApp.delegate as? AppDelegate)?.returnToAccessory()
     }
     
     @objc private func closeWindow(_ sender: NSButton) {
@@ -539,9 +542,10 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     @objc private func layoutChanged(_ sender: NSSegmentedControl) {
         isUpdatingSelf = true
-        let layoutModes = ["columns", "cards", "hybrid"]
+        let layoutModes = ["columns", "cards", "hybrid", "tags"]
         ConfigManager.shared.config.menuLayout = layoutModes[sender.selectedSegment]
         ConfigManager.shared.saveConfig()
+        updateIndicatorSliderVisibility()
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.setupMenu()
         }
@@ -558,9 +562,24 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     private func updateIndicatorSliderVisibility() {
-        let isEnabled = newIndicatorSwitch.state == .on
-        newIndicatorSlider.isEnabled = isEnabled
-        newIndicatorLabel.textColor = isEnabled ? .labelColor : .disabledControlTextColor
+        let layoutIndex = layoutSegment.selectedSegment
+        let isColorLayout = (layoutIndex == 2 || layoutIndex == 3) // Hybrid or Tags
+        
+        if isColorLayout {
+            newIndicatorSwitch.isEnabled = false
+            newIndicatorSwitch.state = .on // visually indicate feature is structural
+            
+            newIndicatorSlider.isEnabled = true
+            newIndicatorLabel.textColor = .labelColor
+        } else {
+            newIndicatorSwitch.isEnabled = true
+            let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
+            newIndicatorSwitch.state = showNewIndicator ? .on : .off
+            
+            let isEnabled = newIndicatorSwitch.state == .on
+            newIndicatorSlider.isEnabled = isEnabled
+            newIndicatorLabel.textColor = isEnabled ? .labelColor : .disabledControlTextColor
+        }
     }
     
 

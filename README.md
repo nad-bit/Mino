@@ -26,6 +26,7 @@ https://github.com/user-attachments/assets/9b7cbe6b-5d9e-49c8-817e-5ff761ee4fbe
 - **✦ Configurable New Release Indicator**: Customizable threshold (1-30 days) with toggle, replacing the old fixed emoji
 - **🌍 Localized**: English, Spanish, French, German, Italian, and Portuguese with automatic system detection
 - **🔄 Auto-Start**: Launch at login via native macOS LaunchAgent
+- **☁️ iCloud Sync**: Tracked repositories and visual preferences sync securely across all your Macs via Apple's native Key-Value Store
 - **🎨 Light & Dark Mode**: Full support, including a forced-dark HUD panel for notifications
 
 ## Installation

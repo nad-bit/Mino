@@ -307,5 +307,8 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         clipboardTimer?.invalidate()
         clipboardTimer = nil
         eyeImageView.layer?.removeAllAnimations()
+        
+        // Return to accessory mode so Dock auto-hide works
+        (NSApp.delegate as? AppDelegate)?.returnToAccessory()
     }
 }

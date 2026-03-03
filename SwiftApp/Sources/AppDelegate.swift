@@ -26,6 +26,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var headerMenuItem: NSMenuItem!
     var headerView: HeaderMenuItemView!
     
+    // Defer actions until menu completes its closing animation
+    var pendingMenuAction: (() -> Void)? = nil
+    
     var settingsWindowController: SettingsWindowController?
     var releaseNotesWindowController: ReleaseNotesWindowController?
     var addRepoWindowController: AddRepoWindowController?
@@ -340,9 +343,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             repoEntries.append((repoMenuItem, customView))
         }
         
-        // Calculate uniform width
+        // Calculate uniform width, ignoring the action button stack width (approx 100px)
+        // because we don't want the menu to permanently widen just to hold them 
+        // since they overlap the right margin when they appear.
         let maxWidth = repoEntries.reduce(CGFloat(320)) { maxSoFar, entry in
-            max(maxSoFar, entry.1.fittingSize.width + 30)
+            let fittingWidth = entry.1.fittingSize.width
+            // Assume the button stack takes about 104pt (4 buttons * 26pt). We subtract it
+            // from the fitting size so the menu stays compact.
+            return max(maxSoFar, fittingWidth - 104 + 30)
         }
         
         // Apply uniform width and add to menu
@@ -363,6 +371,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         footerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 32)
         footerMenuItem.view = footerView
         menu.addItem(footerMenuItem)
+        
+        // --- Hidden Native Menu Items ---
+        // These serve two critical purposes:
+        // 1. Restore global shortcut functionality (CMD+, and CMD+Q) while the menu is open
+        // 2. Provide macOS WindowServer with native menu lifecycle hooks to prevent the Dock autohide bug
+        let hiddenPrefsItem = NSMenuItem(title: Translations.get("preferences"), action: #selector(openSettingsWindow(_:)), keyEquivalent: ",")
+        hiddenPrefsItem.target = self
+        hiddenPrefsItem.isHidden = true
+        menu.addItem(hiddenPrefsItem)
+        
+        let hiddenQuitItem = NSMenuItem(title: Translations.get("quit"), action: #selector(quitApp(_:)), keyEquivalent: "q")
+        hiddenQuitItem.target = self
+        hiddenQuitItem.isHidden = true
+        menu.addItem(hiddenQuitItem)
         
         updateStatusIcon(hasUpdates: anyNewUpdates)
     }
@@ -447,6 +469,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
         updateStatusIcon(hasUpdates: false)
         
+        // CRITICAL FIX: Explicitly treat as background app when menu closes 
+        // to restore macOS WindowServer edge-detection for the Dock
+        returnToAccessory()
+        
+        // Execute any actions deferred by custom views (like opening Settings/Quit)
+        // This guarantees the menu's tracking loop is completely torn down
+        // by macOS *before* we attempt to steal WindowServer focus with .regular policy.
+        if let action = pendingMenuAction {
+            pendingMenuAction = nil
+            // A slight runloop jump ensures we are entirely outside the tracking session
+            DispatchQueue.main.async {
+                action()
+            }
+        }
+        
         // Rebuild the menu now that it's closed, to pick up any missed countdown updates
         setupMenu()
     }
@@ -471,6 +508,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApplication.shared.terminate(self)
     }
     
+    // MARK: - Activation Policy Management
+    // Fixes macOS Dock auto-hide bug: LSUIElement/accessory apps that call
+    // NSApp.activate() without switching to .regular policy leave macOS
+    // NSApp.activate() without switching to .regular policy leave macOS
+    // WindowServer confused about application focus for LSUIElement apps.
+
+    func performAfterMenuClose(_ action: @escaping () -> Void) {
+        self.pendingMenuAction = action
+        self.menu.cancelTracking()
+    }
+    
+    /// Call this INSTEAD of NSApp.activate() whenever the app needs to show a window/alert.
+    /// Temporarily switches to .regular so macOS properly tracks focus.
+    func bringToFront() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    /// Call this when ALL windows/alerts are dismissed to return to background mode.
+    /// This properly releases focus so the Dock auto-hide works again.
+    func returnToAccessory() {
+        // Only return to accessory if no windows are visible
+        let hasVisibleWindow = settingsWindowController?.window?.isVisible == true
+            || releaseNotesWindowController?.window?.isVisible == true
+            || addRepoWindowController?.window?.isVisible == true
+        
+        if !hasVisibleWindow {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+    
     @objc func handleOpenReleases(_ sender: NSMenuItem) {
         animateStatusIcon(with: .scale)
         guard let repoName = sender.representedObject as? String else { return }
@@ -489,7 +557,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         
         hideAllWindowsExcept(keep: releaseNotesWindowController)
-        NSApp.activate(ignoringOtherApps: true)
+        bringToFront()
         releaseNotesWindowController?.loadNotes(for: info)
         releaseNotesWindowController?.showWindow(self)
     }
@@ -576,7 +644,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         
         hideAllWindowsExcept(keep: settingsWindowController)
-        NSApp.activate(ignoringOtherApps: true)
+        bringToFront()
         settingsWindowController?.showWindow(self)
     }
     
@@ -601,7 +669,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         
         hideAllWindowsExcept(keep: addRepoWindowController)
-        NSApp.activate(ignoringOtherApps: true)
+        bringToFront()
         addRepoWindowController?.resetAndShow()
     }
     

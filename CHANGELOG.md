@@ -5,6 +5,14 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - Argos - 2026-03-03
+### Added
+- **iCloud Synchronization:** Your tracked GitHub repositories and visual preferences are now seamlessly and securely synchronized across all your Macs using Apple's native iCloud Key-Value Store. *(Note: Personal GitHub Tokens remain strictly local for security guarantees)*.
+- **Global Shortcut Restoration:** Reintroduced the native menu key equivalents (`CMD + ,` for Preferences, `CMD + Q` for Quit) that were lost during the transition to custom menu views. These shortcuts are now fully functional while the Mino menu is displayed.
+
+### Fixed
+- **The "Stuck Dock" WindowServer Anomaly:** Successfully identified and patched a complex, framework-level bug introduced in version 1.0.0 where Mino's custom interface abruptly hijacked the macOS menu tracking loop. By meticulously yielding the main thread and deferring UI actions until after the native `menuDidClose` event organically completes, macOS WindowServer can finally reclaim proper edge-detection, guaranteeing the Dock's auto-hide mechanism remains flawless.
+
 ## [1.3.2] - 2026-03-02
 ### Added
 - **Multi-Hunt Repository Hub:** The "Add Repository" window now functions as a persistent, `.floating` background-aware targeting hub. It actively monitors your clipboard while you browse Safari, seamlessly queuing sequential GitHub URLs for one-click ingestion without dismissing the window. 

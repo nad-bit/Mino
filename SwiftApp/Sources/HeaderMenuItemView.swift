@@ -177,20 +177,22 @@ class HeaderMenuItemView: NSView {
     @objc private func refreshClicked() {
         if let menuItem = enclosingMenuItem {
             appDelegate.animateStatusIcon(with: .scale)
-            appDelegate.menu.cancelTracking()
-            appDelegate.triggerFullRefresh(menuItem)
+            // Note: We intentionally don't close the menu for refresh
+            DispatchQueue.main.async {
+                self.appDelegate.triggerFullRefresh(menuItem)
+            }
         }
     }
     
     @objc private func addClicked() {
         if let menuItem = enclosingMenuItem {
             appDelegate.animateStatusIcon(with: .scale)
-            appDelegate.menu.cancelTracking()
-            
-            if let repo = quickAddRepoStr {
-                Task { let _ = await appDelegate.addRepoSmart(repoName: repo) }
-            } else {
-                appDelegate.unifiedAddRepoDialog(menuItem)
+            appDelegate.performAfterMenuClose {
+                if let repo = self.quickAddRepoStr {
+                    Task { let _ = await self.appDelegate.addRepoSmart(repoName: repo) }
+                } else {
+                    self.appDelegate.unifiedAddRepoDialog(menuItem)
+                }
             }
         }
     }

@@ -104,6 +104,8 @@ class RepoMenuItemView: NSView {
             setupCardsView(data: displayData)
         case "hybrid":
             setupHybridView(data: displayData)
+        case "tags":
+            setupTagsView(data: displayData)
         case "columns":
             fallthrough
         default:
@@ -144,6 +146,65 @@ class RepoMenuItemView: NSView {
         btn.toolTip = tooltip
         btn.baseColor = .secondaryLabelColor
         btn.hoverColor = .labelColor
+        btn.wantsLayer = true
+    }
+    
+    // MARK: - Layout: Tags (Single line with colorful pill)
+    
+    private func setupTagsView(data: RepoDisplayData) {
+        // Name
+        titleLabel.stringValue = data.formattedName
+        titleLabel.font = .boldSystemFont(ofSize: 13)
+        titleLabel.textColor = .labelColor
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        // Dynamic freshness pill
+        if let ver = data.version {
+            versionLabel.stringValue = " \(ver) "
+            versionLabel.font = .monospacedSystemFont(ofSize: 10, weight: .bold)
+            versionLabel.textColor = .white
+            // Fallback to blue if the color is white/gray in dark mode to keep contrast high
+            let pillColor = data.freshnessColor == .tertiaryLabelColor ? NSColor.systemBlue : data.freshnessColor
+            versionLabel.backgroundColor = pillColor.withAlphaComponent(0.85)
+            versionLabel.isBezeled = false
+            versionLabel.drawsBackground = true
+            versionLabel.alignment = .center
+            versionLabel.wantsLayer = true
+            versionLabel.layer?.cornerRadius = 6
+            versionLabel.layer?.masksToBounds = true
+            versionLabel.translatesAutoresizingMaskIntoConstraints = false
+            versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        } else if data.isLoading {
+            versionLabel.stringValue = Translations.get("loading")
+            versionLabel.font = .systemFont(ofSize: 10)
+            versionLabel.textColor = .secondaryLabelColor
+            versionLabel.translatesAutoresizingMaskIntoConstraints = false
+        } else if data.isError {
+            versionLabel.stringValue = "⚠️"
+            versionLabel.font = .systemFont(ofSize: 10)
+            versionLabel.translatesAutoresizingMaskIntoConstraints = false
+        }
+        
+        let contentStack = NSStackView(views: [titleLabel, versionLabel])
+        contentStack.orientation = .horizontal
+        contentStack.spacing = 8
+        contentStack.alignment = .firstBaseline
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        
+        addSubview(contentStack)
+        addSubview(buttonStack)
+        
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        
+        NSLayoutConstraint.activate([
+            contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: contentStack.trailingAnchor, constant: 8)
+        ])
     }
     
     // MARK: - Layout: Cards (two-line)
@@ -262,7 +323,8 @@ class RepoMenuItemView: NSView {
         
         // Age column
         if let age = data.ageLabel {
-            ageLabel.stringValue = "\(age)\(data.newIndicator)"
+            let indicator = showDot ? "" : data.newIndicator
+            ageLabel.stringValue = "\(age)\(indicator)"
         } else {
             ageLabel.stringValue = ""
         }
@@ -322,36 +384,40 @@ class RepoMenuItemView: NSView {
     @objc private func installClicked() {
         if let menuItem = enclosingMenuItem {
             appDelegate.animateStatusIcon(with: .scale)
-            appDelegate.menu.cancelTracking()
             menuItem.representedObject = caskName
-            appDelegate.handleInstallBrewCask(menuItem)
+            appDelegate.performAfterMenuClose {
+                self.appDelegate.handleInstallBrewCask(menuItem)
+            }
         }
     }
     
     @objc private func notesClicked() {
         if let menuItem = enclosingMenuItem {
             appDelegate.animateStatusIcon(with: .scale)
-            appDelegate.menu.cancelTracking()
             menuItem.representedObject = repoName
-            appDelegate.handleShowNotes(menuItem)
+            appDelegate.performAfterMenuClose {
+                self.appDelegate.handleShowNotes(menuItem)
+            }
         }
     }
     
     @objc private func openReleasesClicked() {
         if let menuItem = enclosingMenuItem {
             appDelegate.animateStatusIcon(with: .scale)
-            appDelegate.menu.cancelTracking()
             menuItem.representedObject = repoName
-            appDelegate.handleOpenReleases(menuItem)
+            appDelegate.performAfterMenuClose {
+                self.appDelegate.handleOpenReleases(menuItem)
+            }
         }
     }
     
     @objc private func deleteClicked() {
         if let menuItem = enclosingMenuItem {
             appDelegate.animateStatusIcon(with: .scale)
-            appDelegate.menu.cancelTracking()
             menuItem.representedObject = repoName
-            appDelegate.handleDeleteRepo(menuItem)
+            appDelegate.performAfterMenuClose {
+                self.appDelegate.handleDeleteRepo(menuItem)
+            }
         }
     }
     
@@ -367,11 +433,30 @@ class RepoMenuItemView: NSView {
     }
     
     private func applyHighlightState(_ highlighted: Bool) {
-        let showButtons = highlighted
-        installBtn.isHidden = (caskName == nil) ? true : !showButtons
-        notesBtn.isHidden = !showButtons
-        openReleasesBtn.isHidden = !showButtons
-        deleteBtn.isHidden = !showButtons
+        // To prevent NSStackView from recalculating layout and causing menu artifacts 
+        // on the right edge, we animate alphaValue instead of isHidden.
+        // We set the buttons to be fully transparent when not highlighted.
+        
+        // Ensure they are always part of the layout
+        if installBtn.isHidden { installBtn.isHidden = false }
+        if notesBtn.isHidden { notesBtn.isHidden = false }
+        if openReleasesBtn.isHidden { openReleasesBtn.isHidden = false }
+        if deleteBtn.isHidden { deleteBtn.isHidden = false }
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.allowsImplicitAnimation = true
+            
+            // For install button, keep alpha 0 if there's no caskName
+            let installAlpha: CGFloat = (caskName != nil && highlighted) ? 1.0 : 0.0
+            self.installBtn.animator().alphaValue = installAlpha
+            
+            let alpha: CGFloat = highlighted ? 1.0 : 0.0
+            self.notesBtn.animator().alphaValue = alpha
+            self.openReleasesBtn.animator().alphaValue = alpha
+            self.deleteBtn.animator().alphaValue = alpha
+        }
         
         // Text colors
         let mainColor: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
