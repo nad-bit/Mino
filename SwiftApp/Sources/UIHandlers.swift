@@ -13,29 +13,27 @@ class UIHandlers {
     }
 
     func showAbout() {
-        appDelegate?.bringToFront()
+        NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "Mino"
         alert.informativeText = Translations.get("aboutMsg")
         alert.addButton(withTitle: Translations.get("ok"))
         alert.runModal()
-        appDelegate?.returnToAccessory()
     }
     
     func confirmDeleteRepo(name: String) -> Bool {
-        appDelegate?.bringToFront()
+        NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = Translations.get("deleteRepo")
         alert.informativeText = "\(Translations.get("confirmDelete"))\n\n'\(name)'"
         alert.addButton(withTitle: Translations.get("ok"))
         alert.addButton(withTitle: Translations.get("cancel"))
         let response = alert.runModal()
-        appDelegate?.returnToAccessory()
         return response == .alertFirstButtonReturn
     }
     
     func showReleaseNotes(info: RepoInfo) {
-        appDelegate?.bringToFront()
+        NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = Translations.get("releaseNotes")
         
@@ -60,20 +58,18 @@ class UIHandlers {
         alert.accessoryView = scrollView
         
         alert.runModal()
-        appDelegate?.returnToAccessory()
     }
     
     func showAlert(title: String, message: String) {
         if let delegate = NSApp.delegate as? AppDelegate {
             delegate.animateStatusIcon(with: .wiggle)
         }
-        appDelegate?.bringToFront()
+        NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
         alert.addButton(withTitle: Translations.get("ok"))
         alert.runModal()
-        appDelegate?.returnToAccessory()
     }
     
 

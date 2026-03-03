@@ -301,6 +301,5 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         self.window?.orderOut(nil)
         
         // Return to accessory mode so Dock auto-hide works
-        (NSApp.delegate as? AppDelegate)?.returnToAccessory()
     }
 }

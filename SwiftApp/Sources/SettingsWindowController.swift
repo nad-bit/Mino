@@ -391,7 +391,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     func windowWillClose(_ notification: Notification) {
         // Save handled instantly by individual control actions to prevent data loss on forced closures
         // Return to accessory mode so Dock auto-hide works
-        (NSApp.delegate as? AppDelegate)?.returnToAccessory()
     }
     
     @objc private func closeWindow(_ sender: NSButton) {

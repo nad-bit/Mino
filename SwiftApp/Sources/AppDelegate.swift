@@ -460,10 +460,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
         updateStatusIcon(hasUpdates: false)
         
-        // CRITICAL FIX: Explicitly treat as background app when menu closes 
-        // to restore macOS WindowServer edge-detection for the Dock
-        returnToAccessory()
-        
         // Execute any actions deferred by custom views (like opening Settings/Quit)
         // This guarantees the menu's tracking loop is completely torn down
         // by macOS *before* we attempt to steal WindowServer focus with .regular policy.
@@ -500,34 +496,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     // MARK: - Activation Policy Management
-    // Fixes macOS Dock auto-hide bug: LSUIElement/accessory apps that call
-    // NSApp.activate() without switching to .regular policy leave macOS
-    // NSApp.activate() without switching to .regular policy leave macOS
-    // WindowServer confused about application focus for LSUIElement apps.
-
+    
     func performAfterMenuClose(_ action: @escaping () -> Void) {
         self.pendingMenuAction = action
         self.menu.cancelTracking()
     }
     
     /// Call this INSTEAD of NSApp.activate() whenever the app needs to show a window/alert.
-    /// Temporarily switches to .regular so macOS properly tracks focus.
     func bringToFront() {
-        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
     
-    /// Call this when ALL windows/alerts are dismissed to return to background mode.
-    /// This properly releases focus so the Dock auto-hide works again.
+    /// Stubbed out. The performAfterMenuClose correctly hands off WindowServer state.
+    /// Setting activation policy repeatedly causes Dock bouncing bugs.
     func returnToAccessory() {
-        // Only return to accessory if no windows are visible
-        let hasVisibleWindow = settingsWindowController?.window?.isVisible == true
-            || releaseNotesWindowController?.window?.isVisible == true
-            || addRepoWindowController?.window?.isVisible == true
-        
-        if !hasVisibleWindow {
-            NSApp.setActivationPolicy(.accessory)
-        }
+        // No-op
     }
     
     @objc func handleOpenReleases(_ sender: NSMenuItem) {
@@ -591,6 +574,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     alert.informativeText = Translations.get("sudoRequiredDesc").format(with: ["cask_name": caskName])
                     alert.alertStyle = .warning
                     alert.addButton(withTitle: "OK")
+                    NSApp.activate(ignoringOtherApps: true)
                     alert.runModal()
                 }
             } else {
