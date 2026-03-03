@@ -16,15 +16,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var menu: NSMenu!
     
     var repoCache: [String: RepoInfo] = [:]
-    var lastRefreshTime: Date = Date.distantPast
-    var lastCaskDiscoveryTime: Date = Date.distantPast
-    
-    var countdownTimer: Timer?
-    var isRefreshing = false
-    var menuIsOpen = false
     
     var headerMenuItem: NSMenuItem!
     var headerView: HeaderMenuItemView!
+    
+    // Refresh Logic and States
+    var lastRefreshTime: Date = Date.distantPast
+    var lastCaskDiscoveryTime: Date = Date.distantPast
+    var countdownTimer: Timer?
+    var isRefreshing = false
+    var menuIsOpen = false
     
     // Defer actions until menu completes its closing animation
     var pendingMenuAction: (() -> Void)? = nil
@@ -372,19 +373,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         footerMenuItem.view = footerView
         menu.addItem(footerMenuItem)
         
-        // --- Hidden Native Menu Items ---
-        // These serve two critical purposes:
-        // 1. Restore global shortcut functionality (CMD+, and CMD+Q) while the menu is open
-        // 2. Provide macOS WindowServer with native menu lifecycle hooks to prevent the Dock autohide bug
-        let hiddenPrefsItem = NSMenuItem(title: Translations.get("preferences"), action: #selector(openSettingsWindow(_:)), keyEquivalent: ",")
-        hiddenPrefsItem.target = self
-        hiddenPrefsItem.isHidden = true
-        menu.addItem(hiddenPrefsItem)
-        
-        let hiddenQuitItem = NSMenuItem(title: Translations.get("quit"), action: #selector(quitApp(_:)), keyEquivalent: "q")
-        hiddenQuitItem.target = self
-        hiddenQuitItem.isHidden = true
-        menu.addItem(hiddenQuitItem)
+        // Native hidden NSMenuItems were removed here because macOS NSMenu event tracking 
+        // swallows keyEquivalents when custom views are present in the menu.
+        // We now handle these shortcuts manually via an NSEvent local monitor in menuWillOpen().
         
         updateStatusIcon(hasUpdates: anyNewUpdates)
     }
