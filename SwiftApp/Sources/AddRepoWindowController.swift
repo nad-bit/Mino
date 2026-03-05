@@ -39,7 +39,7 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
             // Apply a tint color to match the dynamically generated app icon color
             let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
             eyeImageView.image = eyeImage.withSymbolConfiguration(config)
-            eyeImageView.contentTintColor = Utils.getAppIconColor()
+            eyeImageView.contentTintColor = Utils.appIconColor
         }
         eyeImageView.imageScaling = .scaleProportionallyUpOrDown
         // We will animate the layer
@@ -175,7 +175,7 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
             if let normalEye = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
                 let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
                 self.eyeImageView.image = normalEye.withSymbolConfiguration(config)
-                self.eyeImageView.contentTintColor = Utils.getAppIconColor()
+                self.eyeImageView.contentTintColor = Utils.appIconColor
             }
             // Restart breathing
             self.startEyeAnimation()
@@ -291,7 +291,7 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
                 if let normalEye = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
                     let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
                     self.eyeImageView.image = normalEye.withSymbolConfiguration(config)
-                    self.eyeImageView.contentTintColor = Utils.getAppIconColor()
+                    self.eyeImageView.contentTintColor = Utils.appIconColor
                 }
                 self.startEyeAnimation()
             }

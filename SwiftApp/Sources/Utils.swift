@@ -63,7 +63,7 @@ class Utils {
         return nil
     }
     
-    static func getAppIconColor() -> NSColor {
+    static let appIconColor: NSColor = {
         guard let appIconImage = NSImage(named: NSImage.applicationIconName) ?? NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil),
               let tiffData = appIconImage.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData) else {
@@ -95,6 +95,6 @@ class Utils {
         }
         
         return bestColor
-    }
+    }()
 }
 
