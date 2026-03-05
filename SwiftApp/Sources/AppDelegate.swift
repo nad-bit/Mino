@@ -346,7 +346,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         
         // Create views
-        let rowHeight: CGFloat = (currentLayout == "cards") ? 40 : 22
+        let isCompact = config.isCompactMode ?? false
+        var rowHeight: CGFloat = (currentLayout == "cards") ? 40 : 22
+        if isCompact { rowHeight -= 6 }
+        
         var repoEntries: [(NSMenuItem, RepoMenuItemView)] = []
         
         for (repoObj, data) in displayDataList {
