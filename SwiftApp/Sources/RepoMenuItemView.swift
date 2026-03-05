@@ -112,7 +112,7 @@ class RepoMenuItemView: NSView {
             setupColumnsView(data: displayData)
         }
         
-        applyHighlightState(false)
+        applyHighlightState(false, animated: false)
     }
     
     required init?(coder: NSCoder) {
@@ -432,7 +432,7 @@ class RepoMenuItemView: NSView {
         }
     }
     
-    private func applyHighlightState(_ highlighted: Bool) {
+    private func applyHighlightState(_ highlighted: Bool, animated: Bool = true) {
         // To prevent NSStackView from recalculating layout and causing menu artifacts 
         // on the right edge, we animate alphaValue instead of isHidden.
         // We set the buttons to be fully transparent when not highlighted.
@@ -443,19 +443,25 @@ class RepoMenuItemView: NSView {
         if openReleasesBtn.isHidden { openReleasesBtn.isHidden = false }
         if deleteBtn.isHidden { deleteBtn.isHidden = false }
 
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.2
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            context.allowsImplicitAnimation = true
-            
-            // For install button, keep alpha 0 if there's no caskName
-            let installAlpha: CGFloat = (caskName != nil && highlighted) ? 1.0 : 0.0
-            self.installBtn.animator().alphaValue = installAlpha
-            
-            let alpha: CGFloat = highlighted ? 1.0 : 0.0
-            self.notesBtn.animator().alphaValue = alpha
-            self.openReleasesBtn.animator().alphaValue = alpha
-            self.deleteBtn.animator().alphaValue = alpha
+        let installAlpha: CGFloat = (caskName != nil && highlighted) ? 1.0 : 0.0
+        let alpha: CGFloat = highlighted ? 1.0 : 0.0
+
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.allowsImplicitAnimation = true
+                
+                self.installBtn.animator().alphaValue = installAlpha
+                self.notesBtn.animator().alphaValue = alpha
+                self.openReleasesBtn.animator().alphaValue = alpha
+                self.deleteBtn.animator().alphaValue = alpha
+            }
+        } else {
+            self.installBtn.alphaValue = installAlpha
+            self.notesBtn.alphaValue = alpha
+            self.openReleasesBtn.alphaValue = alpha
+            self.deleteBtn.alphaValue = alpha
         }
         
         // Text colors

@@ -36,10 +36,10 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         eyeImageView = NSImageView()
         eyeImageView.translatesAutoresizingMaskIntoConstraints = false
         if let eyeImage = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
-            // Apply a tint color to match the app's accent
+            // Apply a tint color to match the dynamically generated app icon color
             let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
             eyeImageView.image = eyeImage.withSymbolConfiguration(config)
-            eyeImageView.contentTintColor = .controlAccentColor
+            eyeImageView.contentTintColor = Utils.getAppIconColor()
         }
         eyeImageView.imageScaling = .scaleProportionallyUpOrDown
         // We will animate the layer
@@ -175,7 +175,7 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
             if let normalEye = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
                 let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
                 self.eyeImageView.image = normalEye.withSymbolConfiguration(config)
-                self.eyeImageView.contentTintColor = .controlAccentColor
+                self.eyeImageView.contentTintColor = Utils.getAppIconColor()
             }
             // Restart breathing
             self.startEyeAnimation()
@@ -291,7 +291,7 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
                 if let normalEye = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
                     let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
                     self.eyeImageView.image = normalEye.withSymbolConfiguration(config)
-                    self.eyeImageView.contentTintColor = .controlAccentColor
+                    self.eyeImageView.contentTintColor = Utils.getAppIconColor()
                 }
                 self.startEyeAnimation()
             }

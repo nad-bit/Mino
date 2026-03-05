@@ -26,7 +26,17 @@ bgPath.addClip()
 // Configure the "eye.fill" symbol
 let symbolConfig = NSImage.SymbolConfiguration(pointSize: 600, weight: .semibold)
 if let symbol = NSImage(systemSymbolName: "eye.fill", accessibilityDescription: nil)?.withSymbolConfiguration(symbolConfig) {
-    let tintColor = NSColor.systemBlue // We can customize this to Mino's accent blue
+    let curatedColors: [NSColor] = [
+        .systemBlue, .systemCyan, .systemPurple, .systemOrange,
+        .systemPink, .systemIndigo, .systemTeal, .systemMint,
+        .systemGreen, .systemYellow, .systemRed,
+        NSColor(calibratedRed: 0.0, green: 0.9, blue: 0.7, alpha: 1.0), // Neon Turquoise
+        NSColor(calibratedRed: 0.9, green: 0.1, blue: 0.5, alpha: 1.0), // Electric Pink
+        NSColor(calibratedRed: 0.5, green: 0.0, blue: 1.0, alpha: 1.0), // Deep Violet
+        NSColor(calibratedRed: 1.0, green: 0.6, blue: 0.0, alpha: 1.0), // Bright Mango
+        NSColor(calibratedRed: 0.1, green: 0.8, blue: 0.3, alpha: 1.0)  // Toxic Green
+    ]
+    let tintColor = curatedColors.randomElement() ?? .systemBlue
     let tintedSymbol = NSImage(size: symbol.size)
     tintedSymbol.lockFocus()
     tintColor.set()

@@ -293,4 +293,24 @@ class HomebrewManager {
             return [:]
         }
     }
+    
+    func runBrewUpdate() async -> Bool {
+        guard let path = brewPath else { return false }
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: path)
+                process.arguments = ["update"]
+                
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    continuation.resume(returning: process.terminationStatus == 0)
+                } catch {
+                    print("Error running brew update: \(error)")
+                    continuation.resume(returning: false)
+                }
+            }
+        }
+    }
 }

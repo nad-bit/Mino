@@ -5,6 +5,20 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.5] - Lynx - 2026-03-05
+
+### Added
+- **Intelligent Homebrew Cask Updates:** The top-level menu refresh interval now silently runs `brew update` in a background thread if it detects that any of your tracked repositories with an installed Homebrew Cask have released a new version on GitHub. This effectively eliminates the "Cask Not Found" errors when users immediately try to update right after a new release drops.
+- **Dynamic Personality Colors:** Abandoned the static blue system color. The app now compiles its icon natively during `build.sh` by randomly selecting from a curated palette of vibrant colors (Electric Pink, Toxic Green, Neon Turquoise, etc.). Each compilation generates a visually unique Mino. 
+- **UI Color Synchronization:** The animated SF Symbol "Eye" floating inside the "Add Repository" window now dynamically scans the generated application bundle at runtime and synchronizes its own tint color to seamlessly match the randomly generated App Icon.
+
+### Changed
+- **Animation Polish:** Removed duplicate scale animation triggers from the menu bar icon when interacting with certain action buttons. The visual confirmation is now a singular, precise pulse.
+- **Code Optimization:** Conducted a comprehensive cleanup of dead code, specifically targeting legacy `showAbout` methods and pruning 11 orphaned localization keys from the translation mapping file.
+
+### Fixed
+- **Menu Row UI Flashing:** Completely removed the visual stammer and flash of inline tracking icons that occurred at the very instant a user clicked to open the menu while the width was dynamically calculated. State transitions for hovering are now suspended securely until the view is fully rendered on screen.
+
 ## [1.3.4] - Argos Hotfix - 2026-03-03
 ### Fixed
 - **Pure Stealth Mode:** Removed experimental `NSApp` activation policies that were causing Mino's icon to temporarily pop into the macOS Dock when opening windows like Settings or Add Repository. Mino is now perfectly invisible in the Dock again while retaining the WindowServer fix from 1.3.3.

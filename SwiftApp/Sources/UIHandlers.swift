@@ -12,15 +12,6 @@ class UIHandlers {
         NSApp.delegate as? AppDelegate
     }
 
-    func showAbout() {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = "Mino"
-        alert.informativeText = Translations.get("aboutMsg")
-        alert.addButton(withTitle: Translations.get("ok"))
-        alert.runModal()
-    }
-    
     func confirmDeleteRepo(name: String) -> Bool {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()

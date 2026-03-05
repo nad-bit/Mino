@@ -62,4 +62,39 @@ class Utils {
         }
         return nil
     }
+    
+    static func getAppIconColor() -> NSColor {
+        guard let appIconImage = NSImage(named: NSImage.applicationIconName) ?? NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil),
+              let tiffData = appIconImage.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData) else {
+            return .controlAccentColor
+        }
+        
+        let width = bitmap.pixelsWide
+        let height = bitmap.pixelsHigh
+        
+        // We scan a grid of pixels to find the most prominent non-monochrome/non-dark color.
+        var maxBrightness: CGFloat = 0
+        var bestColor: NSColor = .controlAccentColor
+        
+        for y in stride(from: height/4, to: height*3/4, by: height/20) {
+            for x in stride(from: width/4, to: width*3/4, by: width/20) {
+                if let color = bitmap.colorAt(x: x, y: y) {
+                    // Ignore pure blacks and dark grays from the background
+                    let brightness = color.brightnessComponent
+                    let saturation = color.saturationComponent
+                    
+                    if brightness > 0.4 && saturation > 0.4 {
+                        if brightness + saturation > maxBrightness {
+                            maxBrightness = brightness + saturation
+                            bestColor = color
+                        }
+                    }
+                }
+            }
+        }
+        
+        return bestColor
+    }
 }
+

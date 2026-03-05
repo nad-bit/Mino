@@ -178,8 +178,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             
             // All fetches done, safely update the UI properties from within the MainActor Context
+            var newCaskVersionsDetected = false
             for (repo, info) in results {
+                if let oldInfo = self.repoCache[repo], let newVersion = info.version, let oldVersion = oldInfo.version {
+                    if newVersion != oldVersion {
+                        if ConfigManager.shared.config.repos.first(where: { $0.name == repo })?.cask != nil {
+                            newCaskVersionsDetected = true
+                        }
+                    }
+                } else if self.repoCache[repo] == nil && info.version != nil {
+                    // Newly added repo fetched its first version
+                    if ConfigManager.shared.config.repos.first(where: { $0.name == repo })?.cask != nil {
+                        newCaskVersionsDetected = true
+                    }
+                }
                 self.repoCache[repo] = info
+            }
+            
+            if newCaskVersionsDetected {
+                Task { let _ = await HomebrewManager.shared.runBrewUpdate() }
             }
             
             // --- Auto-Discovery of Homebrew Casks ---
@@ -514,7 +531,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @objc func handleOpenReleases(_ sender: NSMenuItem) {
-        animateStatusIcon(with: .scale)
         guard let repoName = sender.representedObject as? String else { return }
         if let url = URL(string: "https://github.com/\(repoName)/releases") {
             NSWorkspace.shared.open(url)
@@ -522,7 +538,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @objc func handleShowNotes(_ sender: NSMenuItem) {
-        animateStatusIcon(with: .scale)
         guard let repoName = sender.representedObject as? String else { return }
         let info = repoCache[repoName] ?? RepoInfo(name: repoName, error: nil)
         
@@ -537,7 +552,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @objc func handleDeleteRepo(_ sender: NSMenuItem) {
-        animateStatusIcon(with: .scale)
         guard let repoName = sender.representedObject as? String else { return }
         if UIHandlers.shared.confirmDeleteRepo(name: repoName) {
             ConfigManager.shared.config.repos.removeAll { $0.name == repoName }
@@ -549,7 +563,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @objc func handleInstallBrewCask(_ sender: NSMenuItem) {
-        animateStatusIcon(with: .scale)
         guard let caskName = sender.representedObject as? String else { return }
         
         // Show indefinite persistent installing notification while Brew works
@@ -607,13 +620,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
     
-    @objc func showAbout(_ sender: Any) {
-        animateStatusIcon(with: .scale)
-        UIHandlers.shared.showAbout()
-    }
-    
     @objc func openSettingsWindow(_ sender: Any) {
-        animateStatusIcon(with: .scale)
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController()
         }
@@ -624,7 +631,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     @objc func unifiedAddRepoDialog(_ sender: Any) {
-        animateStatusIcon(with: .scale)
         if addRepoWindowController == nil {
             addRepoWindowController = AddRepoWindowController()
             addRepoWindowController?.completionHandler = { [weak self] repoName, source, cask, completion in
