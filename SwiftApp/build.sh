@@ -7,8 +7,16 @@ BUILD_NUMBER="192"
 BUILD_DIR="build"
 
 echo "🧹 Cleaning previous build..."
-rm -rf "$BUILD_DIR"
-mkdir -p "$BUILD_DIR"
+if [ "$1" != "--release" ]; then
+    rm -rf "$BUILD_DIR"
+    mkdir -p "$BUILD_DIR"
+else
+    echo "⏩ Release flag detected. Skipping clean..."
+    if [ ! -d "$BUILD_DIR" ]; then
+        echo "❌ Error: Build directory not found. Run without --release first."
+        exit 1
+    fi
+fi
 
 function create_app_structure() {
     local APP_PATH="$1"
@@ -78,59 +86,62 @@ APP_ARM64="$BUILD_DIR/${APP_NAME}_AppleSilicon.app"
 APP_X86_64="$BUILD_DIR/${APP_NAME}_Intel.app"
 APP_UNIVERSAL="$BUILD_DIR/${APP_NAME}_Universal.app"
 
-echo "📝 Creating App Structures..."
-create_app_structure "$APP_ARM64"
-create_app_structure "$APP_X86_64"
-create_app_structure "$APP_UNIVERSAL"
+if [ "$1" != "--release" ]; then
+    echo "📝 Creating App Structures..."
+    create_app_structure "$APP_ARM64"
+    create_app_structure "$APP_X86_64"
+    create_app_structure "$APP_UNIVERSAL"
 
-echo "🔨 Compiling Swift sources for ARM64 (Apple Silicon)..."
-swiftc -Osize -parse-as-library Sources/*.swift -target arm64-apple-macosx12.0 -o "$APP_ARM64/Contents/MacOS/$APP_NAME"
+    echo "🔨 Compiling Swift sources for ARM64 (Apple Silicon)..."
+    swiftc -Osize -parse-as-library Sources/*.swift -target arm64-apple-macosx12.0 -o "$APP_ARM64/Contents/MacOS/$APP_NAME"
 
-echo "🔨 Compiling Swift sources for x86_64 (Intel)..."
-swiftc -Osize -parse-as-library Sources/*.swift -target x86_64-apple-macosx12.0 -o "$APP_X86_64/Contents/MacOS/$APP_NAME"
+    echo "🔨 Compiling Swift sources for x86_64 (Intel)..."
+    swiftc -Osize -parse-as-library Sources/*.swift -target x86_64-apple-macosx12.0 -o "$APP_X86_64/Contents/MacOS/$APP_NAME"
 
-echo "🔗 Creating Universal Binary..."
-lipo -create -output "$APP_UNIVERSAL/Contents/MacOS/$APP_NAME" "$APP_ARM64/Contents/MacOS/$APP_NAME" "$APP_X86_64/Contents/MacOS/$APP_NAME"
+    echo "🔗 Creating Universal Binary..."
+    lipo -create -output "$APP_UNIVERSAL/Contents/MacOS/$APP_NAME" "$APP_ARM64/Contents/MacOS/$APP_NAME" "$APP_X86_64/Contents/MacOS/$APP_NAME"
 
-# The following section replaces the old zipping logic
-# and assumes the universal binary is the primary one to work with.
-# It also corrects the path for the universal app to be named simply "$APP_NAME.app"
-# for the lipo operations, as implied by the provided snippet.
+    # Move the universal app to the standard name for processing
+    mv "$APP_UNIVERSAL" "$BUILD_DIR/$APP_NAME.app"
 
-# Move the universal app to the standard name for processing
-mv "$APP_UNIVERSAL" "$BUILD_DIR/$APP_NAME.app"
+    cd "$BUILD_DIR"
 
-cd "$BUILD_DIR"
+    echo -e "\n📦 Zipping applications..."
 
-echo -e "\n📦 Zipping applications..."
-
-# 1. Apple Silicon (ARM64) Zip
-if [ -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" ]; then
-    lipo -extract arm64 "$APP_NAME.app/Contents/MacOS/$APP_NAME" -output "${APP_NAME}_arm64" 2>/dev/null
-    if [ $? -eq 0 ]; then
-        mv "$APP_NAME.app/Contents/MacOS/$APP_NAME" "${APP_NAME}_universal_temp"
-        mv "${APP_NAME}_arm64" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
-        zip -qr "${APP_NAME}_v${VERSION}_AppleSilicon.zip" "$APP_NAME.app"
-        echo "✅ Created Apple Silicon build"
-        
-        # 2. Intel (x86_64) Zip
-        lipo -extract x86_64 "${APP_NAME}_universal_temp" -output "${APP_NAME}_x86_64" 2>/dev/null
+    # 1. Apple Silicon (ARM64) Zip
+    if [ -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" ]; then
+        lipo -extract arm64 "$APP_NAME.app/Contents/MacOS/$APP_NAME" -output "${APP_NAME}_arm64" 2>/dev/null
         if [ $? -eq 0 ]; then
-            mv "${APP_NAME}_x86_64" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
-            zip -qr "${APP_NAME}_v${VERSION}_Intel.zip" "$APP_NAME.app"
-            echo "✅ Created Intel build"
+            mv "$APP_NAME.app/Contents/MacOS/$APP_NAME" "${APP_NAME}_universal_temp"
+            mv "${APP_NAME}_arm64" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
+            zip -qr "${APP_NAME}_v${VERSION}_AppleSilicon.zip" "$APP_NAME.app"
+            echo "✅ Created Apple Silicon build"
+            
+            # 2. Intel (x86_64) Zip
+            lipo -extract x86_64 "${APP_NAME}_universal_temp" -output "${APP_NAME}_x86_64" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                mv "${APP_NAME}_x86_64" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
+                zip -qr "${APP_NAME}_v${VERSION}_Intel.zip" "$APP_NAME.app"
+                echo "✅ Created Intel build"
+            fi
+            
+            # 3. Universal Zip (Restore the fat binary)
+            mv "${APP_NAME}_universal_temp" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
+            zip -qr "${APP_NAME}_v${VERSION}_Universal.zip" "$APP_NAME.app"
         fi
-        
-        # 3. Universal Zip (Restore the fat binary)
-        mv "${APP_NAME}_universal_temp" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
-        zip -qr "${APP_NAME}_v${VERSION}_Universal.zip" "$APP_NAME.app"
     fi
-fi
 
-echo "✅ Build complete! ZIP packages are in the build/ directory."
+    echo "✅ Build complete! ZIP packages are in the build/ directory."
+    cd ..
+else
+    echo -e "\n⏩ Skipping build process as --release flag is present..."
+fi
 
 # --- Homebrew Cask Generation ---
 echo -e "\n🍺 Generating Homebrew Cask formula (mino.rb)..."
+
+# Ensure we are in root directory for pathing to build
+cd "$BUILD_DIR" 2>/dev/null || true
 
 SHA_ARM=$(shasum -a 256 "${APP_NAME}_v${VERSION}_AppleSilicon.zip" | awk '{print $1}')
 SHA_INTEL=$(shasum -a 256 "${APP_NAME}_v${VERSION}_Intel.zip" | awk '{print $1}')
