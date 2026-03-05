@@ -161,7 +161,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         let reposToFetch = ConfigManager.shared.config.repos.map { $0.name }
         
-        Task {
+        Task { [weak self] in
+            guard let self = self else { return }
             // Concurrent fetching for all repos
             var results: [(String, RepoInfo)] = []
             await withTaskGroup(of: (String, RepoInfo).self) { group in
@@ -568,7 +569,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Show indefinite persistent installing notification while Brew works
         HUDPanel.shared.show(title: Translations.get("installingTitle"), subtitle: Translations.get("installingMsg").format(with: ["cask_name": caskName]), duration: nil)
         
-        Task {
+        Task { [weak self] in
+            guard let self = self else { return }
             let result = await HomebrewManager.shared.installCask(cask: caskName)
             
             if result.success {
