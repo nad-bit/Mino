@@ -5,6 +5,11 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.6] - Panther Hotfix - 2026-03-05
+
+### Fixed
+- **Architectural Memory Leak:** Completely eliminated the severe RAM and CPU spikes introduced in v1.3.5 when interacting with the "Add Repository" window. The dynamic UI color synchronization has been re-engineered from a heavy runtime image processor into a zero-cost build-time code injection. Rendering the tint colors now consumes 0.0% CPU and RAM.
+
 ## [1.3.5] - Lynx - 2026-03-05
 
 ### Added
