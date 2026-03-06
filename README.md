@@ -111,6 +111,8 @@ Accessible via the **Preferences** menu item:
 | **Show Owner Name** | Toggle `owner/` prefix in repo names |
 | **New Release Indicator** | Toggle the ✦ symbol and configure threshold (1-30 days) |
 | **Sort by** | Segmented control: Date or Name |
+| **Menu layout** | Segmented control: Choose between 4 distinct UI arrangements |
+| **Menu Density: Compact Mode** | Toggle extreme density (shrinks rows from 22pt to 16pt) |
 
 ### Security
 

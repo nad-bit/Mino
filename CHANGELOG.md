@@ -5,6 +5,15 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.7] - Density & Hue Expansion - 2026-03-06
+
+### Added
+- **Compact Mode:** Transitioned the Easter Egg Density logic into a designated `NSSwitch` UI component in the `SettingsWindowController.swift`. Users can now explicitly toggle extreme repository density (shrinking rows from 22pt to 16pt), translating the label natively across all 6 supported languages.
+- **Color Palette Expansion:** Expanded the curated list of colors in `GenerateIcon.swift` from 12 static colors to over 20 neon-themed, distinct colors (e.g. Cyberpunk Yellow, Crimson Red) to dramatically lower the odds of visually identical sequential builds.
+
+### Fixed
+- **Universal App Icon Color Sync:** Fixed a compilation desync in `build.sh` where `swift GenerateIcon.swift` generated three separate random colors for `Intel`, `Silicon`, and `Universal` builds. Decoupled the generation logic upstream so exactly *one* `AppIcon.icns` and exactly *one* `GeneratedColor.swift` property are shared universally before generating the macOS file structures.
+
 ## [1.3.6] - Panther Hotfix - 2026-03-05
 
 ### Fixed
