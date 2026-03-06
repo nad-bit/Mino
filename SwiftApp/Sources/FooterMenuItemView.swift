@@ -5,7 +5,6 @@ class FooterMenuItemView: NSView {
     
     private let settingsBtn = MenuActionButton()
     private let quitBtn = MenuActionButton()
-    private let easterEggBtn = NSButton()
     private let appDelegate: AppDelegate
     
     // Track states
@@ -44,16 +43,8 @@ class FooterMenuItemView: NSView {
         quitBtn.hoverColor = .labelColor
         quitBtn.translatesAutoresizingMaskIntoConstraints = false
         
-        // Easter Egg Button (Invisible Toggle)
-        easterEggBtn.isTransparent = true
-        easterEggBtn.title = ""
-        easterEggBtn.isBordered = false
-        easterEggBtn.target = self
-        easterEggBtn.action = #selector(easterEggClicked)
-        easterEggBtn.translatesAutoresizingMaskIntoConstraints = false
         
         addSubview(settingsBtn)
-        addSubview(easterEggBtn)
         addSubview(quitBtn)
         
         NSLayoutConstraint.activate([
@@ -61,11 +52,6 @@ class FooterMenuItemView: NSView {
             settingsBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
             settingsBtn.widthAnchor.constraint(equalToConstant: 24),
             settingsBtn.heightAnchor.constraint(equalToConstant: 24),
-            
-            easterEggBtn.leadingAnchor.constraint(equalTo: settingsBtn.trailingAnchor, constant: 10),
-            easterEggBtn.trailingAnchor.constraint(equalTo: quitBtn.leadingAnchor, constant: -10),
-            easterEggBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
-            easterEggBtn.heightAnchor.constraint(equalToConstant: 32),
             
             quitBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
             quitBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -89,19 +75,6 @@ class FooterMenuItemView: NSView {
             appDelegate.performAfterMenuClose {
                 self.appDelegate.quitApp(menuItem)
             }
-        }
-    }
-    
-    @objc private func easterEggClicked() {
-        let isCompact = ConfigManager.shared.config.isCompactMode ?? false
-        ConfigManager.shared.config.isCompactMode = !isCompact
-        ConfigManager.shared.saveConfig()
-        
-        NSSound(named: "Pop")?.play()
-        
-        if enclosingMenuItem != nil {
-            appDelegate.animateStatusIcon(with: .bounce)
-            appDelegate.menu.cancelTracking()
         }
     }
     

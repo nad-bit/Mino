@@ -25,6 +25,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     let newIndicatorLabel = NSTextField(labelWithString: "")
     let sortSegment = NSSegmentedControl()
     let layoutSegment = NSSegmentedControl()
+    private let compactModeSwitch = NSSwitch()
     
     var tempToken: String?
     private var isUpdatingSelf = false
@@ -279,6 +280,11 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         addSettingsRow(to: formStack, label: layoutLabel, controls: [layoutSegment])
         
+        let compactLabel = NSTextField(labelWithString: Translations.get("compactModeLabel"))
+        compactModeSwitch.target = self
+        compactModeSwitch.action = #selector(toggleCompactMode(_:))
+        addSettingsRow(to: formStack, label: compactLabel, controls: [compactModeSwitch])
+        
         // Add a bottom spacer to push content up if needed and provide bottom margin
         let spacer = NSView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
@@ -332,6 +338,8 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let layout = ConfigManager.shared.config.menuLayout ?? "columns"
         let layoutIndex = ["columns", "cards", "hybrid", "tags"].firstIndex(of: layout) ?? 0
         layoutSegment.selectedSegment = layoutIndex
+        
+        compactModeSwitch.state = (ConfigManager.shared.config.isCompactMode == true) ? .on : .off
         
         let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
         newIndicatorSwitch.state = showNewIndicator ? .on : .off
@@ -545,6 +553,16 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         ConfigManager.shared.config.menuLayout = layoutModes[sender.selectedSegment]
         ConfigManager.shared.saveConfig()
         updateIndicatorSliderVisibility()
+        if let delegate = NSApp.delegate as? AppDelegate {
+             delegate.setupMenu()
+        }
+        isUpdatingSelf = false
+    }
+    
+    @objc private func toggleCompactMode(_ sender: NSSwitch) {
+        isUpdatingSelf = true
+        ConfigManager.shared.config.isCompactMode = sender.state == .on
+        ConfigManager.shared.saveConfig()
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.setupMenu()
         }
