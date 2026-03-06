@@ -134,6 +134,9 @@ if [ "$1" != "--release" ]; then
         fi
     fi
 
+    # Clean up the intermediate global icon
+    rm -f AppIcon.icns
+
     echo "✅ Build complete! ZIP packages are in the build/ directory."
     cd ..
 else
