@@ -35,7 +35,16 @@ if let symbol = NSImage(systemSymbolName: "eye.fill", accessibilityDescription: 
         NSColor(calibratedRed: 0.9, green: 0.1, blue: 0.5, alpha: 1.0), // Electric Pink
         NSColor(calibratedRed: 0.5, green: 0.0, blue: 1.0, alpha: 1.0), // Deep Violet
         NSColor(calibratedRed: 1.0, green: 0.6, blue: 0.0, alpha: 1.0), // Bright Mango
-        NSColor(calibratedRed: 0.1, green: 0.8, blue: 0.3, alpha: 1.0)  // Toxic Green
+        NSColor(calibratedRed: 0.1, green: 0.8, blue: 0.3, alpha: 1.0),  // Toxic Green
+        NSColor(calibratedRed: 1.0, green: 0.84, blue: 0.0, alpha: 1.0), // Cyberpunk Yellow
+        NSColor(calibratedRed: 0.86, green: 0.08, blue: 0.24, alpha: 1.0), // Crimson Red
+        NSColor(calibratedRed: 0.25, green: 0.41, blue: 0.88, alpha: 1.0), // Royal Blue
+        NSColor(calibratedRed: 0.6, green: 0.4, blue: 0.8, alpha: 1.0), // Amethyst
+        NSColor(calibratedRed: 1.0, green: 0.2, blue: 0.2, alpha: 1.0), // Neon Red
+        NSColor(calibratedRed: 0.0, green: 0.98, blue: 0.6, alpha: 1.0), // Spring Green
+        NSColor(calibratedRed: 1.0, green: 0.0, blue: 1.0, alpha: 1.0), // Magenta
+        NSColor(calibratedRed: 0.0, green: 1.0, blue: 1.0, alpha: 1.0), // Cyan
+        NSColor(calibratedRed: 1.0, green: 0.5, blue: 0.0, alpha: 1.0)  // Safety Orange
     ]
     activeTintColor = curatedColors.randomElement() ?? .systemBlue
     let tintedSymbol = NSImage(size: symbol.size)

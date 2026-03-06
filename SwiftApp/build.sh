@@ -55,12 +55,21 @@ function create_app_structure() {
 </dict>
 </plist>
 EOF
+    if [ -f "$BUILD_DIR/AppIcon.icns" ]; then
+        cp "$BUILD_DIR/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+    fi
+}
 
-    echo "🎨 Generating icon.png from SF Symbol..."
+APP_ARM64="$BUILD_DIR/${APP_NAME}_AppleSilicon.app"
+APP_X86_64="$BUILD_DIR/${APP_NAME}_Intel.app"
+APP_UNIVERSAL="$BUILD_DIR/${APP_NAME}_Universal.app"
+
+if [ "$1" != "--release" ]; then
+    echo "🎨 Generating Global App Icon from SF Symbol..."
     swift GenerateIcon.swift
     
     if [ -f "../icon.png" ]; then
-        echo "🎨 Scaling icon.png to AppIcon.icns bundle..."
+        echo "🎨 Scaling icon.png to unified AppIcon.icns bundle..."
         ICONSET_DIR="/tmp/MinoIcon.iconset"
         mkdir -p "$ICONSET_DIR"
         sips -z 16 16 "../icon.png" --out "$ICONSET_DIR/icon_16x16.png" > /dev/null 2>&1
@@ -73,20 +82,14 @@ EOF
         sips -z 512 512 "../icon.png" --out "$ICONSET_DIR/icon_256x256@2x.png" > /dev/null 2>&1
         sips -z 512 512 "../icon.png" --out "$ICONSET_DIR/icon_512x512.png" > /dev/null 2>&1
         sips -z 1024 1024 "../icon.png" --out "$ICONSET_DIR/icon_512x512@2x.png" > /dev/null 2>&1
-        iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/AppIcon.icns" > /dev/null 2>&1
+        iconutil -c icns "$ICONSET_DIR" -o "$BUILD_DIR/AppIcon.icns" > /dev/null 2>&1
         rm -rf "$ICONSET_DIR"
         mkdir -p ../docs
         mv ../icon.png ../docs/icon.png
     else
-        echo "⚠️  Warning: icon.png generation failed; falling back to default icon."
+        echo "⚠️  Warning: global icon.png generation failed."
     fi
-}
 
-APP_ARM64="$BUILD_DIR/${APP_NAME}_AppleSilicon.app"
-APP_X86_64="$BUILD_DIR/${APP_NAME}_Intel.app"
-APP_UNIVERSAL="$BUILD_DIR/${APP_NAME}_Universal.app"
-
-if [ "$1" != "--release" ]; then
     echo "📝 Creating App Structures..."
     create_app_structure "$APP_ARM64"
     create_app_structure "$APP_X86_64"
