@@ -24,7 +24,7 @@ https://github.com/user-attachments/assets/9b7cbe6b-5d9e-49c8-817e-5ff761ee4fbe
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
 - **🔐 Secure Token Storage**: GitHub Personal Access Tokens stored in macOS Keychain — never in plain text
 - **✦ Configurable New Release Indicator**: Customizable threshold (1-30 days) with toggle, replacing the old fixed emoji
-- **🌍 Localized**: English, Spanish, French, German, Italian, and Portuguese with automatic system detection
+- **🌍 Localized**: English, Spanish, French, German, Italian, Portuguese, Mandarin Chinese, Hindi, Arabic, Russian, and Japanese with automatic system detection
 - **🔄 Auto-Start**: Launch at login via native macOS LaunchAgent
 - **🎨 Light & Dark Mode**: Full support, including a forced-dark HUD panel for notifications
 
@@ -112,7 +112,13 @@ Accessible via the **Preferences** menu item:
 | **New Release Indicator** | Toggle the ✦ symbol and configure threshold (1-30 days) |
 | **Sort by** | Segmented control: Date or Name |
 | **Menu layout** | Segmented control: Choose between 4 distinct UI arrangements |
-| **Menu Density: Compact Mode** | Toggle extreme density (shrinks rows from 22pt to 16pt) |
+| **Compact Menu** | Toggle extreme density (shrinks rows from 22pt to 16pt) |
+
+### System Permissions
+
+Mino requires certain macOS permissions to function seamlessly:
+- **Background Activity (Login Items)**: Required to allow the app to run persistently in the menu bar and start automatically when you log into your Mac.
+- **App Management (Privacy & Security)**: Required because Mino executes background scripts (`brew reinstall`) that modify or install other applications inside your `/Applications` folder. macOS enforces this protection to prevent silent app tampering.
 
 ### Security
 

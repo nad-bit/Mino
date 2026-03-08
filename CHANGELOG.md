@@ -5,6 +5,11 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.8] - 2026-03-08
+
+### Added
+- **Global Localization Expansion:** Mino is now natively accessible to hundreds of millions of new users with full UI translation support for **Mandarin Chinese**, **Hindi**, **Arabic**, **Russian**, and **Japanese**. The application automatically detects and adopts your Mac's primary system language natively.
+
 ## [1.3.7] - Density & Hue Expansion - 2026-03-06
 
 ### Added

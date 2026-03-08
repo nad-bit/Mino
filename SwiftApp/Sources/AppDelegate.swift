@@ -47,6 +47,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if addRepoWindowController !== keep { addRepoWindowController?.window?.orderOut(nil) }
     }
     
+    func hideInformationalWindows() {
+        if settingsWindowController?.window?.isVisible == true {
+            settingsWindowController?.window?.orderOut(nil)
+        }
+        if releaseNotesWindowController?.window?.isVisible == true {
+            releaseNotesWindowController?.window?.orderOut(nil)
+        }
+    }
+    
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         
@@ -536,6 +545,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     @objc func handleOpenReleases(_ sender: NSMenuItem) {
         guard let repoName = sender.representedObject as? String else { return }
+        
+        hideInformationalWindows()
+        
         if let url = URL(string: "https://github.com/\(repoName)/releases") {
             NSWorkspace.shared.open(url)
         }

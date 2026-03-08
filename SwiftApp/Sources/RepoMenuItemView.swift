@@ -25,9 +25,9 @@ class MenuActionButton: NSButton {
         didSet { if isHovered { contentTintColor = hoverColor } }
     }
     
-    // Provide a consistently large hit area regardless of the small icon size
     override var intrinsicContentSize: NSSize {
-        return NSSize(width: 26, height: 26) // Matches typical menu action height
+        // Expand height significantly so the layout system has room, but we rely on stack constraints
+        return NSSize(width: 26, height: 40)
     }
     
     override func updateTrackingAreas() {
@@ -138,6 +138,7 @@ class RepoMenuItemView: NSView {
         buttonStack.orientation = .horizontal
         buttonStack.spacing = 0
         buttonStack.alignment = .centerY
+        buttonStack.distribution = .fillEqually
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
     }
     
@@ -207,7 +208,8 @@ class RepoMenuItemView: NSView {
             contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
             buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            buttonStack.topAnchor.constraint(equalTo: topAnchor),
+            buttonStack.bottomAnchor.constraint(equalTo: bottomAnchor),
             buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: contentStack.trailingAnchor, constant: 8)
         ])
     }
@@ -286,7 +288,8 @@ class RepoMenuItemView: NSView {
             vStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             vStack.centerYAnchor.constraint(equalTo: centerYAnchor),
             buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            buttonStack.topAnchor.constraint(equalTo: topAnchor),
+            buttonStack.bottomAnchor.constraint(equalTo: bottomAnchor),
             buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: vStack.trailingAnchor, constant: 8)
         ])
     }
@@ -380,7 +383,8 @@ class RepoMenuItemView: NSView {
             contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
             buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            buttonStack.topAnchor.constraint(equalTo: topAnchor),
+            buttonStack.bottomAnchor.constraint(equalTo: bottomAnchor),
             buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: contentStack.trailingAnchor, constant: 8)
         ])
     }
@@ -544,6 +548,7 @@ class RepoMenuItemView: NSView {
             appDelegate.menu.cancelTracking()
             if let url = URL(string: "https://github.com/\(repoName)") {
                 NSWorkspace.shared.open(url)
+                appDelegate.hideInformationalWindows()
             }
         }
     }
