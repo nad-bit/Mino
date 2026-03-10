@@ -78,7 +78,7 @@ class RepoMenuItemView: NSView {
     private let repoName: String
     private let caskName: String?
     private let appDelegate: AppDelegate
-    private let layout: String
+    private let layoutMode: String
     private let isCompact: Bool
     
     // Track last known highlight state
@@ -92,7 +92,7 @@ class RepoMenuItemView: NSView {
         self.repoName = repoName
         self.caskName = displayData.caskName
         self.appDelegate = appDelegate
-        self.layout = layout
+        self.layoutMode = layout
         self.isCompact = ConfigManager.shared.config.isCompactMode ?? false
         
         var rowHeight: CGFloat = (layout == "cards") ? 40 : 22
@@ -485,7 +485,7 @@ class RepoMenuItemView: NSView {
         applyTextWithIndicatorColor(to: titleLabel, baseColor: mainColor, highlighted: highlighted)
         applyTextWithIndicatorColor(to: subtitleLabel, baseColor: secondaryColor, highlighted: highlighted)
         
-        versionLabel.textColor = (layout == "cards") ? (highlighted ? mainColor : .white) : secondaryColor
+        versionLabel.textColor = (layoutMode == "cards") ? (highlighted ? mainColor : .white) : secondaryColor
         
         // ageLabel shouldn't normally have the indicator since it's in the title/subtitle, but for safety:
         applyTextWithIndicatorColor(to: ageLabel, baseColor: highlighted ? mainColor : tertiaryColor, highlighted: highlighted)
@@ -500,7 +500,7 @@ class RepoMenuItemView: NSView {
         deleteBtn.hoverColor = btnHover
         
         // In cards mode, adjust the version pill background
-        if layout == "cards" {
+        if layoutMode == "cards" {
             versionLabel.backgroundColor = highlighted ? .clear : NSColor.systemBlue.withAlphaComponent(0.7)
         }
     }
@@ -539,6 +539,27 @@ class RepoMenuItemView: NSView {
         }
         
         super.draw(dirtyRect)
+    }
+    
+    override func layout() {
+        super.layout()
+        
+        // Dynamically calculate if the titleLabel is physically truncating its text.
+        // If the required intrinsic textual width exceeds the rendered frame dimension,
+        // it strictly means the user is seeing an ellipsis (...) so we display a tooltip.
+        let stringValue = titleLabel.stringValue as NSString
+        let requiredSize = stringValue.size(withAttributes: [.font: titleLabel.font as Any])
+        
+        if requiredSize.width > titleLabel.frame.width {
+            titleLabel.toolTip = titleLabel.stringValue
+            // If the repo name is truncated (often to just 1-2 letters), it's very hard
+            // to hover it. So we also use the versionLabel as a massive hover target
+            // to show the full repo name.
+            versionLabel.toolTip = titleLabel.stringValue
+        } else {
+            titleLabel.toolTip = nil
+            versionLabel.toolTip = nil
+        }
     }
     
     // Click on row opens the repo's main GitHub page
