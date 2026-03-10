@@ -5,6 +5,17 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.9] - 2026-03-10
+
+### Added
+- **Dynamic Action Status:** When a repository is being added via the Quick Add mechanism or the Hub, the menu header instantly transforms to display an "Añadiendo {dueño}/{repo}..." progress state to provide real-time feedback over slow network connections before seamlessly updating the UI.
+
+### Fixed
+- **Phantom Indicator Bug:** Overhauled the `NSMenu` lifecycle handling to guarantee the Red Notification "Iris" remains organically synchronized with the user's focus. The 'visto' state is now strictly enforced only upon *closing* the menubar, meaning newly-added repositories are accurately decorated with the red notification dot until explicitly dismissed.
+- **State Purge on Deletion:** Eliminating a repository now synchronously wipes its lingering "last-seen" memory state, preventing bugs where re-adding a previously deleted repository would bypass the notification dot entirely.
+- **Dangling Release Notes:** Solved a visual glitch where the floating Release Notes window remained open after its associated repository was forcefully deleted from the main menu list.
+- **Foreign Cask Resilience:** Greatly enhanced the exception handling for Homebrew Casks sourced from third-party TAPs (custom external repositories). Mino now cleanly intercepts the `404` errors returned by the public `formulae.brew.sh` API instead of crashing the URLSession parser natively.
+
 ## [1.3.8] - 2026-03-08
 
 ### Added
