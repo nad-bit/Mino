@@ -122,11 +122,11 @@ class HeaderMenuItemView: NSView {
             refreshHitArea.isHidden = true
             
             // Show Quick Add
-            quickAddLabel.stringValue = r
+            quickAddLabel.stringValue = Translations.get("quickAddHead").format(with: ["repo": r])
             quickAddLabel.isHidden = false
             quickAddHitArea.isHidden = false
             
-            let tip = Translations.get("quickAdd").replacingOccurrences(of: "{repo}", with: r)
+            let tip = Translations.get("quickAdd").format(with: ["repo": r])
             addBtn.toolTip = tip
             quickAddHitArea.toolTip = tip
             addBtn.baseColor = .controlAccentColor
@@ -189,7 +189,13 @@ class HeaderMenuItemView: NSView {
             appDelegate.animateStatusIcon(with: .scale)
             appDelegate.performAfterMenuClose {
                 if let repo = self.quickAddRepoStr {
-                    Task { let _ = await self.appDelegate.addRepoSmart(repoName: repo) }
+                    self.appDelegate.quickAddingRepo = repo
+                    Task {
+                        let _ = await self.appDelegate.addRepoSmart(repoName: repo)
+                        await MainActor.run {
+                            self.appDelegate.quickAddingRepo = nil
+                        }
+                    }
                 } else {
                     self.appDelegate.unifiedAddRepoDialog(menuItem)
                 }

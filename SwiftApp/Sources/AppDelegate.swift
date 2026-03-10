@@ -29,6 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     // Defer actions until menu completes its closing animation
     var pendingMenuAction: (() -> Void)? = nil
+    var quickAddingRepo: String? = nil
     
     var settingsWindowController: SettingsWindowController?
     var releaseNotesWindowController: ReleaseNotesWindowController?
@@ -467,7 +468,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         // Hybrid Quick Add interceptor
         if let header = headerView {
-            if let clipboardRepo = Utils.getGitHubRepoFromClipboard(),
+            if let adding = quickAddingRepo {
+                // A repo is currently being fetched — show "Adding..." status
+                header.updateClipboardState(repo: nil)
+                header.updateTimeText(Translations.get("addingRepo").format(with: ["repo": adding]), isRefreshing: true)
+            } else if let clipboardRepo = Utils.getGitHubRepoFromClipboard(),
                !ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == clipboardRepo.lowercased() }) {
                 header.updateClipboardState(repo: clipboardRepo)
             } else {
@@ -572,6 +577,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if UIHandlers.shared.confirmDeleteRepo(name: repoName) {
             ConfigManager.shared.config.repos.removeAll { $0.name == repoName }
             repoCache.removeValue(forKey: repoName)
+            // Clean up seen state so re-adding this repo later triggers the red dot
+            var seenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
+            seenVersions.removeValue(forKey: repoName)
+            UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
+            // Close release notes window if it's showing the deleted repo
+            if releaseNotesWindowController?.currentRepoName == repoName {
+                releaseNotesWindowController?.window?.orderOut(nil)
+            }
             ConfigManager.shared.saveConfig()
             setupMenu()
             animateStatusIcon(with: .replaceWithSlash)
@@ -652,6 +665,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             addRepoWindowController = AddRepoWindowController()
             addRepoWindowController?.completionHandler = { [weak self] repoName, source, cask, completion in
                 guard let self = self else { return }
+                if let repo = repoName {
+                    self.quickAddingRepo = repo
+                }
                 Task {
                     var success = false
                     if let repo = repoName, source == "manual" {
@@ -660,6 +676,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         success = await self.processBrewSelection(caskName: caskName)
                     }
                     await MainActor.run {
+                        self.quickAddingRepo = nil
                         completion(success)
                     }
                 }
@@ -735,9 +752,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     
     func processBrewSelection(caskName: String) async -> Bool {
+        // Early check: if any repo already has this cask, show duplicate message
+        if ConfigManager.shared.config.repos.contains(where: { $0.cask?.lowercased() == caskName.lowercased() }) {
+            await MainActor.run {
+                self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoExists"))
+            }
+            return false
+        }
+        
         guard let url = URL(string: "https://formulae.brew.sh/api/cask/\(caskName).json") else { return false }
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(from: url)
+            
+            // TAP casks (e.g. from custom taps) are not in the public API and return 404
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                await MainActor.run {
+                    self.sendNotification(title: Translations.get("brewErrorTitle"), subtitle: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
+                }
+                return false
+            }
+            
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 var repoName: String? = nil
                 let regex = try NSRegularExpression(pattern: "github\\.com/([^/]+/[^/\\s\"]+)")
@@ -773,7 +807,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         } catch {
             await MainActor.run {
-                self.sendNotification(title: Translations.get("error"), subtitle: "Could not get info for \(caskName): \(error.localizedDescription)")
+                self.sendNotification(title: Translations.get("brewErrorTitle"), subtitle: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
             }
         }
         return false

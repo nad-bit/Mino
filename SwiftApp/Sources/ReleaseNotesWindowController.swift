@@ -28,6 +28,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
     private var titleLabel: NSTextField!
     private var versionLabel: NSTextField!
     private var scrollContainer: NSVisualEffectView!
+    private(set) var currentRepoName: String?
     
     init() {
         let windowRect = NSRect(x: 0, y: 0, width: 540, height: 460)
@@ -116,6 +117,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
     }
     
     func loadNotes(for info: RepoInfo) {
+        self.currentRepoName = info.name
         let caskName = ConfigManager.shared.config.repos.first(where: { $0.name == info.name && $0.source == "brew" })?.cask
         
         // --- TITLE ---

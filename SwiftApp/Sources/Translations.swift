@@ -3,6 +3,8 @@ import Foundation
 enum Translations {
     static let i18n: [String: [String: String]] = [
         "en": [
+            "addingRepo": "Adding {repo}...",
+            "quickAddHead": "Quick Add: {repo}",
             "configureToken": "GitHub Account",
             "selectCaskPlaceholder": "--- Select a Cask ---",
             "deleteRepo": "Delete Repository", "openReleases": "Open Releases Page", "releaseNotes": "Release Notes",
@@ -48,6 +50,8 @@ enum Translations {
             "sudoRequiredDesc": "The application '{cask_name}' requires system permissions (sudo) to be installed.\n\nPlease open your Terminal and run:\nbrew reinstall --cask {cask_name}",
         ],
         "es": [
+            "addingRepo": "Añadiendo {repo}...",
+            "quickAddHead": "Añadir: {repo}",
             "configureToken": "Cuenta de GitHub",
             "selectCaskPlaceholder": "--- Selecciona un Cask ---",
             "deleteRepo": "Eliminar Repositorio", "openReleases": "Abrir página de lanzamientos", "releaseNotes": "Notas de la versión",
@@ -93,6 +97,8 @@ enum Translations {
             "sudoRequiredDesc": "La aplicación '{cask_name}' necesita permisos del sistema (sudo) para instalarse.\n\nPor favor, abre tu Terminal y ejecuta:\nbrew reinstall --cask {cask_name}",
         ],
         "fr": [
+            "addingRepo": "Ajout de {repo}...",
+            "quickAddHead": "Ajout rapide : {repo}",
             "configureToken": "Compte GitHub",
             "selectCaskPlaceholder": "--- Sélectionner un Cask ---",
             "deleteRepo": "Supprimer le dépôt", "openReleases": "Ouvrir les versions", "releaseNotes": "Notes de version",
@@ -138,6 +144,8 @@ enum Translations {
             "sudoRequiredDesc": "L'application '{cask_name}' nécessite des autorisations système (sudo) pour être installée.\n\nVeuillez ouvrir votre Terminal et exécuter:\nbrew reinstall --cask {cask_name}",
         ],
         "de": [
+            "addingRepo": "Füge {repo} hinzu...",
+            "quickAddHead": "Schnell hinzufügen: {repo}",
             "configureToken": "GitHub-Konto",
             "selectCaskPlaceholder": "--- Einen Cask auswählen ---",
             "deleteRepo": "Repository löschen", "openReleases": "Releases öffnen", "releaseNotes": "Versionshinweise",
@@ -183,6 +191,8 @@ enum Translations {
             "sudoRequiredDesc": "Die Anwendung '{cask_name}' benötigt Systemberechtigungen (sudo), um installiert zu werden.\n\nBitte öffnen Sie Ihr Terminal und führen Sie aus:\nbrew reinstall --cask {cask_name}",
         ],
         "it": [
+            "addingRepo": "Aggiunta di {repo}...",
+            "quickAddHead": "Aggiunta rapida: {repo}",
             "configureToken": "Account GitHub",
             "selectCaskPlaceholder": "--- Seleziona un Cask ---",
             "deleteRepo": "Elimina Repository", "openReleases": "Apri le versioni", "releaseNotes": "Note di Rilascio",
@@ -228,6 +238,8 @@ enum Translations {
             "sudoRequiredDesc": "L'applicazione '{cask_name}' richiede i permessi di sistema (sudo) per essere installata.\n\nPer favore, apri il tuo Terminale ed esegui:\nbrew reinstall --cask {cask_name}",
         ],
         "pt": [
+            "addingRepo": "Adicionando {repo}...",
+            "quickAddHead": "Adicionar: {repo}",
             "configureToken": "Conta GitHub",
             "selectCaskPlaceholder": "--- Selecione um Cask ---",
             "deleteRepo": "Excluir Repositório", "openReleases": "Abrir Lançamentos", "releaseNotes": "Notas de Lançamento",
@@ -273,6 +285,8 @@ enum Translations {
             "sudoRequiredDesc": "Este aplicativo '{cask_name}' requer permissões do sistema (sudo) para ser instalado.\n\nPor favor, abra seu Terminal e execute:\nbrew reinstall --cask {cask_name}",
         ],
          "zh": [
+            "addingRepo": "正在添加 {repo}...",
+            "quickAddHead": "快速添加: {repo}",
             "configureToken": "GitHub 账号",
             "selectCaskPlaceholder": "--- 选择一个 Cask ---",
             "deleteRepo": "删除仓库", "openReleases": "打开发布页面", "releaseNotes": "发布说明",
@@ -318,6 +332,8 @@ enum Translations {
             "sudoRequiredDesc": "安装 '{cask_name}' 需要系统权限 (sudo)。\n\n请打开终端并运行:\nbrew reinstall --cask {cask_name}",
         ],
         "hi": [
+            "addingRepo": "{repo} जोड़ा जा रहा है...",
+            "quickAddHead": "त्वरित जोड़ें: {repo}",
             "configureToken": "GitHub खात",
             "selectCaskPlaceholder": "--- एक Cask चुनें ---",
             "deleteRepo": "भंडार हटाएं", "openReleases": "रिलीज़ पृष्ठ खोलें", "releaseNotes": "रिलीज़ नोट्स",
@@ -363,6 +379,8 @@ enum Translations {
             "sudoRequiredDesc": "एप्लिकेशन '{cask_name}' को स्थापित करने के लिए सिस्टम अनुमतियों (sudo) की आवश्यकता है।\n\nकृपया अपना टर्मिनल खोलें और चलाएं:\nbrew reinstall --cask {cask_name}",
         ],
         "ar": [
+            "addingRepo": "جاري إضافة {repo}...",
+            "quickAddHead": "إضافة سريعة: {repo}",
             "configureToken": "حساب GitHub",
             "selectCaskPlaceholder": "--- اختر Cask ---",
             "deleteRepo": "حذف المستودع", "openReleases": "فتح صفحة الإصدارات", "releaseNotes": "ملاحظات الإصدار",
@@ -408,6 +426,8 @@ enum Translations {
             "sudoRequiredDesc": "يتطلب التطبيق '{cask_name}' أذونات النظام (sudo) للتثبيت.\n\nالرجاء فتح المحطة الطرفية وتشغيل:\nbrew reinstall --cask {cask_name}",
         ],
         "ru": [
+            "addingRepo": "Добавление {repo}...",
+            "quickAddHead": "Быстро добавить: {repo}",
             "configureToken": "Учетная запись GitHub",
             "selectCaskPlaceholder": "--- Выберите Cask ---",
             "deleteRepo": "Удалить репозиторий", "openReleases": "Открыть страницу релизов", "releaseNotes": "Заметки к релизу",
@@ -453,6 +473,8 @@ enum Translations {
             "sudoRequiredDesc": "Для установки приложения '{cask_name}' требуются системные разрешения (sudo).\n\nПожалуйста, откройте терминал и выполните:\nbrew reinstall --cask {cask_name}",
         ],
         "ja": [
+            "addingRepo": "{repo} を追加中...",
+            "quickAddHead": "クイック追加: {repo}",
             "configureToken": "GitHub アカウント",
             "selectCaskPlaceholder": "--- Cask を選択 ---",
             "deleteRepo": "リポジトリを削除", "openReleases": "リリース ページを開く", "releaseNotes": "リリース ノート",
