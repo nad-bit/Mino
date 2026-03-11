@@ -545,11 +545,12 @@ class RepoMenuItemView: NSView {
         super.layout()
         
         // Dynamically calculate if the titleLabel is physically truncating its text.
-        // `intrinsicContentSize` correctly accounts for NSTextField cell padding 
-        // which `NSString.size(withAttributes:)` ignores.
-        let requiredWidth = titleLabel.intrinsicContentSize.width
-        // Allow a 1pt tolerance for floating point rounding diffs
-        if requiredWidth > titleLabel.frame.width + 1.0 {
+        // An unconstrained cell size measurement guarantees the true text width
+        // regardless of current view bounds or stack view compression.
+        let unconstrainedWidth = titleLabel.cell?.cellSize(forBounds: NSMakeRect(0, 0, .greatestFiniteMagnitude, .greatestFiniteMagnitude)).width ?? titleLabel.intrinsicContentSize.width
+        
+        // Use a tiny 0.1 tolerance for floating point safety
+        if unconstrainedWidth > titleLabel.frame.width + 0.1 {
             titleLabel.toolTip = titleLabel.stringValue
             // If the repo name is truncated (often to just 1-2 letters), it's very hard
             // to hover it. So we also use the versionLabel as a massive hover target
