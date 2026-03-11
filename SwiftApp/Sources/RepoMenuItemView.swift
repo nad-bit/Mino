@@ -545,12 +545,11 @@ class RepoMenuItemView: NSView {
         super.layout()
         
         // Dynamically calculate if the titleLabel is physically truncating its text.
-        // If the required intrinsic textual width exceeds the rendered frame dimension,
-        // it strictly means the user is seeing an ellipsis (...) so we display a tooltip.
-        let stringValue = titleLabel.stringValue as NSString
-        let requiredSize = stringValue.size(withAttributes: [.font: titleLabel.font as Any])
-        
-        if requiredSize.width > titleLabel.frame.width {
+        // `intrinsicContentSize` correctly accounts for NSTextField cell padding 
+        // which `NSString.size(withAttributes:)` ignores.
+        let requiredWidth = titleLabel.intrinsicContentSize.width
+        // Allow a 1pt tolerance for floating point rounding diffs
+        if requiredWidth > titleLabel.frame.width + 1.0 {
             titleLabel.toolTip = titleLabel.stringValue
             // If the repo name is truncated (often to just 1-2 letters), it's very hard
             // to hover it. So we also use the versionLabel as a massive hover target
