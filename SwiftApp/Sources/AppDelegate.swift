@@ -431,9 +431,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         footerMenuItem.view = footerView
         menu.addItem(footerMenuItem)
         
-        // Native hidden NSMenuItems were removed here because macOS NSMenu event tracking 
-        // swallows keyEquivalents when custom views are present in the menu.
-        // We now handle these shortcuts manually via an NSEvent local monitor in menuWillOpen().
+        // Hidden NSMenuItem for CMD+, (Preferences shortcut).
+        // Key equivalents are disabled for items WITH custom views, but this item
+        // has NO view — so its key equivalent fires normally during menu tracking.
+        // allowsKeyEquivalentWhenHidden ensures it works even though isHidden = true.
+        let prefsShortcut = NSMenuItem(title: "", action: #selector(openSettingsWindow(_:)), keyEquivalent: ",")
+        prefsShortcut.keyEquivalentModifierMask = .command
+        prefsShortcut.target = self
+        prefsShortcut.isHidden = true
+        prefsShortcut.allowsKeyEquivalentWhenHidden = true
+        menu.addItem(prefsShortcut)
         
         updateStatusIcon(hasUpdates: anyNewUpdates)
     }
@@ -506,9 +513,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             }
         }
         
-        // Install keyboard shortcut monitor for CMD+, (Preferences)
-        // Handled by MenuSearchField.performKeyEquivalent() since NSMenu's
-        // modal tracking loop swallows NSEvent local monitors.
         
         // Hybrid Quick Add interceptor
         if let header = headerView {
@@ -894,29 +898,13 @@ extension AppDelegate {
     }
 }
 
-// MARK: - MenuSearchField (Custom NSSearchField for in-menu keyboard shortcuts)
+// MARK: - MenuSearchField (subclass for AppDelegate reference)
 
-/// NSMenu runs its own modal tracking loop that swallows NSEvent local monitors.
-/// The only element that receives keyboard events inside a tracking menu is the
-/// first responder (our search field). By overriding `performKeyEquivalent:`,
-/// we can intercept CMD+, and route it to open Preferences.
 class MenuSearchField: NSSearchField {
     private weak var appDelegate: AppDelegate?
     
     convenience init(appDelegate: AppDelegate) {
         self.init(frame: .zero)
         self.appDelegate = appDelegate
-    }
-    
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        // Intercept CMD+, to open Preferences
-        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "," {
-            appDelegate?.pendingMenuAction = { [weak self] in
-                self?.appDelegate?.openSettingsWindow(self as Any)
-            }
-            appDelegate?.menu.cancelTracking()
-            return true // event was handled
-        }
-        return super.performKeyEquivalent(with: event)
     }
 }
