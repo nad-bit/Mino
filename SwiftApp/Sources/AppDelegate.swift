@@ -107,7 +107,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         
         updateStatusIcon(hasUpdates: false)
         
-        menu = GuardedMenu()
+        menu = NSMenu()
         menu.delegate = self
         menu.autoenablesItems = false  // Critical: prevents AppKit from disabling custom-view items that have no action
         statusItem.menu = menu
@@ -449,6 +449,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             menu.addItem(item)
         }
         
+        // Guard shortcuts: common CMD combinations that could leak out of the
+        // menu tracking loop and break defined shortcuts. These are no-ops.
+        for key in ["a","c","v","x","z","w","s","f","r","t","p","o","d","e","b","h","l","m","i","u","g","j","k","y"] {
+            let guard_item = NSMenuItem(title: "", action: #selector(menuNoop), keyEquivalent: key)
+            guard_item.keyEquivalentModifierMask = .command
+            guard_item.target = self
+            guard_item.isHidden = true
+            guard_item.allowsKeyEquivalentWhenHidden = true
+            menu.addItem(guard_item)
+        }
+        
         updateStatusIcon(hasUpdates: anyNewUpdates)
     }
     
@@ -579,6 +590,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     }
 
     // MARK: - Handlers
+    
+    /// No-op action for guard shortcut items that absorb undefined CMD
+    /// keystrokes inside the menu tracking loop.
+    @objc func menuNoop(_ sender: Any) {}
     
     @objc func quitApp(_ sender: Any) {
         countdownTimer?.invalidate()
@@ -913,26 +928,5 @@ class MenuSearchField: NSSearchField {
     convenience init(appDelegate: AppDelegate) {
         self.init(frame: .zero)
         self.appDelegate = appDelegate
-    }
-}
-
-// MARK: - GuardedMenu
-
-/// Subclass of NSMenu that prevents unhandled key equivalents from leaking
-/// out of the menu tracking loop. Without this, pressing an undefined shortcut
-/// (e.g. CMD+X) causes the event to fall through to NSApp, which disrupts
-/// the tracking state and breaks subsequently defined shortcuts like CMD+,.
-class GuardedMenu: NSMenu {
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        // First, try the normal key equivalent matching (our hidden items)
-        if super.performKeyEquivalent(with: event) {
-            return true
-        }
-        // If no item matched but it's a CMD-based shortcut, swallow it
-        // to prevent it from leaking out of the tracking loop.
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command) {
-            return true
-        }
-        return false
     }
 }
