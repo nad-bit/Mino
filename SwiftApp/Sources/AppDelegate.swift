@@ -24,6 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var searchField: NSSearchField?
     var searchMenuItem: NSMenuItem?
     var repoMenuItems: [(item: NSMenuItem, data: RepoDisplayData)] = []
+    var keyMonitor: Any?
     
     // Refresh Logic and States
     var lastRefreshTime: Date = Date.distantPast
@@ -261,9 +262,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         // --- Setup Search Bar ---
         searchMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         let searchContainer = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 32))
-        searchField = NSSearchField(frame: NSRect(x: 14, y: 5, width: 252, height: 22))
+        searchContainer.autoresizingMask = [.width]
+        searchField = NSSearchField(frame: .zero)
         if let sf = searchField {
-            sf.placeholderString = Translations.get("searchOrAdd")
+            sf.placeholderString = Translations.get("search")
             sf.delegate = self
             sf.focusRingType = .none
             searchContainer.addSubview(sf)
@@ -505,6 +507,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             }
         }
         
+        // Install keyboard shortcut monitor for CMD+, (Preferences)
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "," {
+                self?.pendingMenuAction = {
+                    self?.openSettingsWindow(self as Any)
+                }
+                self?.menu.cancelTracking()
+                return nil // swallow the event
+            }
+            return event
+        }
+        
         // Hybrid Quick Add interceptor
         if let header = headerView {
             if let adding = quickAddingRepo {
@@ -522,6 +536,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     
     func menuDidClose(_ menu: NSMenu) {
         menuIsOpen = false
+        
+        // Remove keyboard shortcut monitor
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
         
         // Mark currently cached versions as definitively seen upon closing the menu block
         // This ensures async fetches that resolved while the menu was open are caught
