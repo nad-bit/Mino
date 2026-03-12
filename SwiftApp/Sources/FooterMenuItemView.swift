@@ -23,9 +23,10 @@ class FooterMenuItemView: NSView {
     
     private func setupView() {
         // Settings Button
-        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
         settingsBtn.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: Translations.get("preferences"))?.withSymbolConfiguration(config)
         settingsBtn.isBordered = false
+        settingsBtn.controlSize = .small
         settingsBtn.target = self
         settingsBtn.action = #selector(settingsClicked)
         settingsBtn.toolTip = Translations.get("preferences")
@@ -36,6 +37,7 @@ class FooterMenuItemView: NSView {
         // Quit Button
         quitBtn.image = NSImage(systemSymbolName: "power", accessibilityDescription: Translations.get("quit"))?.withSymbolConfiguration(config)
         quitBtn.isBordered = false
+        quitBtn.controlSize = .small
         quitBtn.target = self
         quitBtn.action = #selector(quitClicked)
         quitBtn.toolTip = Translations.get("quit")
@@ -53,7 +55,7 @@ class FooterMenuItemView: NSView {
             settingsBtn.widthAnchor.constraint(equalToConstant: 24),
             settingsBtn.heightAnchor.constraint(equalToConstant: 24),
             
-            quitBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            quitBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
             quitBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
             quitBtn.widthAnchor.constraint(equalToConstant: 24),
             quitBtn.heightAnchor.constraint(equalToConstant: 24)

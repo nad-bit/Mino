@@ -260,18 +260,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         
         // --- Setup Search Bar ---
         searchMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        let searchContainer = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 32))
+        let searchContainer = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 28))
         searchContainer.autoresizingMask = [.width]
         searchField = MenuSearchField(appDelegate: self)
         if let sf = searchField {
             sf.placeholderString = Translations.get("search")
             sf.delegate = self
             sf.focusRingType = .none
+            sf.controlSize = .small
+            sf.font = .systemFont(ofSize: 11)
             searchContainer.addSubview(sf)
             sf.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
-                sf.leadingAnchor.constraint(equalTo: searchContainer.leadingAnchor, constant: 14),
-                sf.trailingAnchor.constraint(equalTo: searchContainer.trailingAnchor, constant: -14),
+                sf.leadingAnchor.constraint(equalTo: searchContainer.leadingAnchor, constant: 18),
+                sf.trailingAnchor.constraint(equalTo: searchContainer.trailingAnchor, constant: -18),
                 sf.centerYAnchor.constraint(equalTo: searchContainer.centerYAnchor)
             ])
             searchMenuItem?.view = searchContainer
@@ -448,18 +450,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             item.allowsKeyEquivalentWhenHidden = true
             menu.addItem(item)
         }
-        
-        // Guard shortcuts: common CMD combinations that could leak out of the
-        // menu tracking loop and break defined shortcuts. These have no action
-        // (action: nil) so the menu stays open when they fire.
-        for key in ["a","c","v","x","z","w","s","f","r","t","p","o","d","e","b","h","l","m","i","u","g","j","k","y"] {
-            let guard_item = NSMenuItem(title: "", action: nil, keyEquivalent: key)
-            guard_item.keyEquivalentModifierMask = .command
-            guard_item.isEnabled = true
-            guard_item.isHidden = true
-            guard_item.allowsKeyEquivalentWhenHidden = true
-            menu.addItem(guard_item)
-        }
+
         
         updateStatusIcon(hasUpdates: anyNewUpdates)
     }
@@ -591,10 +582,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     }
 
     // MARK: - Handlers
-    
-    /// No-op action for guard shortcut items that absorb undefined CMD
-    /// keystrokes inside the menu tracking loop.
-    @objc func menuNoop(_ sender: Any) {}
     
     @objc func quitApp(_ sender: Any) {
         countdownTimer?.invalidate()
