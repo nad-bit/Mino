@@ -327,7 +327,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 ageLabel: (isLoading || isError) ? nil : ageInfo.label,
                 ageSeconds: ageInfo.seconds,
                 newIndicator: newIndicator,
-                isError: isError,
+                errorMessage: isError ? info.error : nil,
                 isLoading: isLoading,
                 caskName: repoObj.cask,
                 freshnessColor: freshnessColor

@@ -8,7 +8,7 @@ struct RepoDisplayData {
     let ageLabel: String?         // e.g. "3 days"
     let ageSeconds: Double
     let newIndicator: String      // "✦" or ""
-    let isError: Bool
+    let errorMessage: String?
     let isLoading: Bool
     let caskName: String?
     let freshnessColor: NSColor   // 🟢/🟡/⚪ mapped to NSColor
@@ -186,9 +186,10 @@ class RepoMenuItemView: NSView {
             versionLabel.font = .systemFont(ofSize: isCompact ? 9 : 10)
             versionLabel.textColor = .secondaryLabelColor
             versionLabel.translatesAutoresizingMaskIntoConstraints = false
-        } else if data.isError {
+        } else if let errorMsg = data.errorMessage {
             versionLabel.stringValue = "⚠️"
             versionLabel.font = .systemFont(ofSize: isCompact ? 9 : 10)
+            versionLabel.toolTip = errorMsg
             versionLabel.translatesAutoresizingMaskIntoConstraints = false
         }
         
@@ -244,17 +245,19 @@ class RepoMenuItemView: NSView {
             versionLabel.font = .systemFont(ofSize: isCompact ? 9 : 10)
             versionLabel.textColor = .secondaryLabelColor
             versionLabel.translatesAutoresizingMaskIntoConstraints = false
-        } else if data.isError {
+        } else if let errorMsg = data.errorMessage {
             versionLabel.stringValue = "⚠️"
             versionLabel.font = .systemFont(ofSize: isCompact ? 9 : 10)
+            versionLabel.toolTip = errorMsg
             versionLabel.translatesAutoresizingMaskIntoConstraints = false
         }
         
         // Line 2: age + indicator
         if let age = data.ageLabel {
             subtitleLabel.stringValue = "\(age)\(data.newIndicator)"
-        } else if data.isError {
+        } else if let errorMsg = data.errorMessage {
             subtitleLabel.stringValue = Translations.get("error")
+            subtitleLabel.toolTip = errorMsg
         } else {
             subtitleLabel.stringValue = ""
         }
@@ -321,8 +324,9 @@ class RepoMenuItemView: NSView {
             versionLabel.stringValue = ver
         } else if data.isLoading {
             versionLabel.stringValue = "…"
-        } else if data.isError {
+        } else if let errorMsg = data.errorMessage {
             versionLabel.stringValue = "⚠️"
+            versionLabel.toolTip = errorMsg
         }
         versionLabel.font = .monospacedSystemFont(ofSize: isCompact ? 10 : 12, weight: .regular)
         versionLabel.textColor = .secondaryLabelColor
