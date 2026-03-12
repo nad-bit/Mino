@@ -450,11 +450,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         }
         
         // Guard shortcuts: common CMD combinations that could leak out of the
-        // menu tracking loop and break defined shortcuts. These are no-ops.
+        // menu tracking loop and break defined shortcuts. These have no action
+        // (action: nil) so the menu stays open when they fire.
         for key in ["a","c","v","x","z","w","s","f","r","t","p","o","d","e","b","h","l","m","i","u","g","j","k","y"] {
-            let guard_item = NSMenuItem(title: "", action: #selector(menuNoop), keyEquivalent: key)
+            let guard_item = NSMenuItem(title: "", action: nil, keyEquivalent: key)
             guard_item.keyEquivalentModifierMask = .command
-            guard_item.target = self
+            guard_item.isEnabled = true
             guard_item.isHidden = true
             guard_item.allowsKeyEquivalentWhenHidden = true
             menu.addItem(guard_item)
