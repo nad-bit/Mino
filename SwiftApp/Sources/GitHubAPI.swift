@@ -30,8 +30,9 @@ class GitHubAPI {
                 // Try Commits fallback
                 let commitData = try await fetchCommits(repo: repo, headers: requestHeaders)
                 return commitData
-            } catch {
-                return RepoInfo(name: repo, error: "Not Found")
+            } catch let commitError {
+                // If both fail, return the descriptive localized error message
+                return RepoInfo(name: repo, error: commitError.localizedDescription)
             }
         }
     }
@@ -45,8 +46,16 @@ class GitHubAPI {
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
         
         let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
+        }
+        
+        if httpResponse.statusCode == 404 {
+            throw NSError(domain: "GitHubAPI", code: 404, userInfo: [NSLocalizedDescriptionKey: "Repository not found or private."])
+        } else if httpResponse.statusCode == 403 {
+            throw NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: "API rate limit exceeded."])
+        } else if httpResponse.statusCode != 200 {
+            throw NSError(domain: "GitHubAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP Error \(httpResponse.statusCode)"])
         }
         
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -72,8 +81,16 @@ class GitHubAPI {
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
         
         let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
+        }
+        
+        if httpResponse.statusCode == 404 {
+            throw NSError(domain: "GitHubAPI", code: 404, userInfo: [NSLocalizedDescriptionKey: "Repository not found or private."])
+        } else if httpResponse.statusCode == 403 {
+            throw NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: "API rate limit exceeded."])
+        } else if httpResponse.statusCode != 200 {
+            throw NSError(domain: "GitHubAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP Error \(httpResponse.statusCode)"])
         }
         
         let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]]
