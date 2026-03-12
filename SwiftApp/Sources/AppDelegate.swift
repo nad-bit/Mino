@@ -24,7 +24,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var searchField: NSSearchField?
     var searchMenuItem: NSMenuItem?
     var repoMenuItems: [(item: NSMenuItem, data: RepoDisplayData)] = []
-    var keyMonitor: Any?
     
     // Refresh Logic and States
     var lastRefreshTime: Date = Date.distantPast
@@ -263,7 +262,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         searchMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         let searchContainer = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 32))
         searchContainer.autoresizingMask = [.width]
-        searchField = NSSearchField(frame: .zero)
+        searchField = MenuSearchField(appDelegate: self)
         if let sf = searchField {
             sf.placeholderString = Translations.get("search")
             sf.delegate = self
@@ -508,16 +507,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         }
         
         // Install keyboard shortcut monitor for CMD+, (Preferences)
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "," {
-                self?.pendingMenuAction = {
-                    self?.openSettingsWindow(self as Any)
-                }
-                self?.menu.cancelTracking()
-                return nil // swallow the event
-            }
-            return event
-        }
+        // Handled by MenuSearchField.performKeyEquivalent() since NSMenu's
+        // modal tracking loop swallows NSEvent local monitors.
         
         // Hybrid Quick Add interceptor
         if let header = headerView {
@@ -536,12 +527,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     
     func menuDidClose(_ menu: NSMenu) {
         menuIsOpen = false
-        
-        // Remove keyboard shortcut monitor
-        if let monitor = keyMonitor {
-            NSEvent.removeMonitor(monitor)
-            keyMonitor = nil
-        }
         
         // Mark currently cached versions as definitively seen upon closing the menu block
         // This ensures async fetches that resolved while the menu was open are caught
@@ -906,5 +891,32 @@ extension AppDelegate {
                 map.item.isHidden = !matches
             }
         }
+    }
+}
+
+// MARK: - MenuSearchField (Custom NSSearchField for in-menu keyboard shortcuts)
+
+/// NSMenu runs its own modal tracking loop that swallows NSEvent local monitors.
+/// The only element that receives keyboard events inside a tracking menu is the
+/// first responder (our search field). By overriding `performKeyEquivalent:`,
+/// we can intercept CMD+, and route it to open Preferences.
+class MenuSearchField: NSSearchField {
+    private weak var appDelegate: AppDelegate?
+    
+    convenience init(appDelegate: AppDelegate) {
+        self.init(frame: .zero)
+        self.appDelegate = appDelegate
+    }
+    
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Intercept CMD+, to open Preferences
+        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "," {
+            appDelegate?.pendingMenuAction = { [weak self] in
+                self?.appDelegate?.openSettingsWindow(self as Any)
+            }
+            appDelegate?.menu.cancelTracking()
+            return true // event was handled
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }
