@@ -553,16 +553,37 @@ class RepoMenuItemView: NSView {
         // regardless of current view bounds or stack view compression.
         let unconstrainedWidth = titleLabel.cell?.cellSize(forBounds: NSMakeRect(0, 0, .greatestFiniteMagnitude, .greatestFiniteMagnitude)).width ?? titleLabel.intrinsicContentSize.width
         
-        // Use a tiny 0.1 tolerance for floating point safety
-        if unconstrainedWidth > titleLabel.frame.width + 0.1 {
-            titleLabel.toolTip = titleLabel.stringValue
-            // If the repo name is truncated (often to just 1-2 letters), it's very hard
-            // to hover it. So we also use the versionLabel as a massive hover target
-            // to show the full repo name.
-            versionLabel.toolTip = titleLabel.stringValue
+        // Retrieve the error message for this repository item from the data struct
+        let hasError = versionLabel.stringValue == "⚠️" || subtitleLabel.stringValue == Translations.get("error")
+        // Find the injected error tooltip by checking current labels
+        let errorTooltip = versionLabel.toolTip ?? subtitleLabel.toolTip
+        
+        let isTruncated = unconstrainedWidth > titleLabel.frame.width + 0.1
+        
+        if isTruncated {
+            // If the label is cut off, we MUST show the repository name.
+            // If there's an error simultaneously, append it.
+            let fullText: String
+            if hasError, let err = errorTooltip {
+                fullText = "\(titleLabel.stringValue)\n(Error: \(err))"
+            } else {
+                fullText = titleLabel.stringValue
+            }
+            
+            titleLabel.toolTip = fullText
+            versionLabel.toolTip = fullText
+            subtitleLabel.toolTip = fullText
+        } else if hasError, let err = errorTooltip {
+            // The repo name fits perfectly, but there is an error to show.
+            // Expand the hover hitbox across all three primary labels.
+            titleLabel.toolTip = err
+            versionLabel.toolTip = err
+            subtitleLabel.toolTip = err
         } else {
+            // Clean state
             titleLabel.toolTip = nil
             versionLabel.toolTip = nil
+            subtitleLabel.toolTip = nil
         }
     }
     
