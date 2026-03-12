@@ -232,7 +232,7 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
             self.okButton.isEnabled = true
             if success {
                 self.inputField.stringValue = ""
-                self.playSuccessZarpazo()
+                self.playSuccessAnimation()
             }
         }
         
@@ -253,48 +253,21 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         }
     }
     
-    private func playSuccessZarpazo() {
+    private func playSuccessAnimation() {
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         
-        eyeImageView.layer?.removeAllAnimations()
+        // Tint the window eye green briefly to signal success
+        eyeImageView.contentTintColor = .systemGreen
         
-        if let pawImage = NSImage(systemSymbolName: "pawprint", accessibilityDescription: "Success") {
-            let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
-            eyeImageView.image = pawImage.withSymbolConfiguration(config)
-            eyeImageView.contentTintColor = .systemGreen
+        // Bounce the window eye (same family as status bar icon animation)
+        if #available(macOS 14.0, *) {
+            eyeImageView.addSymbolEffect(.bounce, options: .nonRepeating)
         }
         
-        let swipe = CABasicAnimation(keyPath: "transform.translation.y")
-        swipe.fromValue = 50
-        swipe.toValue = -50
-        
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 1.0
-        fade.toValue = 0.0
-        
-        let zarpazoGroup = CAAnimationGroup()
-        zarpazoGroup.animations = [swipe, fade]
-        zarpazoGroup.duration = 0.25
-        zarpazoGroup.timingFunction = CAMediaTimingFunction(name: .easeIn)
-        zarpazoGroup.fillMode = .forwards
-        zarpazoGroup.isRemovedOnCompletion = false
-        
-        eyeImageView.layer?.add(zarpazoGroup, forKey: "pawScratch")
-        
-        // Revert to normal eye and breathing immediately after animation finishes
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            guard let self = self else { return }
-            if self.window?.isVisible == true {
-                self.eyeImageView.layer?.removeAllAnimations()
-                self.eyeImageView.alphaValue = 1.0
-                
-                if let normalEye = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
-                    let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
-                    self.eyeImageView.image = normalEye.withSymbolConfiguration(config)
-                    self.eyeImageView.contentTintColor = Utils.appIconColor
-                }
-                self.startEyeAnimation()
-            }
+        // Revert color after a beat
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self = self, self.window?.isVisible == true else { return }
+            self.eyeImageView.contentTintColor = Utils.appIconColor
         }
     }
     
