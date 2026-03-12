@@ -81,6 +81,9 @@ class RepoMenuItemView: NSView {
     private let layoutMode: String
     private let isCompact: Bool
     
+    // Public exposure for AppDelegate search filtering
+    let displayData: RepoDisplayData
+    
     // Track last known highlight state
     private var lastHighlightState = false
     
@@ -94,6 +97,7 @@ class RepoMenuItemView: NSView {
         self.appDelegate = appDelegate
         self.layoutMode = layout
         self.isCompact = ConfigManager.shared.config.isCompactMode ?? false
+        self.displayData = displayData
         
         var rowHeight: CGFloat = (layout == "cards") ? 40 : 22
         if isCompact { rowHeight -= 6 }

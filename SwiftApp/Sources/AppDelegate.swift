@@ -9,7 +9,7 @@ enum SymbolAnimation {
 }
 
 @MainActor
-class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFieldDelegate {
     var statusItem: NSStatusItem!
     var statusIconView: NSImageView!
     var statusIndicatorDot: NSBox!
@@ -19,6 +19,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     var headerMenuItem: NSMenuItem!
     var headerView: HeaderMenuItemView!
+    
+    // Search properties
+    var searchField: NSSearchField?
+    var searchMenuItem: NSMenuItem?
+    var repoMenuItems: [(item: NSMenuItem, data: RepoDisplayData)] = []
     
     // Refresh Logic and States
     var lastRefreshTime: Date = Date.distantPast
@@ -245,12 +250,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     
     func setupMenu() {
         menu.removeAllItems()
+        repoMenuItems.removeAll()
         
         headerMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         headerView = HeaderMenuItemView(appDelegate: self)
         headerView.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
         headerMenuItem.view = headerView
         menu.addItem(headerMenuItem)
+        
+        // --- Setup Search Bar ---
+        searchMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let searchContainer = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 32))
+        searchField = NSSearchField(frame: NSRect(x: 14, y: 5, width: 252, height: 22))
+        if let sf = searchField {
+            sf.placeholderString = Translations.get("searchOrAdd")
+            sf.delegate = self
+            sf.focusRingType = .none
+            searchContainer.addSubview(sf)
+            sf.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                sf.leadingAnchor.constraint(equalTo: searchContainer.leadingAnchor, constant: 14),
+                sf.trailingAnchor.constraint(equalTo: searchContainer.trailingAnchor, constant: -14),
+                sf.centerYAnchor.constraint(equalTo: searchContainer.centerYAnchor)
+            ])
+            searchMenuItem?.view = searchContainer
+            menu.addItem(searchMenuItem!)
+        }
         
         menu.addItem(NSMenuItem.separator())
         
@@ -389,6 +414,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for (menuItem, customView) in repoEntries {
             customView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: rowHeight)
             menu.addItem(menuItem)
+            repoMenuItems.append((item: menuItem, data: customView.displayData))
         }
         
         menu.addItem(NSMenuItem.separator())
@@ -465,6 +491,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         menuIsOpen = true
         updateStatusIcon(hasUpdates: false) // Turn off red dot immediately upon physical click for responsiveness
+        
+        // Clean out search criteria and auto-select typing field
+        searchField?.stringValue = ""
+        filterMenuBySearchQuery("")
+        
+        // It's tricky to automatically focus an NSSearchField inside an NSMenu.
+        // Doing this asynchronously on the main thread right after the menu starts tracking
+        // ensures the view hierarchy is fully established for the window.
+        DispatchQueue.main.async { [weak self] in
+            if let window = self?.searchField?.window, let field = self?.searchField {
+                window.makeFirstResponder(field)
+            }
+        }
         
         // Hybrid Quick Add interceptor
         if let header = headerView {
@@ -823,6 +862,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         
         if title == Translations.get("error") || title == Translations.get("brewErrorTitle") {
             animateStatusIcon(with: .wiggle)
+        }
+    }
+}
+
+// MARK: - Search Filtering Logic
+extension AppDelegate {
+    func controlTextDidChange(_ obj: Notification) {
+        guard let field = obj.object as? NSSearchField else { return }
+        let query = field.stringValue
+        filterMenuBySearchQuery(query)
+    }
+    
+    private func filterMenuBySearchQuery(_ query: String) {
+        let q = query.lowercased()
+        
+        for map in repoMenuItems {
+            if q.isEmpty {
+                map.item.isHidden = false
+            } else {
+                // If the user's input matches the exact username or repo name locally
+                let matches = map.data.formattedName.lowercased().contains(q) || map.data.repoName.lowercased().contains(q)
+                map.item.isHidden = !matches
+            }
         }
     }
 }
