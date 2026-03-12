@@ -107,7 +107,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         
         updateStatusIcon(hasUpdates: false)
         
-        menu = NSMenu()
+        menu = GuardedMenu()
         menu.delegate = self
         menu.autoenablesItems = false  // Critical: prevents AppKit from disabling custom-view items that have no action
         statusItem.menu = menu
@@ -431,16 +431,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         footerMenuItem.view = footerView
         menu.addItem(footerMenuItem)
         
-        // Hidden NSMenuItem for CMD+, (Preferences shortcut).
-        // Key equivalents are disabled for items WITH custom views, but this item
-        // has NO view — so its key equivalent fires normally during menu tracking.
-        // allowsKeyEquivalentWhenHidden ensures it works even though isHidden = true.
-        let prefsShortcut = NSMenuItem(title: "", action: #selector(openSettingsWindow(_:)), keyEquivalent: ",")
-        prefsShortcut.keyEquivalentModifierMask = .command
-        prefsShortcut.target = self
-        prefsShortcut.isHidden = true
-        prefsShortcut.allowsKeyEquivalentWhenHidden = true
-        menu.addItem(prefsShortcut)
+        // Hidden NSMenuItems for keyboard shortcuts.
+        // Key equivalents are disabled for items WITH custom views, but these items
+        // have NO view — so their key equivalents fire normally during menu tracking.
+        // allowsKeyEquivalentWhenHidden ensures they work even though isHidden = true.
+        let shortcuts: [(action: Selector, key: String)] = [
+            (#selector(openSettingsWindow(_:)), ","),   // CMD+, → Preferences
+            (#selector(quitApp(_:)), "q"),               // CMD+Q → Quit
+            (#selector(unifiedAddRepoDialog(_:)), "n"),  // CMD+N → Add Repositories
+        ]
+        for shortcut in shortcuts {
+            let item = NSMenuItem(title: "", action: shortcut.action, keyEquivalent: shortcut.key)
+            item.keyEquivalentModifierMask = .command
+            item.target = self
+            item.isHidden = true
+            item.allowsKeyEquivalentWhenHidden = true
+            menu.addItem(item)
+        }
         
         updateStatusIcon(hasUpdates: anyNewUpdates)
     }
@@ -906,5 +913,26 @@ class MenuSearchField: NSSearchField {
     convenience init(appDelegate: AppDelegate) {
         self.init(frame: .zero)
         self.appDelegate = appDelegate
+    }
+}
+
+// MARK: - GuardedMenu
+
+/// Subclass of NSMenu that prevents unhandled key equivalents from leaking
+/// out of the menu tracking loop. Without this, pressing an undefined shortcut
+/// (e.g. CMD+X) causes the event to fall through to NSApp, which disrupts
+/// the tracking state and breaks subsequently defined shortcuts like CMD+,.
+class GuardedMenu: NSMenu {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // First, try the normal key equivalent matching (our hidden items)
+        if super.performKeyEquivalent(with: event) {
+            return true
+        }
+        // If no item matched but it's a CMD-based shortcut, swallow it
+        // to prevent it from leaking out of the tracking loop.
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command) {
+            return true
+        }
+        return false
     }
 }
