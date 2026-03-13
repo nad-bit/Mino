@@ -4,6 +4,22 @@ All notable changes to Mino will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.4.0] - 2026-03-13
+
+### Added
+- **Integrated Header Search:** The dedicated search row has been retired in favor of a sleek, centered search field (30% width) integrated directly into the menu header between action icons.
+- **Dynamic Tooltip Tracker:** The refresh countdown text is now hidden by default to maximize aesthetics, accessible instantly via a native hover tooltip on the refresh icon.
+- **Horizontal Symmetry (18pt):** Unified the entire interface to a strict 18pt horizontal margin. All primary controls (Refresh, Add, Search, Preferences, and Quit) now align perfectly with repository list items for a professional, native feel.
+- **Header Highlight Polish:** Converted the refresh icon into a native `MenuActionButton`, enabling the same subtle, high-quality hover background highlighting found on other menu actions.
+- **Improved Tooltip Support:** Added intelligent hover tooltips for repository names that are too long for the menu width, ensuring full visibility without breaking the layout.
+
+### Changed
+- **Unified Confirmation Animations:** Synchronized the "Add Repository" success feedback; the menu icon and the floating window now both perform the same signature green `.bounce` SF Symbol effect.
+- **Keyboard Robustness:** Rewrote the shortcut handler to be significantly more resilient. `CMD + ,` is now bulletproof, and common accidental keystrokes (like `CMD+Q` or `CMD+N`) no longer cause the menu to close unexpectedly.
+
+### Fixed
+- **Quick Add Race Condition:** Guaranteed that newly added repositories correctly display their red notification dot even if a background refresh occurs while the menu is actively held open.
+- **Translation Consistency:** Refined Portuguese, German, and French strings to ensure "Quick Add" headers and live progress states match the new compact UI.
 
 ## [1.3.9] - 2026-03-10
 

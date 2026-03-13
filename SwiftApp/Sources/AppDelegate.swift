@@ -258,27 +258,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         headerMenuItem.view = headerView
         menu.addItem(headerMenuItem)
         
-        // --- Setup Search Bar ---
-        searchMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        let searchContainer = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 28))
-        searchContainer.autoresizingMask = [.width]
-        searchField = MenuSearchField(appDelegate: self)
-        if let sf = searchField {
-            sf.placeholderString = Translations.get("search")
-            sf.delegate = self
-            sf.focusRingType = .none
-            sf.controlSize = .small
-            sf.font = .systemFont(ofSize: 11)
-            searchContainer.addSubview(sf)
-            sf.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                sf.leadingAnchor.constraint(equalTo: searchContainer.leadingAnchor, constant: 18),
-                sf.trailingAnchor.constraint(equalTo: searchContainer.trailingAnchor, constant: -18),
-                sf.centerYAnchor.constraint(equalTo: searchContainer.centerYAnchor)
-            ])
-            searchMenuItem?.view = searchContainer
-            menu.addItem(searchMenuItem!)
-        }
+        // Link the app delegate's search field reference to the one in the header
+        self.searchField = headerView.searchField
+        self.searchField?.delegate = self
+        
+
         
         menu.addItem(NSMenuItem.separator())
         

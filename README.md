@@ -19,7 +19,9 @@ https://github.com/user-attachments/assets/3ca0d651-5059-4683-812f-c9f24b8aa8fc
 - **👀 Menu Bar Integration**: Unobtrusive status bar icon with inline repository information
 - **⚡️ Inline Actions**: Hover over any repository to reveal contextual action buttons with expanded, easy-to-click target areas — view release notes, open releases, install via Homebrew, or delete
 - **🍺 Homebrew Integration**: Detects installed Casks automatically and enables one-click install/update directly from the menu (only shown if Homebrew is installed)
-- **🧠 Hybrid Quick Add**: Copy a GitHub repository URL, open the menu, and a 1-click "Quick Add" button intelligently appears at the top. Bypass the modal window completely!
+- **🧩 Integrated Search**: A sleek, centered search field built directly into the menu header for instant repository filtering.
+- **🧠 Hybrid Quick Add**: Copy a GitHub repository URL, open the menu, and the header intelligently transforms into a "Quick Add" action. Bypass modal windows completely!
+- **⏱ Tooltip Tracker**: The refresh countdown is hidden for a cleaner look — simply hover over the refresh icon to see the time remaining.
 - **🎯 Multi-Hunt Window**: The floating "Add Repositories..." window acts as a persistent tracking hub. Keep it open while you browse Safari, and simply hit `CMD+C` on sequential GitHub URLs. Mino automatically sniffs your clipboard and queues them up for rapid batch-ingestion without ever losing focus.
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
 - **🔐 Secure Token Storage**: GitHub Personal Access Tokens stored in macOS Keychain — never in plain text
@@ -98,6 +100,9 @@ Each repository displays its name, latest version, and time since release. Hover
 Click the row itself to open the repository's main GitHub page.
 
 Repos with recent releases show a **✦** indicator (configurable in Preferences).
+
+### Filtering
+Simply start typing in the **Integrated Search** field at the top of the menu to filter your repository list in real-time. The search field is compact and accessible without extra clicks.
 
 ### Preferences
 
