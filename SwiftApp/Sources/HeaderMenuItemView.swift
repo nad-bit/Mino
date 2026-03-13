@@ -60,6 +60,9 @@ class HeaderMenuItemView: NSView {
         searchField.focusRingType = .none
         searchField.translatesAutoresizingMaskIntoConstraints = false
         
+        let show = ConfigManager.shared.config.showSearch ?? false
+        searchField.isHidden = !show
+        
         // Quick Add Label (Clipboard)
         quickAddLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         quickAddLabel.textColor = .controlAccentColor
@@ -138,8 +141,9 @@ class HeaderMenuItemView: NSView {
             // Show Refresh
             leftStack.isHidden = false
             
-            // Show search
-            searchField.isHidden = false
+            // Respect config for search visibility
+            let show = ConfigManager.shared.config.showSearch ?? false
+            searchField.isHidden = !show
             
             // Hide Quick Add
             quickAddLabel.isHidden = true
@@ -150,8 +154,19 @@ class HeaderMenuItemView: NSView {
         }
     }
     
+    func setSearchVisible(_ visible: Bool) {
+        // If searching is active (text present), we usually want it visible
+        // but this method is primarily for CMD+F invocation.
+        searchField.isHidden = !visible
+        if visible {
+            searchField.window?.makeFirstResponder(searchField)
+        }
+    }
+    
     func updateTimeText(_ text: String, isRefreshing: Bool) {
-        refreshBtn.toolTip = text
+        if refreshBtn.toolTip != text {
+            refreshBtn.toolTip = text
+        }
         self.isRefreshingState = isRefreshing
         applyHighlightState(lastHighlightState)
     }
@@ -160,6 +175,12 @@ class HeaderMenuItemView: NSView {
         let highlighted = (highlightedItem === enclosingMenuItem)
         if highlighted != lastHighlightState {
             lastHighlightState = highlighted
+            
+            // Proactively refresh tooltip when hovering to ensure absolute freshness
+            if highlighted && quickAddRepoStr == nil {
+                updateTimeText(appDelegate.getRefreshTitle(), isRefreshing: appDelegate.isRefreshing)
+            }
+            
             applyHighlightState(highlighted)
             needsDisplay = true
         }

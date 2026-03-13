@@ -24,6 +24,7 @@ struct AppConfig: Codable {
     var newIndicatorDays: Int?
     var menuLayout: String? // "compact" | "cards" | "columns" | "hybrid"
     var isCompactMode: Bool?
+    var showSearch: Bool?
     
     enum CodingKeys: String, CodingKey {
         case repos
@@ -34,6 +35,7 @@ struct AppConfig: Codable {
         case newIndicatorDays = "new_indicator_days"
         case menuLayout = "menu_layout"
         case isCompactMode = "is_compact_mode"
+        case showSearch = "show_search"
     }
     
     init() {
@@ -57,5 +59,6 @@ struct AppConfig: Codable {
         self.newIndicatorDays = 7
         self.menuLayout = "columns"
         self.isCompactMode = false
+        self.showSearch = false
     }
 }

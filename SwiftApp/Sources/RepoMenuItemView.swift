@@ -12,6 +12,7 @@ struct RepoDisplayData {
     let isLoading: Bool
     let caskName: String?
     let freshnessColor: NSColor   // 🟢/🟡/⚪ mapped to NSColor
+    let isNew: Bool
 }
 
 class MenuActionButton: NSButton {
@@ -84,8 +85,9 @@ class RepoMenuItemView: NSView {
     // Public exposure for AppDelegate search filtering
     let displayData: RepoDisplayData
     
-    // Track last known highlight state
+    // Track highlight and "seen" state
     private var lastHighlightState = false
+    private var wasEverHovered = false
     
     // Column widths (for columns/hybrid modes, set from outside)
     var nameColumnWidth: CGFloat = 0
@@ -444,6 +446,12 @@ class RepoMenuItemView: NSView {
         let highlighted = (highlightedItem === enclosingMenuItem)
         if highlighted != lastHighlightState {
             lastHighlightState = highlighted
+            
+            if highlighted {
+                wasEverHovered = true
+                appDelegate.markRepoAsRead(repoName)
+            }
+            
             applyHighlightState(highlighted)
             needsDisplay = true
         }
@@ -542,6 +550,11 @@ class RepoMenuItemView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         if lastHighlightState {
             NSColor.selectedContentBackgroundColor.set()
+            let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
+            path.fill()
+        } else if !wasEverHovered && displayData.isNew {
+            // Subtle highlight for unread/new notification
+            NSColor.controlAccentColor.withAlphaComponent(0.08).set()
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
             path.fill()
         }

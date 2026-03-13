@@ -26,6 +26,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     let sortSegment = NSSegmentedControl()
     let layoutSegment = NSSegmentedControl()
     private let compactModeSwitch = NSSwitch()
+    private let showSearchSwitch = NSSwitch()
     
     var tempToken: String?
     private var isUpdatingSelf = false
@@ -229,6 +230,11 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         loginSwitch.action = #selector(toggleLogin(_:))
         addSettingsRow(to: formStack, label: loginLabel, controls: [loginSwitch])
         
+        let searchLabel = NSTextField(labelWithString: Translations.get("showSearchLabel"))
+        showSearchSwitch.target = self
+        showSearchSwitch.action = #selector(toggleSearch(_:))
+        addSettingsRow(to: formStack, label: searchLabel, controls: [showSearchSwitch])
+        
         let ownerLabel = NSTextField(labelWithString: Translations.get("showOwner"))
         ownerSwitch.target = self
         ownerSwitch.action = #selector(toggleOwner(_:))
@@ -285,6 +291,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         compactModeSwitch.action = #selector(toggleCompactMode(_:))
         addSettingsRow(to: formStack, label: compactLabel, controls: [compactModeSwitch])
         
+        
         // Add a bottom spacer to push content up if needed and provide bottom margin
         let spacer = NSView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
@@ -340,6 +347,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         layoutSegment.selectedSegment = layoutIndex
         
         compactModeSwitch.state = (ConfigManager.shared.config.isCompactMode == true) ? .on : .off
+        showSearchSwitch.state = (ConfigManager.shared.config.showSearch == true) ? .on : .off
         
         let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
         newIndicatorSwitch.state = showNewIndicator ? .on : .off
@@ -562,6 +570,16 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     @objc private func toggleCompactMode(_ sender: NSSwitch) {
         isUpdatingSelf = true
         ConfigManager.shared.config.isCompactMode = sender.state == .on
+        ConfigManager.shared.saveConfig()
+        if let delegate = NSApp.delegate as? AppDelegate {
+             delegate.setupMenu()
+        }
+        isUpdatingSelf = false
+    }
+    
+    @objc private func toggleSearch(_ sender: NSSwitch) {
+        isUpdatingSelf = true
+        ConfigManager.shared.config.showSearch = sender.state == .on
         ConfigManager.shared.saveConfig()
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.setupMenu()

@@ -24,6 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var searchField: NSSearchField?
     var searchMenuItem: NSMenuItem?
     var repoMenuItems: [(item: NSMenuItem, data: RepoDisplayData)] = []
+    private var readReposThisSession: Set<String> = []
     
     // Refresh Logic and States
     var lastRefreshTime: Date = Date.distantPast
@@ -123,7 +124,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     }
     
     func startTimers() {
-        countdownTimer = Timer.scheduledTimer(timeInterval: Constants.countdownTimerIntervalSeconds, target: self, selector: #selector(updateCountdown), userInfo: nil, repeats: true)
+        let timer = Timer(timeInterval: Constants.countdownTimerIntervalSeconds, target: self, selector: #selector(updateCountdown), userInfo: nil, repeats: true)
+        RunLoop.main.add(timer, forMode: .common)
+        countdownTimer = timer
     }
     
     func getRefreshTitle() -> String {
@@ -195,7 +198,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             
             // All fetches done, safely update the UI properties from within the MainActor Context
             var newCaskVersionsDetected = false
+            var hasFreshUpdates = false
+            let lastNotifiedVersions = UserDefaults.standard.dictionary(forKey: "LastNotifiedVersions") as? [String: String] ?? [:]
+            var updatedNotifiedVersions = lastNotifiedVersions
+
             for (repo, info) in results {
+                if let currentVersion = info.version {
+                    if let oldVersion = lastNotifiedVersions[repo] {
+                        if currentVersion != oldVersion {
+                            hasFreshUpdates = true
+                            updatedNotifiedVersions[repo] = currentVersion
+                        }
+                    } else if self.repoCache[repo] != nil || ConfigManager.shared.config.repos.contains(where: { $0.name == repo }) {
+                        // It's a repo we know about but haven't notified for this specific version yet
+                        hasFreshUpdates = true
+                        updatedNotifiedVersions[repo] = currentVersion
+                    }
+                }
+
                 if let oldInfo = self.repoCache[repo], let newVersion = info.version, let oldVersion = oldInfo.version {
                     if newVersion != oldVersion {
                         if ConfigManager.shared.config.repos.first(where: { $0.name == repo })?.cask != nil {
@@ -211,6 +231,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                 self.repoCache[repo] = info
             }
             
+            if hasFreshUpdates {
+                UserDefaults.standard.set(updatedNotifiedVersions, forKey: "LastNotifiedVersions")
+                UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
+            }
+
             if newCaskVersionsDetected {
                 Task { let _ = await HomebrewManager.shared.runBrewUpdate() }
             }
@@ -293,7 +318,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         let thresholdDays = config.newIndicatorDays ?? Constants.newReleaseThresholdDays
         
         var displayDataList: [(RepoConfig, RepoDisplayData)] = []
-        var anyNewUpdates = false
         
         let lastSeenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
         
@@ -314,9 +338,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             let daysDiff = ageInfo.seconds.isInfinite ? Int.max : Int(ageInfo.seconds / 86400)
             let newIndicator = (indicatorEnabled && !isLoading && !isError && daysDiff <= thresholdDays) ? " \(Constants.newReleaseIndicator)" : ""
             
+            var isNewUpdate = false
             if !isLoading && !isError {
                 if let currentVersion = info.version, lastSeenVersions[repoName] != currentVersion {
-                    anyNewUpdates = true
+                    isNewUpdate = true
                 }
             }
             
@@ -342,7 +367,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                 errorMessage: isError ? info.error : nil,
                 isLoading: isLoading,
                 caskName: repoObj.cask,
-                freshnessColor: freshnessColor
+                freshnessColor: freshnessColor,
+                isNew: isNewUpdate
             )
             displayDataList.append((repoObj, data))
         }
@@ -436,7 +462,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         }
 
         
-        updateStatusIcon(hasUpdates: anyNewUpdates)
+        
+        let hasPulse = UserDefaults.standard.bool(forKey: "HasUnreadPulse")
+        updateStatusIcon(hasUpdates: hasPulse)
     }
     
     private func updateStatusIcon(hasUpdates: Bool) {
@@ -490,8 +518,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     
     // MARK: - NSMenuDelegate
     
+    func markRepoAsRead(_ repoName: String) {
+        readReposThisSession.insert(repoName)
+    }
+    
     func menuWillOpen(_ menu: NSMenu) {
         menuIsOpen = true
+        readReposThisSession.removeAll()
+        
+        // Smart Search: Hide search field unless "Show Search" is enabled
+        let showSearch = ConfigManager.shared.config.showSearch ?? false
+        headerView?.setSearchVisible(showSearch)
+        
+        // Acknowledge current versions for the red pulse
+        var notifiedVersions = UserDefaults.standard.dictionary(forKey: "LastNotifiedVersions") as? [String: String] ?? [:]
+        for (repoName, info) in repoCache {
+            if let v = info.version {
+                notifiedVersions[repoName] = v
+            }
+        }
+        UserDefaults.standard.set(notifiedVersions, forKey: "LastNotifiedVersions")
+        UserDefaults.standard.set(false, forKey: "HasUnreadPulse")
+        
         updateStatusIcon(hasUpdates: false) // Turn off red dot immediately upon physical click for responsiveness
         
         // Clean out search criteria and auto-select typing field
@@ -527,10 +575,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         menuIsOpen = false
         
         // Mark currently cached versions as definitively seen upon closing the menu block
-        // This ensures async fetches that resolved while the menu was open are caught
-        var seenVersions: [String: String] = [:]
+        // BUT ONLY for repos that were actually hovered/read during this session
+        var seenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
         for (repoName, info) in repoCache {
-            if let v = info.version {
+            if let v = info.version, readReposThisSession.contains(repoName) {
                 seenVersions[repoName] = v
             }
         }
@@ -623,6 +671,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             var seenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
             seenVersions.removeValue(forKey: repoName)
             UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
+            
+            var notifiedVersions = UserDefaults.standard.dictionary(forKey: "LastNotifiedVersions") as? [String: String] ?? [:]
+            notifiedVersions.removeValue(forKey: repoName)
+            UserDefaults.standard.set(notifiedVersions, forKey: "LastNotifiedVersions")
             // Close release notes window if it's showing the deleted repo
             if releaseNotesWindowController?.currentRepoName == repoName {
                 releaseNotesWindowController?.window?.orderOut(nil)
@@ -786,6 +838,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             
             await MainActor.run {
                 self.repoCache[repoName] = info
+                UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
                 self.setupMenu()
                 self.animateStatusIcon(with: .bounce)
             }

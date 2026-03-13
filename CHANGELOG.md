@@ -4,6 +4,17 @@ All notable changes to Mino will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [1.4.1] - 2026-03-13
+
+### Changed
+- **Search UI Simplification:** Removed the `CMD + F` shortcut to prevent accidental menu closures. The search toggle has been renamed to "Show Search" and moved under the "Start at Login" option in Preferences for better accessibility.
+- **Status Indicator Decoupling:** The red dot notification is now independent of repository highlighting. Opening the menu clears the red dot immediately, while repository highlights persist until explicitly hovered, ensuring a less intrusive notification experience.
+- **Refresh Tooltip Stability:** Optimized the refresh button tooltip to only update when the time actually changes, improving stability on macOS. Restored the classic ellipses to the "Refreshing..." status.
+
+### Fixed
+- **New Repo Notification:** Guaranteed that adding a new repository correctly triggers the red notification pulse immediately.
+- **Notification State Cleanup:** Synchronized the notification state to wipe memory of deleted repositories, preventing phantom notifications if a repo is re-added.
+
 ## [1.4.0] - 2026-03-13
 
 ### Added
