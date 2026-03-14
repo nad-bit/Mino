@@ -4,6 +4,17 @@ All notable changes to Mino will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.4.3] - 2026-03-14
+
+### Added
+- **Stealth Search (Final):** The search field is now always present in the header and automatically receives focus when opening the menu for instant typing.
+- **Content-Driven Opacity:** The search field remains subtly semitransparent (25% opacity) even with focus to maintain a clean look. It transitions to 100% opacity instantly as soon as the first character is entered.
+- **UI Simplification:** Permanently removed the "Show Search" preference as the new always-available design makes it redundant.
+
+### Fixed
+- **Interaction Robustness:** Eliminated an issue where the search field would gain focus but remain opaque, and fixed hover interference from the repository list.
+- **Translation Cleanup:** Removed obsolete search-related labels in all 11 supported languages.
 ## [1.4.1] - 2026-03-13
 
 ### Changed
