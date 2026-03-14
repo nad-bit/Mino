@@ -527,8 +527,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         readReposThisSession.removeAll()
         
         // Smart Search: Hide search field unless "Show Search" is enabled
-        let showSearch = ConfigManager.shared.config.showSearch ?? false
-        headerView?.setSearchVisible(showSearch)
+        headerView?.setSearchVisible(true) // Always allow focus logic
         
         // Acknowledge current versions for the red pulse
         var notifiedVersions = UserDefaults.standard.dictionary(forKey: "LastNotifiedVersions") as? [String: String] ?? [:]
@@ -928,6 +927,7 @@ extension AppDelegate {
         guard let field = obj.object as? NSSearchField else { return }
         let query = field.stringValue
         filterMenuBySearchQuery(query)
+        headerView?.updateSearchOpacity()
     }
     
     private func filterMenuBySearchQuery(_ query: String) {

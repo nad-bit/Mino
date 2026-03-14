@@ -60,8 +60,12 @@ class HeaderMenuItemView: NSView {
         searchField.focusRingType = .none
         searchField.translatesAutoresizingMaskIntoConstraints = false
         
-        let show = ConfigManager.shared.config.showSearch ?? false
-        searchField.isHidden = !show
+        searchField.alphaValue = 0.3
+        searchField.isHidden = false
+        
+        // Register for focus notifications to change alpha
+        NotificationCenter.default.addObserver(self, selector: #selector(searchFocusChanged), name: NSControl.textDidBeginEditingNotification, object: searchField)
+        NotificationCenter.default.addObserver(self, selector: #selector(searchFocusChanged), name: NSControl.textDidEndEditingNotification, object: searchField)
         
         // Quick Add Label (Clipboard)
         quickAddLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
@@ -141,9 +145,8 @@ class HeaderMenuItemView: NSView {
             // Show Refresh
             leftStack.isHidden = false
             
-            // Respect config for search visibility
-            let show = ConfigManager.shared.config.showSearch ?? false
-            searchField.isHidden = !show
+            searchField.isHidden = false
+            updateSearchOpacity()
             
             // Hide Quick Add
             quickAddLabel.isHidden = true
@@ -155,11 +158,24 @@ class HeaderMenuItemView: NSView {
     }
     
     func setSearchVisible(_ visible: Bool) {
-        // If searching is active (text present), we usually want it visible
-        // but this method is primarily for CMD+F invocation.
-        searchField.isHidden = !visible
+        // Not used anymore for Stealth Search, but kept for safe compilation if referenced
         if visible {
             searchField.window?.makeFirstResponder(searchField)
+            updateSearchOpacity()
+        }
+    }
+    
+    @objc private func searchFocusChanged() {
+        updateSearchOpacity()
+    }
+    
+    func updateSearchOpacity() {
+        let hasFocus = searchField.window?.firstResponder == searchField.currentEditor()
+        let hasText = !searchField.stringValue.isEmpty
+        
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            searchField.animator().alphaValue = (hasFocus || hasText) ? 1.0 : 0.3
         }
     }
     
