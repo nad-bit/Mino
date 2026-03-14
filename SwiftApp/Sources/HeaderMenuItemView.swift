@@ -23,6 +23,7 @@ class HeaderMenuItemView: NSView {
         self.appDelegate = appDelegate
         super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 26))
         self.autoresizingMask = [.width]
+        self.wantsLayer = true
         setupView()
     }
     
@@ -60,12 +61,9 @@ class HeaderMenuItemView: NSView {
         searchField.focusRingType = .none
         searchField.translatesAutoresizingMaskIntoConstraints = false
         
-        searchField.alphaValue = 0.3
+        searchField.wantsLayer = true
+        searchField.alphaValue = 0.25
         searchField.isHidden = false
-        
-        // Register for focus notifications to change alpha
-        NotificationCenter.default.addObserver(self, selector: #selector(searchFocusChanged), name: NSControl.textDidBeginEditingNotification, object: searchField)
-        NotificationCenter.default.addObserver(self, selector: #selector(searchFocusChanged), name: NSControl.textDidEndEditingNotification, object: searchField)
         
         // Quick Add Label (Clipboard)
         quickAddLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
@@ -160,22 +158,19 @@ class HeaderMenuItemView: NSView {
     func setSearchVisible(_ visible: Bool) {
         // Not used anymore for Stealth Search, but kept for safe compilation if referenced
         if visible {
-            searchField.window?.makeFirstResponder(searchField)
             updateSearchOpacity()
         }
     }
     
-    @objc private func searchFocusChanged() {
-        updateSearchOpacity()
-    }
-    
     func updateSearchOpacity() {
-        let hasFocus = searchField.window?.firstResponder == searchField.currentEditor()
         let hasText = !searchField.stringValue.isEmpty
+        let targetAlpha: CGFloat = hasText ? 1.0 : 0.25
         
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.2
-            searchField.animator().alphaValue = (hasFocus || hasText) ? 1.0 : 0.3
+        if searchField.alphaValue != targetAlpha {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                searchField.animator().alphaValue = targetAlpha
+            }
         }
     }
     

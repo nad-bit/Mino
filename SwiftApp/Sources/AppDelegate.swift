@@ -526,9 +526,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         menuIsOpen = true
         readReposThisSession.removeAll()
         
-        // Smart Search: Hide search field unless "Show Search" is enabled
-        headerView?.setSearchVisible(true) // Always allow focus logic
-        
         // Acknowledge current versions for the red pulse
         var notifiedVersions = UserDefaults.standard.dictionary(forKey: "LastNotifiedVersions") as? [String: String] ?? [:]
         for (repoName, info) in repoCache {
@@ -545,9 +542,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         searchField?.stringValue = ""
         filterMenuBySearchQuery("")
         
-        // It's tricky to automatically focus an NSSearchField inside an NSMenu.
-        // Doing this asynchronously on the main thread right after the menu starts tracking
-        // ensures the view hierarchy is fully established for the window.
         DispatchQueue.main.async { [weak self] in
             if let window = self?.searchField?.window, let field = self?.searchField {
                 window.makeFirstResponder(field)
