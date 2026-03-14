@@ -434,6 +434,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         
 
         // Apply uniform width to header
+        headerView.targetWidth = maxWidth
         headerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 26)
         
         // Add footer

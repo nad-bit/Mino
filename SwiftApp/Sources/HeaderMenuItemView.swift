@@ -19,6 +19,21 @@ class HeaderMenuItemView: NSView {
     private var lastHighlightState = false
     private var isRefreshingState = false
     
+    // Constraints for dynamic swapping
+    private var quickAddTrailingToSearch: NSLayoutConstraint?
+    private var quickAddTrailingToAddBtn: NSLayoutConstraint?
+    private var quickAddHitAreaTrailingToSearch: NSLayoutConstraint?
+    private var quickAddHitAreaTrailingToAddBtn: NSLayoutConstraint?
+    
+    /// Target width set by AppDelegate after calculating menu size
+    private var widthConstraint: NSLayoutConstraint?
+    var targetWidth: CGFloat = 320 {
+        didSet {
+            widthConstraint?.constant = targetWidth
+            widthConstraint?.isActive = true
+        }
+    }
+    
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
         super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 26))
@@ -49,7 +64,7 @@ class HeaderMenuItemView: NSView {
         addBtn.target = self
         addBtn.action = #selector(addClicked)
         addBtn.toolTip = Translations.get("addRepoUnified")
-        addBtn.baseColor = .labelColor
+        addBtn.baseColor = .secondaryLabelColor
         addBtn.hoverColor = .labelColor
         addBtn.translatesAutoresizingMaskIntoConstraints = false
         
@@ -66,10 +81,11 @@ class HeaderMenuItemView: NSView {
         searchField.isHidden = false
         
         // Quick Add Label (Clipboard)
-        quickAddLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        quickAddLabel.textColor = .controlAccentColor
-        quickAddLabel.translatesAutoresizingMaskIntoConstraints = false
+        quickAddLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        quickAddLabel.textColor = .secondaryLabelColor
         quickAddLabel.lineBreakMode = .byTruncatingMiddle
+        quickAddLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        quickAddLabel.translatesAutoresizingMaskIntoConstraints = false
         quickAddLabel.isHidden = true
         
         // Quick Add Hit Area (makes the text clickable)
@@ -100,11 +116,9 @@ class HeaderMenuItemView: NSView {
             searchField.centerYAnchor.constraint(equalTo: centerYAnchor),
             
             quickAddLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
-            quickAddLabel.trailingAnchor.constraint(equalTo: searchField.leadingAnchor, constant: -10),
             quickAddLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             
             quickAddHitArea.leadingAnchor.constraint(equalTo: leadingAnchor),
-            quickAddHitArea.trailingAnchor.constraint(equalTo: searchField.leadingAnchor),
             quickAddHitArea.topAnchor.constraint(equalTo: topAnchor),
             quickAddHitArea.bottomAnchor.constraint(equalTo: bottomAnchor),
             
@@ -113,10 +127,23 @@ class HeaderMenuItemView: NSView {
             addBtn.widthAnchor.constraint(equalToConstant: 24),
             addBtn.heightAnchor.constraint(equalToConstant: 24),
             
-            // Explicit size for refreshBtn to ensure hover background is nicely squared
             refreshBtn.widthAnchor.constraint(equalToConstant: 24),
             refreshBtn.heightAnchor.constraint(equalToConstant: 24)
         ])
+        
+        // Define swappable constraints
+        quickAddTrailingToSearch = quickAddLabel.trailingAnchor.constraint(equalTo: searchField.leadingAnchor, constant: -10)
+        quickAddTrailingToAddBtn = quickAddLabel.trailingAnchor.constraint(equalTo: addBtn.leadingAnchor, constant: -10)
+        
+        quickAddHitAreaTrailingToSearch = quickAddHitArea.trailingAnchor.constraint(equalTo: searchField.leadingAnchor)
+        quickAddHitAreaTrailingToAddBtn = quickAddHitArea.trailingAnchor.constraint(equalTo: addBtn.leadingAnchor, constant: -10)
+        
+        // Initial state: Search is dominant
+        quickAddTrailingToSearch?.isActive = true
+        quickAddHitAreaTrailingToSearch?.isActive = true
+        
+        // Define width constraint (initially inactive until targetWidth is set)
+        widthConstraint = widthAnchor.constraint(equalToConstant: 320)
     }
     
     func updateClipboardState(repo: String?) {
@@ -133,11 +160,14 @@ class HeaderMenuItemView: NSView {
             let tip = Translations.get("quickAdd").format(with: ["repo": r])
             addBtn.toolTip = tip
             quickAddHitArea.toolTip = tip
-            addBtn.baseColor = .controlAccentColor
-            addBtn.hoverColor = .controlAccentColor
             
-            // Hide search if it overlaps? For now 30% centered should be fine.
-            // But let's be safe and hide search if quickAdd is active to prioritize it.
+            // Layout Swap: Use full width
+            quickAddTrailingToSearch?.isActive = false
+            quickAddHitAreaTrailingToSearch?.isActive = false
+            
+            quickAddTrailingToAddBtn?.isActive = true
+            quickAddHitAreaTrailingToAddBtn?.isActive = true
+            
             searchField.isHidden = true
         } else {
             // Show Refresh
@@ -145,6 +175,13 @@ class HeaderMenuItemView: NSView {
             
             searchField.isHidden = false
             updateSearchOpacity()
+            
+            // Layout Swap: Revert to restricted width
+            quickAddTrailingToAddBtn?.isActive = false
+            quickAddHitAreaTrailingToAddBtn?.isActive = false
+            
+            quickAddTrailingToSearch?.isActive = true
+            quickAddHitAreaTrailingToSearch?.isActive = true
             
             // Hide Quick Add
             quickAddLabel.isHidden = true
@@ -198,17 +235,14 @@ class HeaderMenuItemView: NSView {
     }
     
     private func applyHighlightState(_ highlighted: Bool) {
-        let mainColor: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
         let secondaryColor: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
         let tertiaryColor: NSColor = highlighted ? .selectedMenuItemTextColor : .tertiaryLabelColor
         
         refreshBtn.baseColor = isRefreshingState ? tertiaryColor : secondaryColor
         refreshBtn.hoverColor = isRefreshingState ? tertiaryColor : secondaryColor
         
-        if quickAddRepoStr == nil {
-            addBtn.baseColor = mainColor
-            addBtn.hoverColor = mainColor
-        }
+        addBtn.baseColor = secondaryColor
+        addBtn.hoverColor = secondaryColor
     }
     
     @objc private func refreshClicked() {
