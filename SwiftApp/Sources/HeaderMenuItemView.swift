@@ -73,6 +73,7 @@ class HeaderMenuItemView: NSView {
         searchField.placeholderString = Translations.get("search")
         searchField.controlSize = .small
         searchField.font = .systemFont(ofSize: 11)
+        searchField.alignment = .center
         searchField.focusRingType = .none
         searchField.translatesAutoresizingMaskIntoConstraints = false
         

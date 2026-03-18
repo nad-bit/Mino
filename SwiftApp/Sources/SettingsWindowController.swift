@@ -12,7 +12,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     let oauthSpinner = NSProgressIndicator()
     let oauthStack = NSStackView()
     var currentVerificationUri: String?
-    private let repoCountLabel = NSTextField(labelWithString: "")
     
     let intervalLabel = NSTextField(labelWithString: "")
     let intervalSlider = NSSlider()
@@ -40,7 +39,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     convenience init() {
         // Adjust window height to accommodate the title and multi-line token
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 640),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 600),
                               styleMask: [.titled, .closable, .fullSizeContentView],
                               backing: .buffered,
                               defer: false)
@@ -291,12 +290,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         spacer.translatesAutoresizingMaskIntoConstraints = false
         spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
         stackView.addArrangedSubview(spacer)
-        
-        // --- Bottom Repo Count ---
-        repoCountLabel.font = .systemFont(ofSize: 11)
-        repoCountLabel.textColor = .tertiaryLabelColor
-        repoCountLabel.alignment = .center
-        stackView.addArrangedSubview(repoCountLabel)
     }
     
     private func loadCurrentSettings() {
@@ -349,15 +342,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         newIndicatorSlider.integerValue = days
         updateIndicatorDaysLabel()
         updateIndicatorSliderVisibility()
-        
-        // Load Repo Count
-        let count = ConfigManager.shared.config.repos.count
-        if count == 1 {
-            repoCountLabel.stringValue = Translations.get("repoCountSingular")
-        } else {
-            let baseString = Translations.get("repoCount")
-            repoCountLabel.stringValue = baseString.replacingOccurrences(of: "{count}", with: "\(count)")
-        }
     }
     
 

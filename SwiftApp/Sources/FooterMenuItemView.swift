@@ -5,6 +5,7 @@ class FooterMenuItemView: NSView {
     
     private let settingsBtn = MenuActionButton()
     private let quitBtn = MenuActionButton()
+    private let repoCountLabel = NSTextField(labelWithString: "")
     private let appDelegate: AppDelegate
     
     // Track states
@@ -43,9 +44,27 @@ class FooterMenuItemView: NSView {
         quitBtn.hoverColor = .labelColor
         quitBtn.translatesAutoresizingMaskIntoConstraints = false
         
+        // Repo Count Label
+        repoCountLabel.font = .systemFont(ofSize: 11)
+        repoCountLabel.textColor = .tertiaryLabelColor
+        repoCountLabel.alignment = .center
+        repoCountLabel.isBezeled = false
+        repoCountLabel.isEditable = false
+        repoCountLabel.drawsBackground = false
+        repoCountLabel.lineBreakMode = .byTruncatingTail
+        repoCountLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        let count = ConfigManager.shared.config.repos.count
+        if count == 1 {
+            repoCountLabel.stringValue = Translations.get("repoCountSingular")
+        } else {
+            let baseString = Translations.get("repoCount")
+            repoCountLabel.stringValue = baseString.replacingOccurrences(of: "{count}", with: "\(count)")
+        }
         
         addSubview(settingsBtn)
         addSubview(quitBtn)
+        addSubview(repoCountLabel)
         
         NSLayoutConstraint.activate([
             settingsBtn.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
@@ -56,7 +75,12 @@ class FooterMenuItemView: NSView {
             quitBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
             quitBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
             quitBtn.widthAnchor.constraint(equalToConstant: 24),
-            quitBtn.heightAnchor.constraint(equalToConstant: 24)
+            quitBtn.heightAnchor.constraint(equalToConstant: 24),
+            
+            repoCountLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            repoCountLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            repoCountLabel.leadingAnchor.constraint(greaterThanOrEqualTo: settingsBtn.trailingAnchor, constant: 8),
+            repoCountLabel.trailingAnchor.constraint(lessThanOrEqualTo: quitBtn.leadingAnchor, constant: -8)
         ])
     }
     

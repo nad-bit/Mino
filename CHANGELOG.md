@@ -5,6 +5,14 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.6] - 2026-03-18
+
+### Changed
+- **Menu Aesthetics:** Centered the search field text for a more balanced look.
+- **Repository Count UI:** Moved the repository count label from the bottom of the Preferences window to the footer of the main menu, neatly centered between the "Preferences" and "Quit" buttons.
+- **Translations:** Shortened the repository count label across all supported languages (e.g. from "Vigilando 119 repositorios" to "119 repositorios") to prevent text truncation in the newly constrained menu footer space.
+- **Preferences Polish:** Reduced the height of the Preferences window by 40 points to eliminate the white space left by the relocated repository count label.
+
 ## [1.4.5] - 2026-03-18
 
 ### Changed
