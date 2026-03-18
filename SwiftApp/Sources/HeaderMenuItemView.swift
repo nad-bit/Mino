@@ -36,7 +36,7 @@ class HeaderMenuItemView: NSView {
     
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
-        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 26))
+        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 32))
         self.autoresizingMask = [.width]
         self.wantsLayer = true
         setupView()
@@ -188,8 +188,11 @@ class HeaderMenuItemView: NSView {
             quickAddHitArea.isHidden = true
             
             addBtn.toolTip = Translations.get("addRepoUnified")
-            applyHighlightState(lastHighlightState)
         }
+        
+        let shouldHighlightStyle = lastHighlightState && quickAddRepoStr != nil
+        applyHighlightState(shouldHighlightStyle)
+        needsDisplay = true
     }
     
     func setSearchVisible(_ visible: Bool) {
@@ -216,7 +219,8 @@ class HeaderMenuItemView: NSView {
             refreshBtn.toolTip = text
         }
         self.isRefreshingState = isRefreshing
-        applyHighlightState(lastHighlightState)
+        let shouldHighlightStyle = lastHighlightState && quickAddRepoStr != nil
+        applyHighlightState(shouldHighlightStyle)
     }
     
     func menuDidChangeHighlight(highlightedItem: NSMenuItem?) {
@@ -229,20 +233,26 @@ class HeaderMenuItemView: NSView {
                 updateTimeText(appDelegate.getRefreshTitle(), isRefreshing: appDelegate.isRefreshing)
             }
             
-            applyHighlightState(highlighted)
+            let shouldHighlightStyle = highlighted && quickAddRepoStr != nil
+            applyHighlightState(shouldHighlightStyle)
             needsDisplay = true
         }
     }
     
     private func applyHighlightState(_ highlighted: Bool) {
-        let secondaryColor: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
-        let tertiaryColor: NSColor = highlighted ? .selectedMenuItemTextColor : .tertiaryLabelColor
+        let baseSecondary: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
+        let hoverSecondary: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
         
-        refreshBtn.baseColor = isRefreshingState ? tertiaryColor : secondaryColor
-        refreshBtn.hoverColor = isRefreshingState ? tertiaryColor : secondaryColor
+        let baseTertiary: NSColor = highlighted ? .selectedMenuItemTextColor : .tertiaryLabelColor
+        let hoverTertiary: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
         
-        addBtn.baseColor = secondaryColor
-        addBtn.hoverColor = secondaryColor
+        refreshBtn.baseColor = isRefreshingState ? baseTertiary : baseSecondary
+        refreshBtn.hoverColor = isRefreshingState ? hoverTertiary : hoverSecondary
+        
+        addBtn.baseColor = baseSecondary
+        addBtn.hoverColor = hoverSecondary
+        
+        quickAddLabel.textColor = baseSecondary
     }
     
     @objc private func refreshClicked() {
@@ -275,7 +285,8 @@ class HeaderMenuItemView: NSView {
     }
     
     override func draw(_ dirtyRect: NSRect) {
-        if lastHighlightState {
+        let shouldHighlightStyle = lastHighlightState && quickAddRepoStr != nil
+        if shouldHighlightStyle {
             NSColor.selectedContentBackgroundColor.set()
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
             path.fill()

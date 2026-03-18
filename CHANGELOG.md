@@ -5,6 +5,15 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.5] - 2026-03-18
+
+### Changed
+- **Header Aesthetics:** Increased the menu header height from 26pt to 32pt. This flawlessly aligns the hover background geometry of the Header Action Buttons (Refresh/Add) with the Footer Buttons (Preferences/Quit), resolving an optical squash illusion and yielding a perfectly symmetrical interface.
+- **Button Brightness:** Gently increased the hover opacity of all inline `MenuActionButton` elements from 15% to 20% to drastically improve visual contrast and tactile feedback.
+
+### Fixed
+- **Phantom Red Dot:** Fixed a persistent state bug where the unread notification pulse remained active if background updates successfully resolved *while* the user was actively holding the menu open. The system now executes a strict `clearUnreadPulse()` synchronization upon closing the menu, guaranteeing the red dot remains tightly coupled to what the user implicitly consumed on screen.
+
 ## [1.4.4] - 2026-03-14
 
 ### Fixed

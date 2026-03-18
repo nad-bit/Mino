@@ -435,7 +435,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
 
         // Apply uniform width to header
         headerView.targetWidth = maxWidth
-        headerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 26)
+        headerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 32)
         
         // Add footer
         let footerMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -523,10 +523,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         readReposThisSession.insert(repoName)
     }
     
-    func menuWillOpen(_ menu: NSMenu) {
-        menuIsOpen = true
-        readReposThisSession.removeAll()
-        
+    func clearUnreadPulse() {
         // Acknowledge current versions for the red pulse
         var notifiedVersions = UserDefaults.standard.dictionary(forKey: "LastNotifiedVersions") as? [String: String] ?? [:]
         for (repoName, info) in repoCache {
@@ -537,7 +534,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         UserDefaults.standard.set(notifiedVersions, forKey: "LastNotifiedVersions")
         UserDefaults.standard.set(false, forKey: "HasUnreadPulse")
         
-        updateStatusIcon(hasUpdates: false) // Turn off red dot immediately upon physical click for responsiveness
+        updateStatusIcon(hasUpdates: false) // Turn off red dot immediately for responsiveness
+    }
+    
+    func menuWillOpen(_ menu: NSMenu) {
+        menuIsOpen = true
+        readReposThisSession.removeAll()
+        
+        clearUnreadPulse()
         
         // Clean out search criteria and auto-select typing field
         searchField?.stringValue = ""
@@ -568,6 +572,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     func menuDidClose(_ menu: NSMenu) {
         menuIsOpen = false
         
+        clearUnreadPulse()
+        
         // Mark currently cached versions as definitively seen upon closing the menu block
         // BUT ONLY for repos that were actually hovered/read during this session
         var seenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
@@ -577,7 +583,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             }
         }
         UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
-        updateStatusIcon(hasUpdates: false)
         
         // Execute any actions deferred by custom views (like opening Settings/Quit)
         // This guarantees the menu's tracking loop is completely torn down

@@ -26,7 +26,6 @@ class FooterMenuItemView: NSView {
         let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
         settingsBtn.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: Translations.get("preferences"))?.withSymbolConfiguration(config)
         settingsBtn.isBordered = false
-        settingsBtn.controlSize = .small
         settingsBtn.target = self
         settingsBtn.action = #selector(settingsClicked)
         settingsBtn.toolTip = Translations.get("preferences")
@@ -37,7 +36,6 @@ class FooterMenuItemView: NSView {
         // Quit Button
         quitBtn.image = NSImage(systemSymbolName: "power", accessibilityDescription: Translations.get("quit"))?.withSymbolConfiguration(config)
         quitBtn.isBordered = false
-        quitBtn.controlSize = .small
         quitBtn.target = self
         quitBtn.action = #selector(quitClicked)
         quitBtn.toolTip = Translations.get("quit")
@@ -81,30 +79,10 @@ class FooterMenuItemView: NSView {
     }
     
     func menuDidChangeHighlight(highlightedItem: NSMenuItem?) {
-        let highlighted = (highlightedItem === enclosingMenuItem)
-        if highlighted != lastHighlightState {
-            lastHighlightState = highlighted
-            applyHighlightState(highlighted)
-            needsDisplay = true
-        }
-    }
-    
-    private func applyHighlightState(_ highlighted: Bool) {
-        let btnBase: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
-        let btnHover: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
-        
-        settingsBtn.baseColor = btnBase
-        settingsBtn.hoverColor = btnHover
-        quitBtn.baseColor = btnBase
-        quitBtn.hoverColor = btnHover
+        // No full-row highlight for footer, buttons handle their own hover
     }
     
     override func draw(_ dirtyRect: NSRect) {
-        if lastHighlightState {
-            NSColor.selectedContentBackgroundColor.set()
-            let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
-            path.fill()
-        }
         super.draw(dirtyRect)
     }
 }

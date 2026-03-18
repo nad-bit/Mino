@@ -46,8 +46,8 @@ class MenuActionButton: NSButton {
         isHovered = true
         contentTintColor = hoverColor
         wantsLayer = true
-        layer?.cornerRadius = 4
-        layer?.backgroundColor = hoverColor.withAlphaComponent(0.15).cgColor
+        layer?.cornerRadius = 6
+        layer?.backgroundColor = hoverColor.withAlphaComponent(0.2).cgColor
     }
     
     override func mouseExited(with event: NSEvent) {
