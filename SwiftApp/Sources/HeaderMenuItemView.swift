@@ -78,7 +78,7 @@ class HeaderMenuItemView: NSView {
         searchField.translatesAutoresizingMaskIntoConstraints = false
         
         searchField.wantsLayer = true
-        searchField.alphaValue = 0.25
+        searchField.alphaValue = 0.5
         searchField.isHidden = false
         
         // Quick Add Label (Clipboard)
@@ -205,7 +205,7 @@ class HeaderMenuItemView: NSView {
     
     func updateSearchOpacity() {
         let hasText = !searchField.stringValue.isEmpty
-        let targetAlpha: CGFloat = hasText ? 1.0 : 0.25
+        let targetAlpha: CGFloat = hasText ? 1.0 : 0.5
         
         if searchField.alphaValue != targetAlpha {
             NSAnimationContext.runAnimationGroup { context in
