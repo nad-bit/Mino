@@ -147,7 +147,34 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         versionLabel.isHidden = (info.version == nil || info.version == "N/A")
         
         // --- TEXT BODY (Markdown & HTML) ---
-        let bodyText = info.body ?? Translations.get("noNotes")
+        var bodyText = info.body ?? Translations.get("noNotes")
+        bodyText = bodyText.replacingOccurrences(of: "\r\n", with: "\n")
+        
+        // Fix missing line breaks after bullet lists before headings/text
+        // Aggressively process line-by-line to guarantee injection
+        let lines = bodyText.components(separatedBy: "\n")
+        var newLines = [String]()
+        
+        let bulletPattern = "^[ \\t]*[-*•+][ \\t]+"
+        let bulletRegex = try? NSRegularExpression(pattern: bulletPattern)
+        
+        for i in 0..<lines.count {
+            let line = lines[i]
+            newLines.append(line)
+            
+            if let regex = bulletRegex, regex.firstMatch(in: line, range: NSRange(location: 0, length: line.utf16.count)) != nil {
+                if i + 1 < lines.count {
+                    let nextLine = lines[i + 1]
+                    if !nextLine.trimmingCharacters(in: .whitespaces).isEmpty {
+                        if regex.firstMatch(in: nextLine, range: NSRange(location: 0, length: nextLine.utf16.count)) == nil {
+                            newLines.append("") // Inject empty line
+                        }
+                    }
+                }
+            }
+        }
+        bodyText = newLines.joined(separator: "\n")
+
         
         // 1. Heuristic HTML Detection
         let hasHTML = bodyText.contains("<div") || bodyText.contains("<img") || bodyText.contains("<h") || bodyText.contains("<p>") || bodyText.contains("<ul") || bodyText.contains("<li") || bodyText.contains("<strong")
@@ -188,8 +215,16 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         
+        // Inject explicit line breaks between block elements and headings for NSTextView
+        // NSTextView ignores CSS margins if textLists are wiped or due to HTML layout quirks
+        var fullHTML = bodyText
+        let blockToHeadingRegex = try? NSRegularExpression(pattern: "(</(?:ul|ol|p|div|blockquote)>)(\\s*)(<(?:h[1-6]|p|ul|ol|div|blockquote)\\b[^>]*>)")
+        if let r = blockToHeadingRegex {
+            fullHTML = r.stringByReplacingMatches(in: fullHTML, options: [], range: NSRange(location: 0, length: fullHTML.utf16.count), withTemplate: "$1<br><br>$3")
+        }
+        
         // Convert standard Markdown newlines to HTML breaks so text doesn't bunch up in WebKit
-        if hasHTML, let htmlData = bodyText.data(using: .utf8) {
+        if hasHTML, let htmlData = fullHTML.data(using: .utf8) {
             // Attempt to parse as HTML format natively via WebKit engine bridge
             let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
                 .documentType: NSAttributedString.DocumentType.html,

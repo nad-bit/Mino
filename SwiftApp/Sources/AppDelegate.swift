@@ -23,6 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     // Search properties
     var searchField: NSSearchField?
     var searchMenuItem: NSMenuItem?
+    var noSearchResultsMenuItem: NSMenuItem!
     var repoMenuItems: [(item: NSMenuItem, data: RepoDisplayData)] = []
     private var readReposThisSession: Set<String> = []
     
@@ -430,17 +431,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             repoMenuItems.append((item: menuItem, data: customView.displayData))
         }
         
+        noSearchResultsMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        let noResultsView = NoSearchResultsView()
+        noResultsView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: rowHeight == 16 ? 24 : rowHeight)
+        noSearchResultsMenuItem.view = noResultsView
+        noSearchResultsMenuItem.isHidden = true
+        menu.addItem(noSearchResultsMenuItem)
+        
         menu.addItem(NSMenuItem.separator())
         
 
         // Apply uniform width to header
         headerView.targetWidth = maxWidth
-        headerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 32)
+        headerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 28)
         
         // Add footer
         let footerMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         let footerView = FooterMenuItemView(appDelegate: self)
-        footerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 32)
+        footerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 28)
         footerMenuItem.view = footerView
         menu.addItem(footerMenuItem)
         
@@ -932,15 +940,24 @@ extension AppDelegate {
     
     private func filterMenuBySearchQuery(_ query: String) {
         let q = query.lowercased()
+        var visibleCount = 0
         
         for map in repoMenuItems {
             if q.isEmpty {
                 map.item.isHidden = false
+                visibleCount += 1
             } else {
                 // If the user's input matches the exact username or repo name locally
                 let matches = map.data.formattedName.lowercased().contains(q) || map.data.repoName.lowercased().contains(q)
                 map.item.isHidden = !matches
+                if matches { visibleCount += 1 }
             }
+        }
+        
+        if q.isEmpty {
+            noSearchResultsMenuItem?.isHidden = true
+        } else {
+            noSearchResultsMenuItem?.isHidden = visibleCount > 0
         }
     }
 }

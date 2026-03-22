@@ -5,13 +5,18 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.6] - 2026-03-18
+## [1.4.6] - 2026-03-22
 
 ### Changed
 - **Menu Aesthetics:** Centered the search field text for a more balanced look.
 - **Repository Count UI:** Moved the repository count label from the bottom of the Preferences window to the footer of the main menu, neatly centered between the "Preferences" and "Quit" buttons.
 - **Translations:** Shortened the repository count label across all supported languages (e.g. from "Vigilando 119 repositorios" to "119 repositorios") to prevent text truncation in the newly constrained menu footer space.
 - **Preferences Polish:** Reduced the height of the Preferences window by 40 points to eliminate the white space left by the relocated repository count label.
+- **Repo Typographic Hierarchy:** When viewing tracked repositories, the repository's owner handle is now rendered in a cleanly dimmed, regular-weight font to naturally recede from the bold repository name, dramatically improving scannability.
+- **Empty Search State:** Searching for a repository that produces zero matches now presents a sleek, centered "eye.slash" icon in striking red to instantly confirm the filtered state.
+
+### Fixed
+- **Release Notes HTML Spacing:** Re-engineered the Markdown-to-HTML interpreter to systematically inject blank lines before block elements. Repositories using custom markdown paragraphs, nested lists, or bold-headers will now render with perfect vertical symmetry natively in macOS.
 
 ## [1.4.5] - 2026-03-18
 

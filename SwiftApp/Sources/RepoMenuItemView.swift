@@ -537,6 +537,17 @@ class RepoMenuItemView: NSView {
         attrStr.addAttribute(.foregroundColor, value: baseColor, range: fullRange)
         attrStr.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
         
+        if label === titleLabel, let slashIndex = text.firstIndex(of: "/") {
+            let prefixNSRange = NSRange(text.startIndex...slashIndex, in: text)
+            let ownerColor = highlighted ? baseColor.withAlphaComponent(0.6) : NSColor.secondaryLabelColor
+            attrStr.addAttribute(.foregroundColor, value: ownerColor, range: prefixNSRange)
+            
+            if let currentFont = label.font {
+                let regularFont = NSFont.systemFont(ofSize: currentFont.pointSize, weight: .regular)
+                attrStr.addAttribute(.font, value: regularFont, range: prefixNSRange)
+            }
+        }
+        
         if !highlighted, text.contains(Constants.newReleaseIndicator) {
             let indicatorRange = (text as NSString).range(of: Constants.newReleaseIndicator)
             if indicatorRange.location != NSNotFound {
