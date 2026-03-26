@@ -565,7 +565,7 @@ class RepoMenuItemView: NSView {
             path.fill()
         } else if !wasEverHovered && displayData.isNew {
             // Subtle highlight for unread/new notification
-            NSColor.controlAccentColor.withAlphaComponent(0.08).set()
+            NSColor.controlAccentColor.withAlphaComponent(0.2).set()
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
             path.fill()
         }

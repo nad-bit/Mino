@@ -13,7 +13,7 @@ class FooterMenuItemView: NSView {
     
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
-        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 28)) // slightly taller for safe framing at bottom
+        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 30)) // slightly taller for safe framing at bottom
         self.autoresizingMask = [.width]
         setupView()
     }

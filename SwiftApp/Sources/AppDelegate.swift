@@ -443,12 +443,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
 
         // Apply uniform width to header
         headerView.targetWidth = maxWidth
-        headerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 28)
+        headerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 30)
         
         // Add footer
         let footerMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         let footerView = FooterMenuItemView(appDelegate: self)
-        footerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 28)
+        footerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 30)
         footerMenuItem.view = footerView
         menu.addItem(footerMenuItem)
         

@@ -36,7 +36,7 @@ class HeaderMenuItemView: NSView {
     
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
-        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 28))
+        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 30))
         self.autoresizingMask = [.width]
         self.wantsLayer = true
         setupView()
