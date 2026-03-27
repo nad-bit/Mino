@@ -20,7 +20,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     let loginSwitch = NSSwitch()
     private let ownerSwitch = NSSwitch()
     private let newIndicatorSwitch = NSSwitch()
-    private let newIndicatorSlider = NSSlider(value: 1, minValue: 1, maxValue: 30, target: nil, action: nil)
+    private let newIndicatorStepper = NSStepper()
     let newIndicatorLabel = NSTextField(labelWithString: "")
     let sortSegment = NSSegmentedControl()
     let layoutSegment = NSSegmentedControl()
@@ -28,6 +28,10 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     var tempToken: String?
     private var isUpdatingSelf = false
+    
+    // Debounce properties for steppers
+    private var intervalSaveWorkItem: DispatchWorkItem?
+    private var indicatorSaveWorkItem: DispatchWorkItem?
     
     override init(window: NSWindow?) {
         super.init(window: window)
@@ -39,7 +43,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     convenience init() {
         // Adjust window height to accommodate the title and multi-line token
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 600),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 680),
                               styleMask: [.titled, .closable, .fullSizeContentView],
                               backing: .buffered,
                               defer: false)
@@ -124,40 +128,30 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         stackView.addArrangedSubview(aboutStack)
         
-        let sep0 = NSBox()
-        sep0.boxType = .separator
-        stackView.addArrangedSubview(sep0)
-        sep0.translatesAutoresizingMaskIntoConstraints = false
-        sep0.widthAnchor.constraint(equalTo: stackView.widthAnchor, constant: -40).isActive = true
-        
         // Adjust alignment for the rest of the form
         let formStack = NSStackView()
         formStack.orientation = .vertical
-        formStack.alignment = .leading
-        formStack.spacing = 15
+        formStack.alignment = .centerX
+        formStack.spacing = 18
         formStack.translatesAutoresizingMaskIntoConstraints = false
         stackView.addArrangedSubview(formStack)
+        formStack.widthAnchor.constraint(equalTo: stackView.widthAnchor, constant: -40).isActive = true
         
         // --- 1. Token Section ---
+        let tokenStack = createInnerStack()
         let tokenLabel = NSTextField(labelWithString: Translations.get("configureToken"))
-        
         tokenStatusLabel.textColor = .secondaryLabelColor
         tokenStatusLabel.font = .systemFont(ofSize: 13)
-        
         tokenConnectBtn.target = self
         tokenConnectBtn.action = #selector(startOAuth(_:))
-        
         tokenDeleteBtn.target = self
         tokenDeleteBtn.action = #selector(deleteToken(_:))
-        
-        addSettingsRow(to: formStack, label: tokenLabel, controls: [tokenStatusLabel, tokenConnectBtn, tokenDeleteBtn])
+        addSettingsRow(to: tokenStack, label: tokenLabel, controls: [tokenStatusLabel, tokenConnectBtn, tokenDeleteBtn])
         
         oauthCodeLabel.font = .monospacedSystemFont(ofSize: 14, weight: .bold)
         oauthCodeLabel.isSelectable = true
-        
         oauthActionBtn.target = self
         oauthActionBtn.action = #selector(openGitHubAuth(_:))
-        
         oauthCancelBtn.target = self
         oauthCancelBtn.action = #selector(cancelOAuth(_:))
         
@@ -192,98 +186,82 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         oauthStack.addArrangedSubview(oauthContentStack)
         oauthStack.isHidden = true
         
-        formStack.addArrangedSubview(oauthStack)
-        oauthStack.widthAnchor.constraint(equalToConstant: 380).isActive = true
+        tokenStack.addArrangedSubview(oauthStack)
         
-        let sep1 = NSBox()
-        sep1.boxType = .separator
-        formStack.addArrangedSubview(sep1)
-        sep1.translatesAutoresizingMaskIntoConstraints = false
-        sep1.widthAnchor.constraint(equalTo: formStack.widthAnchor, constant: 0).isActive = true
+        formStack.addArrangedSubview(createGroupBox(for: tokenStack))
         
-        // --- 2. Interval Section ---
+        // --- 2. Menu Settings Section ---
+        let menuStack = createInnerStack()
+        let layoutLabel = NSTextField(labelWithString: Translations.get("layoutLabel"))
+        layoutSegment.segmentCount = 4
+        layoutSegment.setImage(NSImage(systemSymbolName: "list.bullet", accessibilityDescription: "Columns"), forSegment: 0)
+        layoutSegment.setImage(NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "Cards"), forSegment: 1)
+        layoutSegment.setImage(NSImage(systemSymbolName: "list.bullet.rectangle", accessibilityDescription: "Hybrid"), forSegment: 2)
+        layoutSegment.setImage(NSImage(systemSymbolName: "tag", accessibilityDescription: "Tags"), forSegment: 3)
+        layoutSegment.segmentStyle = .rounded
+        layoutSegment.target = self
+        layoutSegment.action = #selector(layoutChanged(_:))
+        addSettingsRow(to: menuStack, label: layoutLabel, controls: [layoutSegment])
+        
+        let indicatorLabel = NSTextField(labelWithString: Translations.get("showNewIndicator"))
+        newIndicatorSwitch.target = self
+        newIndicatorSwitch.action = #selector(toggleNewIndicator(_:))
+        addSettingsRow(to: menuStack, label: indicatorLabel, controls: [newIndicatorSwitch])
+        
+        newIndicatorLabel.translatesAutoresizingMaskIntoConstraints = false
+        newIndicatorStepper.minValue = 1
+        newIndicatorStepper.maxValue = 30
+        newIndicatorStepper.valueWraps = false
+        newIndicatorStepper.target = self
+        newIndicatorStepper.action = #selector(indicatorDaysChanged(_:))
+        newIndicatorStepper.translatesAutoresizingMaskIntoConstraints = false
+        addSettingsRow(to: menuStack, label: newIndicatorLabel, controls: [newIndicatorStepper])
+        
+        let ownerLabel = NSTextField(labelWithString: Translations.get("showOwner"))
+        ownerSwitch.target = self
+        ownerSwitch.action = #selector(toggleOwner(_:))
+        addSettingsRow(to: menuStack, label: ownerLabel, controls: [ownerSwitch])
+        
+        let sortLabel = NSTextField(labelWithString: Translations.get("sortLabel"))
+        sortSegment.segmentCount = 2
+        sortSegment.setImage(NSImage(systemSymbolName: "textformat.abc", accessibilityDescription: Translations.get("sortNameOnly")), forSegment: 0)
+        sortSegment.setImage(NSImage(systemSymbolName: "clock", accessibilityDescription: Translations.get("sortDateOnly")), forSegment: 1)
+        sortSegment.segmentStyle = .rounded
+        sortSegment.target = self
+        sortSegment.action = #selector(sortChanged(_:))
+        addSettingsRow(to: menuStack, label: sortLabel, controls: [sortSegment])
+        
+        let compactLabel = NSTextField(labelWithString: Translations.get("compactModeLabel"))
+        compactModeSwitch.target = self
+        compactModeSwitch.action = #selector(toggleCompactMode(_:))
+        addSettingsRow(to: menuStack, label: compactLabel, controls: [compactModeSwitch])
+        
+        formStack.addArrangedSubview(createGroupBox(for: menuStack))
+        
+        // --- 3. Interval Section ---
+        let intervalStack = createInnerStack()
         intervalLabel.translatesAutoresizingMaskIntoConstraints = false
-        
         intervalSlider.minValue = 1
         intervalSlider.maxValue = 24
         intervalSlider.numberOfTickMarks = 24
         intervalSlider.allowsTickMarkValuesOnly = true
         intervalSlider.target = self
-        intervalSlider.action = #selector(sliderChanged(_:))
+        intervalSlider.action = #selector(intervalChanged(_:))
         intervalSlider.translatesAutoresizingMaskIntoConstraints = false
-        intervalSlider.widthAnchor.constraint(equalToConstant: 380).isActive = true
         
-        formStack.addArrangedSubview(intervalLabel)
-        formStack.addArrangedSubview(intervalSlider)
+        intervalStack.addArrangedSubview(intervalLabel)
+        intervalStack.addArrangedSubview(intervalSlider)
         
-        let sep2 = NSBox()
-        sep2.boxType = .separator
-        formStack.addArrangedSubview(sep2)
-        sep2.translatesAutoresizingMaskIntoConstraints = false
-        sep2.widthAnchor.constraint(equalTo: formStack.widthAnchor, constant: 0).isActive = true
+        formStack.addArrangedSubview(createGroupBox(for: intervalStack))
         
-        // --- 3. UI Toggles ---
+        // --- 4. Startup ---
+        let startupStack = createInnerStack()
         let loginLabel = NSTextField(labelWithString: Translations.get("startAtLogin"))
         loginSwitch.target = self
         loginSwitch.action = #selector(toggleLogin(_:))
-        addSettingsRow(to: formStack, label: loginLabel, controls: [loginSwitch])
+        addSettingsRow(to: startupStack, label: loginLabel, controls: [loginSwitch])
         
-        let ownerLabel = NSTextField(labelWithString: Translations.get("showOwner"))
-        ownerSwitch.target = self
-        ownerSwitch.action = #selector(toggleOwner(_:))
-        addSettingsRow(to: formStack, label: ownerLabel, controls: [ownerSwitch])
-        
-        // --- New Release Indicator Toggle ---
-        let indicatorLabel = NSTextField(labelWithString: Translations.get("showNewIndicator"))
-        newIndicatorSwitch.target = self
-        newIndicatorSwitch.action = #selector(toggleNewIndicator(_:))
-        
-        addSettingsRow(to: formStack, label: indicatorLabel, controls: [newIndicatorSwitch])
-        
-        // Indicator Days Slider
-        newIndicatorLabel.translatesAutoresizingMaskIntoConstraints = false
-        
-        newIndicatorSlider.minValue = 1
-        newIndicatorSlider.maxValue = 30
-        newIndicatorSlider.numberOfTickMarks = 30
-        newIndicatorSlider.allowsTickMarkValuesOnly = true
-        newIndicatorSlider.target = self
-        newIndicatorSlider.action = #selector(indicatorDaysChanged(_:))
-        newIndicatorSlider.translatesAutoresizingMaskIntoConstraints = false
-        newIndicatorSlider.widthAnchor.constraint(equalToConstant: 380).isActive = true
-        
-        formStack.addArrangedSubview(newIndicatorLabel)
-        formStack.addArrangedSubview(newIndicatorSlider)
-        
-        // --- 4. Sort Section ---
-        let sortLabel = NSTextField(labelWithString: Translations.get("sortLabel"))
-        sortSegment.segmentCount = 2
-        sortSegment.setLabel(Translations.get("sortNameOnly"), forSegment: 0)
-        sortSegment.setLabel(Translations.get("sortDateOnly"), forSegment: 1)
-        sortSegment.segmentStyle = .rounded
-        sortSegment.target = self
-        sortSegment.action = #selector(sortChanged(_:))
-        
-        addSettingsRow(to: formStack, label: sortLabel, controls: [sortSegment])
-        
-        // --- 5. Layout Mode Section ---
-        let layoutLabel = NSTextField(labelWithString: Translations.get("layoutLabel"))
-        layoutSegment.segmentCount = 4
-        layoutSegment.setLabel("1", forSegment: 0)
-        layoutSegment.setLabel("2", forSegment: 1)
-        layoutSegment.setLabel("3", forSegment: 2)
-        layoutSegment.setLabel("4", forSegment: 3)
-        layoutSegment.segmentStyle = .rounded
-        layoutSegment.target = self
-        layoutSegment.action = #selector(layoutChanged(_:))
-        
-        addSettingsRow(to: formStack, label: layoutLabel, controls: [layoutSegment])
-        
-        let compactLabel = NSTextField(labelWithString: Translations.get("compactModeLabel"))
-        compactModeSwitch.target = self
-        compactModeSwitch.action = #selector(toggleCompactMode(_:))
-        addSettingsRow(to: formStack, label: compactLabel, controls: [compactModeSwitch])
-        
+        formStack.addArrangedSubview(createGroupBox(for: startupStack))
         
         // Add a bottom spacer to push content up if needed and provide bottom margin
         let spacer = NSView()
@@ -339,40 +317,39 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         newIndicatorSwitch.state = showNewIndicator ? .on : .off
         
         let days = ConfigManager.shared.config.newIndicatorDays ?? Constants.newReleaseThresholdDays
-        newIndicatorSlider.integerValue = days
+        newIndicatorStepper.integerValue = days
         updateIndicatorDaysLabel()
-        updateIndicatorSliderVisibility()
+        updateIndicatorStepperVisibility()
     }
     
 
     
-    @objc private func sliderChanged(_ sender: NSSlider) {
+    @objc private func intervalChanged(_ sender: NSSlider) {
         updateIntervalLabel()
         
-        let shouldSave: Bool
-        if let event = NSApp.currentEvent {
-            shouldSave = (event.type == .leftMouseUp || event.type == .keyUp)
-        } else {
-            shouldSave = true
+        // Cancel any pending save
+        intervalSaveWorkItem?.cancel()
+        
+        // Create a new save action to run after the user stops modifying the stepper
+        let pendingSave = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.isUpdatingSelf = true
+            let currentHours = self.intervalSlider.integerValue
+            ConfigManager.shared.config.refreshMinutes = currentHours * 60
+            ConfigManager.shared.saveConfig()
+            
+            if let delegate = NSApp.delegate as? AppDelegate {
+                delegate.lastRefreshTime = Date() // Force a refresh evaluation timing
+                delegate.setupMenu()
+                delegate.updateCountdown()
+            }
+            self.initialIntervalHours = currentHours
+            self.isUpdatingSelf = false
         }
         
-        if shouldSave {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                // Instantly save and apply the new interval
-                self.isUpdatingSelf = true
-                let currentHours = self.intervalSlider.integerValue
-                ConfigManager.shared.config.refreshMinutes = currentHours * 60
-                ConfigManager.shared.saveConfig()
-                
-                if let delegate = NSApp.delegate as? AppDelegate {
-                    delegate.lastRefreshTime = Date() // Force a refresh evaluation timing
-                    delegate.setupMenu()
-                    delegate.updateCountdown()
-                }
-                self.initialIntervalHours = currentHours
-                self.isUpdatingSelf = false
-            }
-        }
+        intervalSaveWorkItem = pendingSave
+        // 0.5 seconds of inactivity implies the user released the mouse button
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pendingSave)
     }
     
     private func updateIntervalLabel() {
@@ -502,34 +479,31 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         isUpdatingSelf = true
         ConfigManager.shared.config.showNewIndicator = sender.state == .on
         ConfigManager.shared.saveConfig()
-        updateIndicatorSliderVisibility()
+        updateIndicatorStepperVisibility()
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.setupMenu()
         }
         isUpdatingSelf = false
     }
     
-    @objc private func indicatorDaysChanged(_ sender: NSSlider) {
+    @objc private func indicatorDaysChanged(_ sender: NSStepper) {
         updateIndicatorDaysLabel()
         
-        let shouldSave: Bool
-        if let event = NSApp.currentEvent {
-            shouldSave = (event.type == .leftMouseUp || event.type == .keyUp)
-        } else {
-            shouldSave = true
+        indicatorSaveWorkItem?.cancel()
+        
+        let pendingSave = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.isUpdatingSelf = true
+            ConfigManager.shared.config.newIndicatorDays = self.newIndicatorStepper.integerValue
+            ConfigManager.shared.saveConfig()
+            if let delegate = NSApp.delegate as? AppDelegate {
+                 delegate.setupMenu()
+            }
+            self.isUpdatingSelf = false
         }
         
-        if shouldSave {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                self.isUpdatingSelf = true
-                ConfigManager.shared.config.newIndicatorDays = self.newIndicatorSlider.integerValue
-                ConfigManager.shared.saveConfig()
-                if let delegate = NSApp.delegate as? AppDelegate {
-                     delegate.setupMenu()
-                }
-                self.isUpdatingSelf = false
-            }
-        }
+        indicatorSaveWorkItem = pendingSave
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pendingSave)
     }
     
     @objc private func layoutChanged(_ sender: NSSegmentedControl) {
@@ -537,7 +511,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let layoutModes = ["columns", "cards", "hybrid", "tags"]
         ConfigManager.shared.config.menuLayout = layoutModes[sender.selectedSegment]
         ConfigManager.shared.saveConfig()
-        updateIndicatorSliderVisibility()
+        updateIndicatorStepperVisibility()
         if let delegate = NSApp.delegate as? AppDelegate {
              delegate.setupMenu()
         }
@@ -555,7 +529,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     private func updateIndicatorDaysLabel() {
-        let days = newIndicatorSlider.integerValue
+        let days = newIndicatorStepper.integerValue
         if days == 1 {
             newIndicatorLabel.stringValue = Translations.get("indicatorDaySingular")
         } else {
@@ -563,7 +537,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         }
     }
     
-    private func updateIndicatorSliderVisibility() {
+    private func updateIndicatorStepperVisibility() {
         let layoutIndex = layoutSegment.selectedSegment
         let isColorLayout = (layoutIndex == 2 || layoutIndex == 3) // Hybrid or Tags
         
@@ -571,7 +545,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             newIndicatorSwitch.isEnabled = false
             newIndicatorSwitch.state = .on // visually indicate feature is structural
             
-            newIndicatorSlider.isEnabled = true
+            newIndicatorStepper.isEnabled = true
             newIndicatorLabel.textColor = .labelColor
         } else {
             newIndicatorSwitch.isEnabled = true
@@ -579,7 +553,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             newIndicatorSwitch.state = showNewIndicator ? .on : .off
             
             let isEnabled = newIndicatorSwitch.state == .on
-            newIndicatorSlider.isEnabled = isEnabled
+            newIndicatorStepper.isEnabled = isEnabled
             newIndicatorLabel.textColor = isEnabled ? .labelColor : .disabledControlTextColor
         }
     }
@@ -592,6 +566,12 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         row.spacing = 10
         row.translatesAutoresizingMaskIntoConstraints = false
         
+        // Allow the label to truncate if the row is tight
+        if let textField = label as? NSTextField {
+            textField.lineBreakMode = .byTruncatingTail
+            textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
+        
         row.addArrangedSubview(label)
         
         let spring = NSView()
@@ -600,11 +580,46 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         row.addArrangedSubview(spring)
         
         for control in controls {
+            control.setContentCompressionResistancePriority(.required, for: .horizontal)
             row.addArrangedSubview(control)
         }
         
         stack.addArrangedSubview(row)
-        row.widthAnchor.constraint(equalToConstant: 380).isActive = true
+    }
+    
+    private func createInnerStack() -> NSStackView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 15
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }
+    
+    private func createGroupBox(for innerStack: NSStackView) -> NSBox {
+        let box = NSBox()
+        box.boxType = .custom
+        box.cornerRadius = 8
+        box.borderWidth = 1
+        box.borderColor = NSColor.separatorColor.withAlphaComponent(0.2)
+        box.fillColor = NSColor.labelColor.withAlphaComponent(0.04)
+        box.titlePosition = .noTitle
+        box.translatesAutoresizingMaskIntoConstraints = false
+        
+        guard let cv = box.contentView else { return box }
+        
+        innerStack.translatesAutoresizingMaskIntoConstraints = false
+        cv.addSubview(innerStack)
+        
+        NSLayoutConstraint.activate([
+            innerStack.topAnchor.constraint(equalTo: cv.topAnchor, constant: 14),
+            innerStack.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -14),
+            innerStack.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 16),
+            innerStack.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -16),
+            box.widthAnchor.constraint(equalToConstant: 440)
+        ])
+        
+        return box
     }
     
     // Extracted Login Item Logic for reuse

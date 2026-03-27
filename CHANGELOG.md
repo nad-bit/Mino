@@ -5,6 +5,16 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.7] - 2026-03-27
+
+### Changed
+- **Grouped Preferences Design:** Rebuilt the Settings window layout from the ground up. All options are now neatly framed inside four logically grouped, borderless `NSBox` cards featuring native iOS-style translucent backgrounds and rounded paddings, retiring the legacy horizontal line separators.
+- **Iconographic UI:** Upgraded all text-heavy segmented controls in the Preferences panel to use crisp, localized SF Symbols (e.g. `clock` for Date Sort, `square.grid.2x2` for Card Layout), making the interface instantly readable regardless of the active language.
+- **Text Safety Anchors:** Implemented dynamic text truncation (`.byTruncatingTail`) on all variable-length localized settings labels. Expanded the base window width to 480pt to comfortably display verbose translations without crushing the trailing switches and buttons.
+
+### Fixed
+- **Flaky Save Interactions:** Re-engineered continuous background saves for all numeric interactions (`NSSlider`, `NSStepper`) using a 0.5s `DispatchWorkItem` debounce. Configurations now safely and flawlessly commit to disk the exact moment the user lifts their hand off the mouse, completely bypassing historical AppKit tracking loop drops.
+
 ## [1.4.6] - 2026-03-22
 
 ### Changed
