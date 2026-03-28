@@ -29,9 +29,13 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     var tempToken: String?
     private var isUpdatingSelf = false
     
-    // Debounce properties for steppers
+    // Debounce properties for saving settings
     private var intervalSaveWorkItem: DispatchWorkItem?
     private var indicatorSaveWorkItem: DispatchWorkItem?
+    private var generalSaveWorkItem: DispatchWorkItem?
+
+    
+
     
     override init(window: NSWindow?) {
         super.init(window: window)
@@ -330,7 +334,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         // Cancel any pending save
         intervalSaveWorkItem?.cancel()
         
-        // Create a new save action to run after the user stops modifying the stepper
+        // Create a new save action to run after the user stops modifying the slider
         let pendingSave = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             self.isUpdatingSelf = true
@@ -339,16 +343,14 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             ConfigManager.shared.saveConfig()
             
             if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.lastRefreshTime = Date() // Force a refresh evaluation timing
                 delegate.setupMenu()
-                delegate.updateCountdown()
             }
             self.initialIntervalHours = currentHours
             self.isUpdatingSelf = false
         }
         
         intervalSaveWorkItem = pendingSave
-        // 0.5 seconds of inactivity implies the user released the mouse button
+        // Delay ensures we only save once the user settles on a value
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pendingSave)
     }
     
@@ -457,38 +459,57 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     @objc private func toggleOwner(_ sender: NSSwitch) {
         isUpdatingSelf = true
         ConfigManager.shared.config.showOwner = sender.state == .on
-        ConfigManager.shared.saveConfig()
-        if let delegate = NSApp.delegate as? AppDelegate {
-             delegate.setupMenu()
+        
+        generalSaveWorkItem?.cancel()
+        let pending = DispatchWorkItem { [weak self] in
+            ConfigManager.shared.saveConfig()
+            if let delegate = NSApp.delegate as? AppDelegate {
+                delegate.setupMenu()
+            }
+            self?.isUpdatingSelf = false
         }
-        isUpdatingSelf = false
+        generalSaveWorkItem = pending
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pending)
     }
     
     @objc private func sortChanged(_ sender: NSSegmentedControl) {
         isUpdatingSelf = true
-        let isByName = sender.selectedSegment == 0 // Name is index 0
+        let isByName = sender.selectedSegment == 0
         ConfigManager.shared.config.sortBy = isByName ? "name" : "date"
-        ConfigManager.shared.saveConfig()
-        if let delegate = NSApp.delegate as? AppDelegate {
-             delegate.setupMenu()
+        
+        generalSaveWorkItem?.cancel()
+        let pending = DispatchWorkItem { [weak self] in
+            ConfigManager.shared.saveConfig()
+            if let delegate = NSApp.delegate as? AppDelegate {
+                delegate.setupMenu()
+            }
+            self?.isUpdatingSelf = false
         }
-        isUpdatingSelf = false
+        generalSaveWorkItem = pending
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pending)
     }
     
     @objc private func toggleNewIndicator(_ sender: NSSwitch) {
         isUpdatingSelf = true
         ConfigManager.shared.config.showNewIndicator = sender.state == .on
-        ConfigManager.shared.saveConfig()
         updateIndicatorStepperVisibility()
-        if let delegate = NSApp.delegate as? AppDelegate {
-             delegate.setupMenu()
+        
+        generalSaveWorkItem?.cancel()
+        let pending = DispatchWorkItem { [weak self] in
+            ConfigManager.shared.saveConfig()
+            if let delegate = NSApp.delegate as? AppDelegate {
+                delegate.setupMenu()
+            }
+            self?.isUpdatingSelf = false
         }
-        isUpdatingSelf = false
+        generalSaveWorkItem = pending
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pending)
     }
     
     @objc private func indicatorDaysChanged(_ sender: NSStepper) {
         updateIndicatorDaysLabel()
         
+        // Cancel any pending save
         indicatorSaveWorkItem?.cancel()
         
         let pendingSave = DispatchWorkItem { [weak self] in
@@ -503,6 +524,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         }
         
         indicatorSaveWorkItem = pendingSave
+        // Delay ensures holding the button is fast while only the final value is saved
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pendingSave)
     }
     
@@ -510,22 +532,34 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         isUpdatingSelf = true
         let layoutModes = ["columns", "cards", "hybrid", "tags"]
         ConfigManager.shared.config.menuLayout = layoutModes[sender.selectedSegment]
-        ConfigManager.shared.saveConfig()
         updateIndicatorStepperVisibility()
-        if let delegate = NSApp.delegate as? AppDelegate {
-             delegate.setupMenu()
+        
+        generalSaveWorkItem?.cancel()
+        let pending = DispatchWorkItem { [weak self] in
+            ConfigManager.shared.saveConfig()
+            if let delegate = NSApp.delegate as? AppDelegate {
+                delegate.setupMenu()
+            }
+            self?.isUpdatingSelf = false
         }
-        isUpdatingSelf = false
+        generalSaveWorkItem = pending
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pending)
     }
     
     @objc private func toggleCompactMode(_ sender: NSSwitch) {
         isUpdatingSelf = true
         ConfigManager.shared.config.isCompactMode = sender.state == .on
-        ConfigManager.shared.saveConfig()
-        if let delegate = NSApp.delegate as? AppDelegate {
-             delegate.setupMenu()
+        
+        generalSaveWorkItem?.cancel()
+        let pending = DispatchWorkItem { [weak self] in
+            ConfigManager.shared.saveConfig()
+            if let delegate = NSApp.delegate as? AppDelegate {
+                delegate.setupMenu()
+            }
+            self?.isUpdatingSelf = false
         }
-        isUpdatingSelf = false
+        generalSaveWorkItem = pending
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pending)
     }
     
     private func updateIndicatorDaysLabel() {

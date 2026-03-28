@@ -63,7 +63,15 @@ class GitHubAPI {
         let date = json?["published_at"] as? String
         
         // Prioritize the pre-rendered HTML if we requested it, fallback to raw body
-        let body = json?["body_html"] as? String ?? json?["body"] as? String ?? ""
+        // Treat empty/whitespace-only content as nil so the UI shows "no notes" instead of a blank window
+        let rawBody = json?["body_html"] as? String ?? json?["body"] as? String
+        var body = rawBody?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? rawBody : nil
+        
+        // GitHub's web UI shows the tag commit message when the release body is empty.
+        // Replicate that behavior: fetch the commit pointed to by the tag for its message.
+        if body == nil, let tagName = version {
+            body = try? await fetchTagCommitMessage(repo: repo, tag: tagName, headers: headers)
+        }
         
         if version != nil && date != nil {
             return RepoInfo(name: repo, version: version, date: date, body: body)
@@ -105,6 +113,62 @@ class GitHubAPI {
         
         let shortSha = String(sha.prefix(7))
         return RepoInfo(name: repo, version: shortSha, date: date, body: message)
+    }
+    
+    /// Fetches the commit message associated with a tag.
+    /// GitHub shows this on the release page when the release body is empty.
+    /// Supports both lightweight tags (commit) and annotated tags (tag → commit).
+    private func fetchTagCommitMessage(repo: String, tag: String, headers: [String: String]) async throws -> String? {
+        // 1. Resolve the tag ref to get the object it points to
+        guard let refURL = URL(string: "\(Constants.githubAPIBaseURL)/repos/\(repo)/git/ref/tags/\(tag)") else { return nil }
+        var refRequest = URLRequest(url: refURL)
+        headers.forEach { refRequest.setValue($1, forHTTPHeaderField: $0) }
+        
+        let (refData, refResponse) = try await session.data(for: refRequest)
+        guard (refResponse as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        
+        let refJSON = try JSONSerialization.jsonObject(with: refData) as? [String: Any]
+        guard let object = refJSON?["object"] as? [String: Any],
+              let objectType = object["type"] as? String,
+              let objectSHA = object["sha"] as? String else { return nil }
+        
+        // 2. If it's an annotated tag, dereference to get the commit SHA
+        var commitSHA = objectSHA
+        if objectType == "tag" {
+            guard let tagURL = URL(string: "\(Constants.githubAPIBaseURL)/repos/\(repo)/git/tags/\(objectSHA)") else { return nil }
+            var tagRequest = URLRequest(url: tagURL)
+            headers.forEach { tagRequest.setValue($1, forHTTPHeaderField: $0) }
+            
+            let (tagData, tagResponse) = try await session.data(for: tagRequest)
+            guard (tagResponse as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            
+            let tagJSON = try JSONSerialization.jsonObject(with: tagData) as? [String: Any]
+            // Annotated tags may have their own message — prefer that
+            if let tagMessage = tagJSON?["message"] as? String,
+               !tagMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return tagMessage
+            }
+            // Otherwise dereference to the commit
+            if let target = tagJSON?["object"] as? [String: Any],
+               let targetSHA = target["sha"] as? String {
+                commitSHA = targetSHA
+            }
+        }
+        
+        // 3. Fetch the commit and return its message
+        guard let commitURL = URL(string: "\(Constants.githubAPIBaseURL)/repos/\(repo)/git/commits/\(commitSHA)") else { return nil }
+        var commitRequest = URLRequest(url: commitURL)
+        headers.forEach { commitRequest.setValue($1, forHTTPHeaderField: $0) }
+        
+        let (commitData, commitResponse) = try await session.data(for: commitRequest)
+        guard (commitResponse as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        
+        let commitJSON = try JSONSerialization.jsonObject(with: commitData) as? [String: Any]
+        let message = commitJSON?["message"] as? String
+        
+        // Only return if there's meaningful content
+        guard let msg = message, !msg.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return msg
     }
     
     func validateToken(_ token: String) async -> Bool {

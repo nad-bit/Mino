@@ -5,6 +5,18 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.8] - 2026-03-28
+
+### Added
+- **Performance Overhaul:** Major optimization of the application's underlying architecture to eliminate unnecessary background CPU and disk usage.
+- **Smart Menu Reconstruction:** Implemented a pre-rendering system that only rebuilds the menu UI when data actually changes, ensuring the menu opens instantly while staying idle when closed.
+- **Optimized Background Timers:** The countdown timer now skips expensive UI reconstruction while the menu is closed, drastically reducing battery impact.
+- **High-Performance Quick Add:** Optimized clipboard monitoring using `changeCount` tracking and regular expression caching. This prevents CPU spikes even when large amounts of text are copied to the system pasteboard.
+- **Fluid Preferences Interaction:** Added a debouncing mechanism to the Settings window controls. Interactions with steppers, sliders, and switches are now perfectly smooth, deferring heavy rebuild operations until the user pauses.
+
+### Fixed
+- **Empty Release Notes Fallback:** Mino now mirrors GitHub's own web behavior when a release is published without a description body. If the release `body` is `null` or empty, the app automatically resolves the tag reference, dereferencing both lightweight and annotated tags, and displays the underlying commit message as the release notes content. Repositories like `nataliarsand/readdown` v1.8 now correctly render their full changelog instead of showing a blank window.
+
 ## [1.4.7] - 2026-03-27
 
 ### Changed

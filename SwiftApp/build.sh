@@ -2,8 +2,8 @@
 set -e
 
 APP_NAME="Mino"
-VERSION="1.4.7"
-BUILD_NUMBER="204"
+VERSION="1.4.8"
+BUILD_NUMBER="205"
 BUILD_DIR="build"
 
 echo "🧹 Cleaning previous build..."

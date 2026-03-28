@@ -37,6 +37,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     // Defer actions until menu completes its closing animation
     var pendingMenuAction: (() -> Void)? = nil
     var quickAddingRepo: String? = nil
+    private var lastPasteboardChangeCount = -1
+    private var lastClipboardRepo: String? = nil
     
     var settingsWindowController: SettingsWindowController?
     var releaseNotesWindowController: ReleaseNotesWindowController?
@@ -125,6 +127,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     }
     
     func startTimers() {
+        countdownTimer?.invalidate()
         let timer = Timer(timeInterval: Constants.countdownTimerIntervalSeconds, target: self, selector: #selector(updateCountdown), userInfo: nil, repeats: true)
         RunLoop.main.add(timer, forMode: .common)
         countdownTimer = timer
@@ -157,12 +160,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         let nextRefreshDate = lastRefreshTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
         let nextRefreshSeconds = nextRefreshDate.timeIntervalSince(Date())
         
-        // Only rebuild the menu if it's NOT currently being shown to the user
-        // Rebuilding while open destroys custom views and kills hover tracking
-        if !menuIsOpen {
-            self.setupMenu()
-        } else {
-            // At minimum update the countdown text in the refresh item
+        // Only update the live countdown if the menu is open.
+        // If it's closed, we stop background rebuilding entirely to save CPU.
+        if menuIsOpen {
             headerView?.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
         }
         
@@ -269,8 +269,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             
             self.isRefreshing = false
             self.lastRefreshTime = Date()
+            self.startTimers()
             self.setupMenu()
-            self.updateCountdown()
         }
     }
     
@@ -568,11 +568,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                 // A repo is currently being fetched — show "Adding..." status
                 header.updateClipboardState(repo: nil)
                 header.updateTimeText(Translations.get("addingRepo").format(with: ["repo": adding]), isRefreshing: true)
-            } else if let clipboardRepo = Utils.getGitHubRepoFromClipboard(),
-               !ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == clipboardRepo.lowercased() }) {
-                header.updateClipboardState(repo: clipboardRepo)
             } else {
-                header.updateClipboardState(repo: nil)
+                let currentChangeCount = NSPasteboard.general.changeCount
+                let clipboardRepo: String?
+                
+                if currentChangeCount != lastPasteboardChangeCount {
+                    // Contents have changed, perform the expensive regex check
+                    lastPasteboardChangeCount = currentChangeCount
+                    lastClipboardRepo = Utils.getGitHubRepoFromClipboard()
+                    clipboardRepo = lastClipboardRepo
+                } else {
+                    // Use cached result
+                    clipboardRepo = lastClipboardRepo
+                }
+                
+                // Only show quick-add if the repo is NOT already in our list
+                if let repo = clipboardRepo,
+                   !ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == repo.lowercased() }) {
+                    header.updateClipboardState(repo: repo)
+                } else {
+                    header.updateClipboardState(repo: nil)
+                }
             }
         }
     }
