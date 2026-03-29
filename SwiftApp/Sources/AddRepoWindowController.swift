@@ -256,18 +256,9 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
     private func playSuccessAnimation() {
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         
-        // Tint the window eye green briefly to signal success
-        eyeImageView.contentTintColor = .systemGreen
-        
         // Bounce the window eye (same family as status bar icon animation)
         if #available(macOS 14.0, *) {
             eyeImageView.addSymbolEffect(.bounce, options: .nonRepeating)
-        }
-        
-        // Revert color after a beat
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-            guard let self = self, self.window?.isVisible == true else { return }
-            self.eyeImageView.contentTintColor = Utils.appIconColor
         }
     }
     

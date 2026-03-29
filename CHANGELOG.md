@@ -5,6 +5,16 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.9] - 2026-03-29
+
+### Added
+- **Performance Overhaul:** Optimized the application's underlying architecture to eliminate unnecessary background CPU and disk usage, particularly for large repository lists (160+ repos).
+- **Smart Menu Reconstruction:** Refined the pre-rendering system to skip the entire menu rebuild process when closing the menu if no repos were hovered or read, ensuring zero-cost closures.
+- **Preferences UI Modernization:** Replaced individual switches with a clean, macOS-standard checklist for menu settings.
+- **Aesthetic Refinement:** Justified numerical steppers and restored the 'Start at Login' master switch for better visual balance and hierarchy.
+- **Smarter Tooltips:** Error messages in the menu now show descriptive failure reasons without redundant repository names.
+- **UI Polish:** Refined the "Add Repository" success animation to be more subtle and consistent with the app's dynamic theme.
+
 ## [1.4.8] - 2026-03-28
 
 ### Added

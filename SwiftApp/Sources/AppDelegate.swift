@@ -619,8 +619,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             }
         }
         
-        // Rebuild the menu now that it's closed, to pick up any missed countdown updates
-        setupMenu()
+        // Rebuild the menu now that it's closed ONLY if we updated the 'seen' status 
+        // to avoid expensive and unnecessary re-renders for large repository lists (160+ repos).
+        if !readReposThisSession.isEmpty {
+            setupMenu()
+        }
     }
     
     func menu(_ menu: NSMenu, willHighlight item: NSMenuItem?) {

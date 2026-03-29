@@ -588,25 +588,17 @@ class RepoMenuItemView: NSView {
         
         let isTruncated = unconstrainedWidth > titleLabel.frame.width + 0.1
         
-        if isTruncated {
-            // If the label is cut off, we MUST show the repository name.
-            // If there's an error simultaneously, append it.
-            let fullText: String
-            if hasError, let err = errorTooltip {
-                fullText = "\(titleLabel.stringValue)\n(Error: \(err))"
-            } else {
-                fullText = titleLabel.stringValue
-            }
-            
-            titleLabel.toolTip = fullText
-            versionLabel.toolTip = fullText
-            subtitleLabel.toolTip = fullText
-        } else if hasError, let err = errorTooltip {
-            // The repo name fits perfectly, but there is an error to show.
-            // Expand the hover hitbox across all three primary labels.
+        if hasError, let err = errorTooltip {
+            // Always prioritize error message if it exists, as requested by the user
             titleLabel.toolTip = err
             versionLabel.toolTip = err
             subtitleLabel.toolTip = err
+        } else if isTruncated {
+            // No error, but truncated: show full name
+            let fullName = titleLabel.stringValue
+            titleLabel.toolTip = fullName
+            versionLabel.toolTip = fullName
+            subtitleLabel.toolTip = fullName
         } else {
             // Clean state
             titleLabel.toolTip = nil

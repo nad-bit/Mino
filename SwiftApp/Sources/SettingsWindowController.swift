@@ -18,13 +18,12 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     var initialIntervalHours: Int = 1
     
     let loginSwitch = NSSwitch()
-    private let ownerSwitch = NSSwitch()
-    private let newIndicatorSwitch = NSSwitch()
+    private let ownerCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let newIndicatorCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let newIndicatorStepper = NSStepper()
-    let newIndicatorLabel = NSTextField(labelWithString: "")
     let sortSegment = NSSegmentedControl()
     let layoutSegment = NSSegmentedControl()
-    private let compactModeSwitch = NSSwitch()
+    private let compactModeCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     
     var tempToken: String?
     private var isUpdatingSelf = false
@@ -196,7 +195,10 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         // --- 2. Menu Settings Section ---
         let menuStack = createInnerStack()
+        menuStack.spacing = 16 // Consistent spacing
+        
         let layoutLabel = NSTextField(labelWithString: Translations.get("layoutLabel"))
+        layoutLabel.font = .systemFont(ofSize: 13, weight: .medium)
         layoutSegment.segmentCount = 4
         layoutSegment.setImage(NSImage(systemSymbolName: "list.bullet", accessibilityDescription: "Columns"), forSegment: 0)
         layoutSegment.setImage(NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "Cards"), forSegment: 1)
@@ -207,26 +209,9 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         layoutSegment.action = #selector(layoutChanged(_:))
         addSettingsRow(to: menuStack, label: layoutLabel, controls: [layoutSegment])
         
-        let indicatorLabel = NSTextField(labelWithString: Translations.get("showNewIndicator"))
-        newIndicatorSwitch.target = self
-        newIndicatorSwitch.action = #selector(toggleNewIndicator(_:))
-        addSettingsRow(to: menuStack, label: indicatorLabel, controls: [newIndicatorSwitch])
-        
-        newIndicatorLabel.translatesAutoresizingMaskIntoConstraints = false
-        newIndicatorStepper.minValue = 1
-        newIndicatorStepper.maxValue = 30
-        newIndicatorStepper.valueWraps = false
-        newIndicatorStepper.target = self
-        newIndicatorStepper.action = #selector(indicatorDaysChanged(_:))
-        newIndicatorStepper.translatesAutoresizingMaskIntoConstraints = false
-        addSettingsRow(to: menuStack, label: newIndicatorLabel, controls: [newIndicatorStepper])
-        
-        let ownerLabel = NSTextField(labelWithString: Translations.get("showOwner"))
-        ownerSwitch.target = self
-        ownerSwitch.action = #selector(toggleOwner(_:))
-        addSettingsRow(to: menuStack, label: ownerLabel, controls: [ownerSwitch])
-        
+        // Sorting Row
         let sortLabel = NSTextField(labelWithString: Translations.get("sortLabel"))
+        sortLabel.font = .systemFont(ofSize: 13, weight: .medium)
         sortSegment.segmentCount = 2
         sortSegment.setImage(NSImage(systemSymbolName: "textformat.abc", accessibilityDescription: Translations.get("sortNameOnly")), forSegment: 0)
         sortSegment.setImage(NSImage(systemSymbolName: "clock", accessibilityDescription: Translations.get("sortDateOnly")), forSegment: 1)
@@ -235,11 +220,60 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         sortSegment.action = #selector(sortChanged(_:))
         addSettingsRow(to: menuStack, label: sortLabel, controls: [sortSegment])
         
-        let compactLabel = NSTextField(labelWithString: Translations.get("compactModeLabel"))
-        compactModeSwitch.target = self
-        compactModeSwitch.action = #selector(toggleCompactMode(_:))
-        addSettingsRow(to: menuStack, label: compactLabel, controls: [compactModeSwitch])
+        // Horizontal separator line inside the box
+        let separatorLine = NSBox()
+        separatorLine.boxType = .separator
+        menuStack.addArrangedSubview(separatorLine)
+        separatorLine.widthAnchor.constraint(equalTo: menuStack.widthAnchor).isActive = true
         
+        // Binary Options Checklist
+        let checklistStack = NSStackView()
+        checklistStack.orientation = .vertical
+        checklistStack.alignment = .leading
+        checklistStack.spacing = 12
+        checklistStack.translatesAutoresizingMaskIntoConstraints = false
+        
+        // 1. Owner Checkbox
+        ownerCheckbox.title = Translations.get("showOwner")
+        ownerCheckbox.target = self
+        ownerCheckbox.action = #selector(toggleOwner(_:))
+        checklistStack.addArrangedSubview(ownerCheckbox)
+        
+        // 2. New Indicator (Dynamic Checkbox + Right Stepper)
+        let indicatorRow = NSStackView()
+        indicatorRow.orientation = .horizontal
+        indicatorRow.alignment = .centerY
+        indicatorRow.translatesAutoresizingMaskIntoConstraints = false
+        
+        newIndicatorCheckbox.target = self
+        newIndicatorCheckbox.action = #selector(toggleNewIndicator(_:))
+        
+        newIndicatorStepper.minValue = 1
+        newIndicatorStepper.maxValue = 30
+        newIndicatorStepper.valueWraps = false
+        newIndicatorStepper.target = self
+        newIndicatorStepper.action = #selector(indicatorDaysChanged(_:))
+        newIndicatorStepper.controlSize = .small
+        
+        let indicatorSpring = NSView()
+        indicatorSpring.translatesAutoresizingMaskIntoConstraints = false
+        indicatorSpring.setContentHuggingPriority(NSLayoutConstraint.Priority.defaultLow, for: NSLayoutConstraint.Orientation.horizontal)
+        
+        indicatorRow.addArrangedSubview(newIndicatorCheckbox)
+        indicatorRow.addArrangedSubview(indicatorSpring)
+        indicatorRow.addArrangedSubview(newIndicatorStepper)
+        
+        checklistStack.addArrangedSubview(indicatorRow)
+        indicatorRow.widthAnchor.constraint(equalTo: checklistStack.widthAnchor).isActive = true
+        
+        // 3. Compact Mode Checkbox
+        compactModeCheckbox.title = Translations.get("compactModeLabel")
+        compactModeCheckbox.target = self
+        compactModeCheckbox.action = #selector(toggleCompactMode(_:))
+        checklistStack.addArrangedSubview(compactModeCheckbox)
+        
+        menuStack.addArrangedSubview(checklistStack)
+        checklistStack.widthAnchor.constraint(equalTo: menuStack.widthAnchor).isActive = true
         formStack.addArrangedSubview(createGroupBox(for: menuStack))
         
         // --- 3. Interval Section ---
@@ -305,7 +339,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         loginSwitch.state = isLoginItem() ? .on : .off
         
         // Load Owner
-        ownerSwitch.state = ConfigManager.shared.config.showOwner ? .on : .off
+        ownerCheckbox.state = ConfigManager.shared.config.showOwner ? .on : .off
         
         // Load Sort By
         sortSegment.selectedSegment = (ConfigManager.shared.config.sortBy == "name") ? 0 : 1
@@ -315,10 +349,10 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let layoutIndex = ["columns", "cards", "hybrid", "tags"].firstIndex(of: layout) ?? 0
         layoutSegment.selectedSegment = layoutIndex
         
-        compactModeSwitch.state = (ConfigManager.shared.config.isCompactMode == true) ? .on : .off
+        compactModeCheckbox.state = (ConfigManager.shared.config.isCompactMode == true) ? .on : .off
         
         let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
-        newIndicatorSwitch.state = showNewIndicator ? .on : .off
+        newIndicatorCheckbox.state = showNewIndicator ? .on : .off
         
         let days = ConfigManager.shared.config.newIndicatorDays ?? Constants.newReleaseThresholdDays
         newIndicatorStepper.integerValue = days
@@ -456,7 +490,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         setLoginItemState(enabled: isEnable)
     }
     
-    @objc private func toggleOwner(_ sender: NSSwitch) {
+    @objc private func toggleOwner(_ sender: NSButton) {
         isUpdatingSelf = true
         ConfigManager.shared.config.showOwner = sender.state == .on
         
@@ -489,7 +523,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pending)
     }
     
-    @objc private func toggleNewIndicator(_ sender: NSSwitch) {
+    @objc private func toggleNewIndicator(_ sender: NSButton) {
         isUpdatingSelf = true
         ConfigManager.shared.config.showNewIndicator = sender.state == .on
         updateIndicatorStepperVisibility()
@@ -546,7 +580,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pending)
     }
     
-    @objc private func toggleCompactMode(_ sender: NSSwitch) {
+    @objc private func toggleCompactMode(_ sender: NSButton) {
         isUpdatingSelf = true
         ConfigManager.shared.config.isCompactMode = sender.state == .on
         
@@ -564,11 +598,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     private func updateIndicatorDaysLabel() {
         let days = newIndicatorStepper.integerValue
-        if days == 1 {
-            newIndicatorLabel.stringValue = Translations.get("indicatorDaySingular")
-        } else {
-            newIndicatorLabel.stringValue = Translations.get("indicatorDays").format(with: ["days": "\(days)"])
-        }
+        newIndicatorCheckbox.title = (days == 1) ? Translations.get("indicatorDaySingular") : Translations.get("indicatorDays").format(with: ["days": "\(days)"])
     }
     
     private func updateIndicatorStepperVisibility() {
@@ -576,19 +606,17 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let isColorLayout = (layoutIndex == 2 || layoutIndex == 3) // Hybrid or Tags
         
         if isColorLayout {
-            newIndicatorSwitch.isEnabled = false
-            newIndicatorSwitch.state = .on // visually indicate feature is structural
+            newIndicatorCheckbox.isEnabled = false
+            newIndicatorCheckbox.state = .on // visually indicate feature is structural
             
             newIndicatorStepper.isEnabled = true
-            newIndicatorLabel.textColor = .labelColor
         } else {
-            newIndicatorSwitch.isEnabled = true
+            newIndicatorCheckbox.isEnabled = true
             let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
-            newIndicatorSwitch.state = showNewIndicator ? .on : .off
+            newIndicatorCheckbox.state = showNewIndicator ? .on : .off
             
-            let isEnabled = newIndicatorSwitch.state == .on
+            let isEnabled = newIndicatorCheckbox.state == .on
             newIndicatorStepper.isEnabled = isEnabled
-            newIndicatorLabel.textColor = isEnabled ? .labelColor : .disabledControlTextColor
         }
     }
     
@@ -603,18 +631,18 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         // Allow the label to truncate if the row is tight
         if let textField = label as? NSTextField {
             textField.lineBreakMode = .byTruncatingTail
-            textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            textField.setContentCompressionResistancePriority(NSLayoutConstraint.Priority.defaultLow, for: NSLayoutConstraint.Orientation.horizontal)
         }
         
         row.addArrangedSubview(label)
         
         let spring = NSView()
         spring.translatesAutoresizingMaskIntoConstraints = false
-        spring.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spring.setContentHuggingPriority(NSLayoutConstraint.Priority.defaultLow, for: NSLayoutConstraint.Orientation.horizontal)
         row.addArrangedSubview(spring)
         
         for control in controls {
-            control.setContentCompressionResistancePriority(.required, for: .horizontal)
+            control.setContentCompressionResistancePriority(NSLayoutConstraint.Priority.required, for: NSLayoutConstraint.Orientation.horizontal)
             row.addArrangedSubview(control)
         }
         
