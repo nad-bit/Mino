@@ -1,10 +1,11 @@
 import Cocoa
 
 class Utils {
+    private static let isoFormatter = ISO8601DateFormatter()
+    
     static func parseDate(dateString: String?) -> Date? {
         guard let dateString = dateString else { return nil }
-        let formatter = ISO8601DateFormatter()
-        return formatter.date(from: dateString)
+        return isoFormatter.date(from: dateString)
     }
     
     static func getReleaseAge(dateString: String?) -> (label: String, seconds: Double) {

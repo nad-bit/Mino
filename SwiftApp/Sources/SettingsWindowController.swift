@@ -376,9 +376,8 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             ConfigManager.shared.config.refreshMinutes = currentHours * 60
             ConfigManager.shared.saveConfig()
             
-            if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.setupMenu()
-            }
+            // The background countdown timer naturally updates the interval next minute
+            // without needing an expensive full-scale menu reconstruction here.
             self.initialIntervalHours = currentHours
             self.isUpdatingSelf = false
         }

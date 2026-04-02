@@ -188,4 +188,27 @@ class GitHubAPI {
         }
         return false
     }
+    
+    /// Fetches the repository's native topics (tags) from GitHub to enable hashtag filtering.
+    func fetchRepoTags(repo: String) async -> [String]? {
+        guard let url = URL(string: "\(Constants.githubAPIBaseURL)/repos/\(repo)") else { return nil }
+        var request = URLRequest(url: url)
+        
+        // Custom accept header was historically needed for topics, still recommended by GitHub API spec
+        request.setValue("application/vnd.github.mercy-preview+json", forHTTPHeaderField: "Accept")
+        if let token = ConfigManager.shared.token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        do {
+            let (data, response) = try await session.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                return json?["topics"] as? [String]
+            }
+        } catch {
+            print("Failed to fetch topics for \(repo): \(error)")
+        }
+        return nil
+    }
 }

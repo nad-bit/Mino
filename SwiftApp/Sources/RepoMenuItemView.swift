@@ -7,12 +7,14 @@ struct RepoDisplayData {
     let version: String?          // e.g. "v2.12.5"
     let ageLabel: String?         // e.g. "3 days"
     let ageSeconds: Double
+    let originalDate: String?     // Raw ISO8601 date from GitHub
     let newIndicator: String      // "✦" or ""
     let errorMessage: String?
     let isLoading: Bool
     let caskName: String?
     let freshnessColor: NSColor   // 🟢/🟡/⚪ mapped to NSColor
     let isNew: Bool
+    let tags: [String]
 }
 
 class MenuActionButton: NSButton {
@@ -81,6 +83,7 @@ class RepoMenuItemView: NSView {
     private let appDelegate: AppDelegate
     private let layoutMode: String
     private let isCompact: Bool
+    private let originalDate: String?
     
     // Public exposure for AppDelegate search filtering
     let displayData: RepoDisplayData
@@ -100,11 +103,12 @@ class RepoMenuItemView: NSView {
         self.layoutMode = layout
         self.isCompact = ConfigManager.shared.config.isCompactMode ?? false
         self.displayData = displayData
+        self.originalDate = displayData.originalDate
         
         var rowHeight: CGFloat = (layout == "cards") ? 40 : 22
         if isCompact { rowHeight -= 6 }
         
-        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: rowHeight))
+        super.init(frame: NSRect(x: 0, y: 0, width: 400, height: rowHeight))
         self.autoresizingMask = [.width]
         
         setupButtons()
@@ -617,5 +621,33 @@ class RepoMenuItemView: NSView {
                 appDelegate.hideInformationalWindows()
             }
         }
+    }
+    
+    // MARK: - Local Live Updates
+    
+    func updateAgeDisplay() {
+        guard let date = originalDate else { return }
+        
+        let ageInfo = Utils.getReleaseAge(dateString: date)
+        let indicatorEnabled = ConfigManager.shared.config.showNewIndicator ?? true
+        let thresholdDays = ConfigManager.shared.config.newIndicatorDays ?? Constants.newReleaseThresholdDays
+        let daysDiff = ageInfo.seconds.isInfinite ? Int.max : Int(ageInfo.seconds / 86400)
+        let newIndicator = (indicatorEnabled && daysDiff <= thresholdDays) ? " \(Constants.newReleaseIndicator)" : ""
+        
+        switch layoutMode {
+        case "cards":
+            if ageInfo.seconds.isInfinite {
+                subtitleLabel.stringValue = ""
+            } else {
+                subtitleLabel.stringValue = "\(ageInfo.label)\(newIndicator)"
+            }
+        case "columns", "hybrid":
+            let indicator = (layoutMode == "hybrid") ? "" : newIndicator
+            ageLabel.stringValue = "\(ageInfo.label)\(indicator)"
+        default: break
+        }
+        
+        // Refresh colors and indicators (especially for the yellow indicator)
+        applyHighlightState(lastHighlightState, animated: false)
     }
 }

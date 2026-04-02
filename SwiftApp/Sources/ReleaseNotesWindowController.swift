@@ -27,6 +27,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
     private var textView: NSTextView!
     private var titleLabel: NSTextField!
     private var versionLabel: NSTextField!
+    private var tagsFooterView: WrappingTagsView!
     private var scrollContainer: NSVisualEffectView!
     private(set) var currentRepoName: String?
     
@@ -95,6 +96,11 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         scrollView.documentView = textView
         visualEffectView.addSubview(scrollView)
         
+        // 5. Footer Tags Container (Flow Layout Wrapping)
+        tagsFooterView = WrappingTagsView()
+        tagsFooterView.translatesAutoresizingMaskIntoConstraints = false
+        visualEffectView.addSubview(tagsFooterView)
+        
         NSLayoutConstraint.activate([
             titleLabel.topAnchor.constraint(equalTo: visualEffectView.topAnchor, constant: 36),
             titleLabel.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor, constant: 20),
@@ -104,10 +110,14 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
             versionLabel.centerXAnchor.constraint(equalTo: visualEffectView.centerXAnchor),
             versionLabel.heightAnchor.constraint(equalToConstant: 20),
             
+            tagsFooterView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor, constant: 24),
+            tagsFooterView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor, constant: -24),
+            tagsFooterView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor, constant: -16),
+            
             scrollView.topAnchor.constraint(equalTo: versionLabel.bottomAnchor, constant: 20),
             scrollView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor, constant: 0),
             scrollView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor, constant: 0),
-            scrollView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor, constant: -10)
+            scrollView.bottomAnchor.constraint(equalTo: tagsFooterView.topAnchor, constant: -12)
         ])
         
         window.contentView = visualEffectView
@@ -146,6 +156,15 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         let versionText = "  \(info.version ?? "N/A")  "
         versionLabel.stringValue = versionText
         versionLabel.isHidden = (info.version == nil || info.version == "N/A")
+        
+        // --- FOOTER TAGS (Omni-Search Visuals) ---
+        if let configRepo = ConfigManager.shared.config.repos.first(where: { $0.name == info.name }), let tags = configRepo.tags, !tags.isEmpty {
+            tagsFooterView.set(tags: tags)
+            tagsFooterView.isHidden = false
+        } else {
+            tagsFooterView.set(tags: [])
+            tagsFooterView.isHidden = true
+        }
         
         // --- TEXT BODY (Markdown & HTML) ---
         var bodyText = info.body ?? Translations.get("noNotes")
@@ -315,5 +334,72 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         self.window?.orderOut(nil)
         
         // Return to accessory mode so Dock auto-hide works
+    }
+}
+
+// MARK: - WrappingTagsView
+class WrappingTagsView: NSView {
+    private var cachedHeight: CGFloat = 0.0
+    private var lastWidth: CGFloat = 0.0
+    
+    func set(tags: [String]) {
+        subviews.forEach { $0.removeFromSuperview() }
+        for tag in tags {
+            let pillNode = NSTextField(labelWithString: "  #\(tag)  ")
+            pillNode.font = .systemFont(ofSize: 11, weight: .medium)
+            pillNode.textColor = .secondaryLabelColor
+            pillNode.backgroundColor = NSColor.textColor.withAlphaComponent(0.08)
+            pillNode.drawsBackground = true
+            pillNode.isBordered = false
+            pillNode.alignment = .center
+            pillNode.wantsLayer = true
+            pillNode.layer?.cornerRadius = 6
+            pillNode.layer?.masksToBounds = true
+            pillNode.sizeToFit()
+            
+            var f = pillNode.frame
+            f.size.height = max(f.height, 20)
+            pillNode.frame = f
+            
+            addSubview(pillNode)
+        }
+        needsLayout = true
+    }
+    
+    override var isFlipped: Bool { return true }
+    
+    override func layout() {
+        super.layout()
+        
+        let availableWidth = bounds.width
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var currentRowHeight: CGFloat = 0
+        
+        for view in subviews {
+            let bWidth = view.frame.width
+            let bHeight = view.frame.height
+            
+            if currentX + bWidth > availableWidth && currentX > 0 {
+                currentX = 0
+                currentY += currentRowHeight + 6.0
+                currentRowHeight = 0
+            }
+            
+            view.setFrameOrigin(NSPoint(x: currentX, y: currentY))
+            currentX += bWidth + 6.0
+            currentRowHeight = max(currentRowHeight, bHeight)
+        }
+        
+        let newHeight = subviews.isEmpty ? 0 : currentY + currentRowHeight
+        if newHeight != cachedHeight {
+            cachedHeight = newHeight
+            invalidateIntrinsicContentSize()
+        }
+    }
+    
+    override var intrinsicContentSize: NSSize {
+        if subviews.isEmpty { return .zero }
+        return NSSize(width: NSView.noIntrinsicMetric, height: cachedHeight > 0 ? cachedHeight : 20.0)
     }
 }

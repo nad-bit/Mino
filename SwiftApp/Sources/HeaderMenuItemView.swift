@@ -113,7 +113,7 @@ class HeaderMenuItemView: NSView {
             leftStack.centerYAnchor.constraint(equalTo: centerYAnchor),
             
             searchField.centerXAnchor.constraint(equalTo: centerXAnchor),
-            searchField.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.3),
+            searchField.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.40),
             searchField.centerYAnchor.constraint(equalTo: centerYAnchor),
             
             quickAddLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),

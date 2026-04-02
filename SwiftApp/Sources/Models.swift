@@ -12,6 +12,7 @@ struct RepoConfig: Codable, Equatable {
     var name: String
     var source: String // "manual" or "brew"
     var cask: String?
+    var tags: [String]?
 }
 
 struct AppConfig: Codable {

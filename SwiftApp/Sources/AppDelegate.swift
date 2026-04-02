@@ -39,6 +39,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var quickAddingRepo: String? = nil
     private var lastPasteboardChangeCount = -1
     private var lastClipboardRepo: String? = nil
+    private var popularTagsCache: [String] = []
+    private var currentMenuWidth: CGFloat = 320.0
     
     var settingsWindowController: SettingsWindowController?
     var releaseNotesWindowController: ReleaseNotesWindowController?
@@ -113,13 +115,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         
         menu = NSMenu()
         menu.delegate = self
-        menu.autoenablesItems = false  // Critical: prevents AppKit from disabling custom-view items that have no action
+        menu.autoenablesItems = false
         statusItem.menu = menu
         
+        updatePopularTagsCache()
         setupMenu()
         startTimers()
         
         triggerFullRefresh(nil)
+        startTagBackfillSequence()
+    }
+    
+    /// Silently fetches topics for legacy repositories to enable zero-configuration hashtag searching
+    private func startTagBackfillSequence() {
+        Task {
+            let reposToUpdate = ConfigManager.shared.config.repos.compactMap { repo -> String? in
+                return repo.tags == nil ? repo.name : nil
+            }
+            
+            guard !reposToUpdate.isEmpty else { return }
+            
+            for repoName in reposToUpdate {
+                let fetchedTags = await GitHubAPI.shared.fetchRepoTags(repo: repoName)
+                
+                await MainActor.run {
+                    if let currentIndex = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
+                        ConfigManager.shared.config.repos[currentIndex].tags = fetchedTags ?? []
+                        ConfigManager.shared.saveConfig()
+                    }
+                }
+                
+                // Throttle to 1 request/second to avoid triggering GitHub API secondary rate limits
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            // Once all 200+ repos are processed, we update the cache exactly once for stability.
+            await MainActor.run {
+                self.updatePopularTagsCache()
+                self.setupMenu() // Re-render tag cloud if it's currently relevant
+            }
+        }
     }
     
     func applicationWillTerminate(_ aNotification: Notification) {
@@ -160,10 +194,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         let nextRefreshDate = lastRefreshTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
         let nextRefreshSeconds = nextRefreshDate.timeIntervalSince(Date())
         
-        // Only update the live countdown if the menu is open.
-        // If it's closed, we stop background rebuilding entirely to save CPU.
-        if menuIsOpen {
-            headerView?.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
+        // Lightweight update of repository age labels and header title
+        headerView?.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
+        
+        for menuItem in menu.items {
+            if let repoView = menuItem.view as? RepoMenuItemView {
+                repoView.updateAgeDisplay()
+            }
         }
         
         if nextRefreshSeconds <= 0 {
@@ -270,6 +307,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             self.isRefreshing = false
             self.lastRefreshTime = Date()
             self.startTimers()
+            self.updatePopularTagsCache()
             self.setupMenu()
         }
     }
@@ -277,6 +315,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     func setupMenu() {
         menu.removeAllItems()
         repoMenuItems.removeAll()
+        
+        // Hidden NSMenuItems for keyboard shortcuts MUST be at the very top.
+        // Key equivalents are disabled for items WITH custom views, but these items
+        // have NO view — so their key equivalents fire normally during menu tracking.
+        // allowsKeyEquivalentWhenHidden ensures they work even though isHidden = true.
+        // Placing them at index 0 guarantees the Carbon Menu tracking loop resolves them 
+        // before evaluating dynamically inserted/hidden search items.
+        let shortcuts: [(action: Selector, key: String)] = [
+            (#selector(openSettingsWindow(_:)), ","),   // CMD+, → Preferences
+            (#selector(quitApp(_:)), "q"),               // CMD+Q → Quit
+            (#selector(unifiedAddRepoDialog(_:)), "n"),  // CMD+N → Add Repositories
+        ]
+        for shortcut in shortcuts {
+            let item = NSMenuItem(title: "", action: shortcut.action, keyEquivalent: shortcut.key)
+            item.keyEquivalentModifierMask = .command
+            item.target = self
+            item.isHidden = true
+            item.allowsKeyEquivalentWhenHidden = true
+            menu.addItem(item)
+        }
         
         headerMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         headerView = HeaderMenuItemView(appDelegate: self)
@@ -364,12 +422,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                 version: info.version,
                 ageLabel: (isLoading || isError) ? nil : ageInfo.label,
                 ageSeconds: ageInfo.seconds,
+                originalDate: info.date,
                 newIndicator: newIndicator,
                 errorMessage: isError ? info.error : nil,
                 isLoading: isLoading,
                 caskName: repoObj.cask,
                 freshnessColor: freshnessColor,
-                isNew: isNewUpdate
+                isNew: isNewUpdate,
+                tags: repoObj.tags ?? []
             )
             displayDataList.append((repoObj, data))
         }
@@ -417,7 +477,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         // Calculate uniform width, ignoring the action button stack width (approx 100px)
         // because we don't want the menu to permanently widen just to hold them 
         // since they overlap the right margin when they appear.
-        let maxWidth = repoEntries.reduce(CGFloat(320)) { maxSoFar, entry in
+        let maxWidth = repoEntries.reduce(CGFloat(400)) { maxSoFar, entry in
             let fittingWidth = entry.1.fittingSize.width
             // Assume the button stack takes about 104pt (4 buttons * 26pt). We subtract it
             // from the fitting size so the menu stays compact.
@@ -425,6 +485,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         }
         
         // Apply uniform width and add to menu
+        self.currentMenuWidth = maxWidth
         for (menuItem, customView) in repoEntries {
             customView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: rowHeight)
             menu.addItem(menuItem)
@@ -433,6 +494,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         
         noSearchResultsMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         let noResultsView = NoSearchResultsView()
+        noResultsView.targetWidth = maxWidth
         noResultsView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: rowHeight == 16 ? 24 : rowHeight)
         noSearchResultsMenuItem.view = noResultsView
         noSearchResultsMenuItem.isHidden = true
@@ -451,26 +513,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         footerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 30)
         footerMenuItem.view = footerView
         menu.addItem(footerMenuItem)
-        
-        // Hidden NSMenuItems for keyboard shortcuts.
-        // Key equivalents are disabled for items WITH custom views, but these items
-        // have NO view — so their key equivalents fire normally during menu tracking.
-        // allowsKeyEquivalentWhenHidden ensures they work even though isHidden = true.
-        let shortcuts: [(action: Selector, key: String)] = [
-            (#selector(openSettingsWindow(_:)), ","),   // CMD+, → Preferences
-            (#selector(quitApp(_:)), "q"),               // CMD+Q → Quit
-            (#selector(unifiedAddRepoDialog(_:)), "n"),  // CMD+N → Add Repositories
-        ]
-        for shortcut in shortcuts {
-            let item = NSMenuItem(title: "", action: shortcut.action, keyEquivalent: shortcut.key)
-            item.keyEquivalentModifierMask = .command
-            item.target = self
-            item.isHidden = true
-            item.allowsKeyEquivalentWhenHidden = true
-            menu.addItem(item)
-        }
-
-        
         
         let hasPulse = UserDefaults.standard.bool(forKey: "HasUnreadPulse")
         updateStatusIcon(hasUpdates: hasPulse)
@@ -547,6 +589,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     
     func menuWillOpen(_ menu: NSMenu) {
         menuIsOpen = true
+        
         readReposThisSession.removeAll()
         
         clearUnreadPulse()
@@ -617,12 +660,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             DispatchQueue.main.async {
                 action()
             }
-        }
-        
-        // Rebuild the menu now that it's closed ONLY if we updated the 'seen' status 
-        // to avoid expensive and unnecessary re-renders for large repository lists (160+ repos).
-        if !readReposThisSession.isEmpty {
-            setupMenu()
         }
     }
     
@@ -706,6 +743,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                 releaseNotesWindowController?.window?.orderOut(nil)
             }
             ConfigManager.shared.saveConfig()
+            self.updatePopularTagsCache()
             setupMenu()
             animateStatusIcon(with: .replaceWithSlash)
         }
@@ -858,13 +896,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             }
             return false
         } else {
-            let newRepo = RepoConfig(name: repoName, source: source, cask: cask)
+            let fetchedTags = await GitHubAPI.shared.fetchRepoTags(repo: repoName)
+            let newRepo = RepoConfig(name: repoName, source: source, cask: cask, tags: fetchedTags ?? [])
             ConfigManager.shared.config.repos.append(newRepo)
             ConfigManager.shared.saveConfig()
             
             await MainActor.run {
                 self.repoCache[repoName] = info
                 UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
+                self.updatePopularTagsCache()
                 self.setupMenu()
                 self.animateStatusIcon(with: .bounce)
             }
@@ -956,8 +996,27 @@ extension AppDelegate {
         filterMenuBySearchQuery(query)
         headerView?.updateSearchOpacity()
     }
+    // MARK: - Search Filtering
     
-    private func filterMenuBySearchQuery(_ query: String) {
+    private func updatePopularTagsCache() {
+        var counts: [String: Int] = [:]
+        for repo in ConfigManager.shared.config.repos {
+            repo.tags?.forEach { counts[$0, default: 0] += 1 }
+        }
+        // Normalize tags: ensure they have exactly one leading '#' and are sorted by frequency (descending)
+        // with an alphabetical fallback (ascending) to ensure a stable, deterministic order.
+        popularTagsCache = counts.sorted { a, b in
+            if a.value != b.value {
+                return a.value > b.value
+            }
+            return a.key.lowercased() < b.key.lowercased()
+        }.prefix(25).map { 
+            let clean = $0.key.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+            return "#\(clean)"
+        }
+    }
+    
+    func filterMenuBySearchQuery(_ query: String) {
         let q = query.lowercased()
         var visibleCount = 0
         
@@ -966,8 +1025,11 @@ extension AppDelegate {
                 map.item.isHidden = false
                 visibleCount += 1
             } else {
-                // If the user's input matches the exact username or repo name locally
-                let matches = map.data.formattedName.lowercased().contains(q) || map.data.repoName.lowercased().contains(q)
+                // Omni-Search: Match implicitly by Name OR Tag
+                let nameMatch = map.data.formattedName.lowercased().contains(q) || map.data.repoName.lowercased().contains(q)
+                let tagMatch = map.data.tags.contains(where: { $0.lowercased().contains(q) })
+                let matches = nameMatch || tagMatch
+                
                 map.item.isHidden = !matches
                 if matches { visibleCount += 1 }
             }
@@ -976,6 +1038,17 @@ extension AppDelegate {
         if q.isEmpty {
             noSearchResultsMenuItem?.isHidden = true
         } else {
+            if visibleCount == 0, let noResultsView = noSearchResultsMenuItem?.view as? NoSearchResultsView {
+                // Route clicks from the Tag Cloud directly into our text field
+                noResultsView.onTagSelected = { [weak self] tag in
+                    self?.searchField?.stringValue = tag
+                    self?.filterMenuBySearchQuery(tag)
+                }
+                // Sync the true menu width to the tag cloud so its first-pass layout is perfect
+                noResultsView.targetWidth = self.currentMenuWidth
+                // The view handles its own FlowLayout and dynamically kicks NSMenu frame size internally.
+                noResultsView.configure(suggestedTags: popularTagsCache)
+            }
             noSearchResultsMenuItem?.isHidden = visibleCount > 0
         }
     }

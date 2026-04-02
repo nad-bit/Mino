@@ -5,12 +5,30 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-04-02
+
+### Added
+- **Omni-Search Interface:** A unified search bar that filters both repository names and tags seamlessly, providing a single source of truth for discovery.
+- **Intelligent Tag Cloud:** Automatic discovery of the 25 most popular tags across the library, displayed as interactive suggestions when no search results are found.
+- **Resilient Tag Cloud Layout:** Fixed a coordinate system inversion bug (`FlippedView`) that caused tags to be rendered from bottom-to-top.
+- **Real-Time Tag Synchronization:** The suggestion cloud now updates instantly when repositories are added or removed, ensuring search suggestions remain perfectly in sync with the library state.
+- **Zero-Configuration Discovery:** Automatic backfilling of repository topics via GitHub API for legacy or unconfigured repositories, enabling instant tag searching without manual effort.
+- **400pt Layout Unification:** Established a robust 400pt minimum width baseline across all menu modes (Cards, Hybrid, Columns) to ensure a spacious and consistent visual experience for the search interface.
+- **Deterministic Tag Sorting:** Implemented a dual-key sort (Frequency descending, Alphabetical ascending) to prevent random reordering of suggestion labels when frequencies match.
+- **Tag Cache Optimization:** Throttled tag indexing for large collections (200+ repos) to prevent UI flickering and redundant CPU usage during background updates.
+- **Smart Menu Persistence:** Eliminated redundant menu reconstructions when closing the menu. The application now perfectly preserves the "seen" status of repositories using in-memory view persistence, ensuring zero CPU cost for simple browsing sessions.
+- **Continuous Age Updates:** Repository "age" labels (e.g., "59m" → "1h") now dynamically update in real-time every minute synchronously in the background. The timestamps are always perfectly up-to-date the exact millisecond the menu is opened.
+- **Memory Overhaul:** Destroyed a significant source of memory churn by migrating to a static shared `ISO8601DateFormatter`. This single architectural patch instantly eradicates 160+ heavy object allocations per minute related to continuous time calculation updates.
+- **Settings Optimization:** Prevented an expensive, full-scale menu reconstruction from firing unnecessarily every time the user adjusted the "Refresh Interval" slider in Preferences. The UI now relies entirely on the optimized background tick to reflect these temporal changes natively.
+- **Double-Hashtag Normalization:** Fixed a redundant rendering issue where repositories with existing hashtags in their topics would display as `##tag` in the suggestion cloud.
+- **Layout Stabilization:** Resolved the "1-line wrap" bug by prioritizing calculated target widths (400pt+) over AppKit's intermediate rendering reports during the first render frame.
+
 ## [1.4.9] - 2026-03-29
 
 ### Added
 - **Performance Overhaul:** Optimized the application's underlying architecture to eliminate unnecessary background CPU and disk usage, particularly for large repository lists (160+ repos).
 - **Smart Menu Reconstruction:** Refined the pre-rendering system to skip the entire menu rebuild process when closing the menu if no repos were hovered or read, ensuring zero-cost closures.
-- **Preferences UI Modernization:** Replaced individual switches with a clean, macOS-standard checklist for menu settings.
+- **Preferences UI Modernization:** Replaced inconsistent switches with a clean, macOS-standard checklist for menu settings.
 - **Aesthetic Refinement:** Justified numerical steppers and restored the 'Start at Login' master switch for better visual balance and hierarchy.
 - **Smarter Tooltips:** Error messages in the menu now show descriptive failure reasons without redundant repository names.
 - **UI Polish:** Refined the "Add Repository" success animation to be more subtle and consistent with the app's dynamic theme.
