@@ -254,6 +254,13 @@ class HeaderMenuItemView: NSView {
         addBtn.hoverColor = hoverSecondary
         
         quickAddLabel.textColor = baseSecondary
+        
+        // Reset hover visuals if row is no longer highlighted,
+        // in case mouseExited was never delivered after a click.
+        if !highlighted {
+            refreshBtn.resetHoverState()
+            addBtn.resetHoverState()
+        }
     }
     
     @objc private func refreshClicked() {

@@ -103,7 +103,11 @@ class FooterMenuItemView: NSView {
     }
     
     func menuDidChangeHighlight(highlightedItem: NSMenuItem?) {
-        // No full-row highlight for footer, buttons handle their own hover
+        // No full-row highlight for footer, buttons handle their own hover.
+        // But reset hover state on all buttons to avoid stale highlights
+        // when the menu is closed mid-hover via a click.
+        settingsBtn.resetHoverState()
+        quitBtn.resetHoverState()
     }
     
     override func draw(_ dirtyRect: NSRect) {

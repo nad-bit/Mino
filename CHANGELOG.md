@@ -5,6 +5,11 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-04-05
+
+### Fixed
+- **Sticky Button Hover State:** Resolved a visual glitch where inline action buttons (Install, Notes, Open Releases, Delete) and header/footer controls (Refresh, Add, Preferences, Quit) would remain stuck in their highlighted appearance the next time the menu was opened. The root cause was that macOS never delivers the `mouseExited` event when a click dismisses the menu mid-hover. A defensive `resetHoverState()` method now forcefully clears hover visuals whenever a button fades out of view, guaranteeing a perfectly clean state on every menu open.
+
 ## [1.5.0] - 2026-04-02
 
 ### Added

@@ -58,6 +58,15 @@ class MenuActionButton: NSButton {
         contentTintColor = baseColor
         layer?.backgroundColor = NSColor.clear.cgColor
     }
+    
+    /// Resets hover state unconditionally. Call this when the button becomes invisible
+    /// (e.g. row loses highlight) so a missed mouseExited never leaves stale hover visuals.
+    func resetHoverState() {
+        guard isHovered else { return }
+        isHovered = false
+        contentTintColor = baseColor
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
 }
 
 @MainActor
@@ -474,6 +483,15 @@ class RepoMenuItemView: NSView {
 
         let installAlpha: CGFloat = (caskName != nil && highlighted) ? 1.0 : 0.0
         let alpha: CGFloat = highlighted ? 1.0 : 0.0
+
+        // When fading out, reset hover state first so a missed mouseExited
+        // never leaves a button stuck in highlighted appearance.
+        if !highlighted {
+            installBtn.resetHoverState()
+            notesBtn.resetHoverState()
+            openReleasesBtn.resetHoverState()
+            deleteBtn.resetHoverState()
+        }
 
         if animated {
             NSAnimationContext.runAnimationGroup { context in

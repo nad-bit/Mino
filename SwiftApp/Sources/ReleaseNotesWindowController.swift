@@ -32,7 +32,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
     private(set) var currentRepoName: String?
     
     init() {
-        let windowRect = NSRect(x: 0, y: 0, width: 540, height: 460)
+        let windowRect = NSRect(x: 0, y: 0, width: 640, height: 480)
         let window = NSWindow(contentRect: windowRect,
                             styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
                             backing: .buffered,
