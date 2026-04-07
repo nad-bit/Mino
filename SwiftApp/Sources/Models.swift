@@ -13,6 +13,7 @@ struct RepoConfig: Codable, Equatable {
     var source: String // "manual" or "brew"
     var cask: String?
     var tags: [String]?
+    var isFavorite: Bool?
 }
 
 struct AppConfig: Codable {
@@ -23,7 +24,7 @@ struct AppConfig: Codable {
     var showIcons: Bool?
     var showNewIndicator: Bool?
     var newIndicatorDays: Int?
-    var menuLayout: String? // "compact" | "cards" | "columns" | "hybrid"
+    var menuLayout: String? // "columns" | "cards" | "tags"
     var isCompactMode: Bool?
     
     enum CodingKeys: String, CodingKey {

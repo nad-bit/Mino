@@ -29,7 +29,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     
     // Refresh Logic and States
     var lastRefreshTime: Date = Date.distantPast
-    var lastCaskDiscoveryTime: Date = Date.distantPast
     var countdownTimer: Timer?
     var isRefreshing = false
     var menuIsOpen = false
@@ -236,6 +235,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             
             // All fetches done, safely update the UI properties from within the MainActor Context
             var newCaskVersionsDetected = false
+            var manualReposToDiscoverCask: [String] = []
             var hasFreshUpdates = false
             let lastNotifiedVersions = UserDefaults.standard.dictionary(forKey: "LastNotifiedVersions") as? [String: String] ?? [:]
             var updatedNotifiedVersions = lastNotifiedVersions
@@ -256,8 +256,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
 
                 if let oldInfo = self.repoCache[repo], let newVersion = info.version, let oldVersion = oldInfo.version {
                     if newVersion != oldVersion {
-                        if ConfigManager.shared.config.repos.first(where: { $0.name == repo })?.cask != nil {
-                            newCaskVersionsDetected = true
+                        if let repoConf = ConfigManager.shared.config.repos.first(where: { $0.name == repo }) {
+                            if repoConf.cask != nil {
+                                newCaskVersionsDetected = true
+                            } else if repoConf.source == "manual" && HomebrewManager.shared.brewPath != nil {
+                                manualReposToDiscoverCask.append(repo)
+                            }
                         }
                     }
                 } else if self.repoCache[repo] == nil && info.version != nil {
@@ -278,31 +282,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                 Task { let _ = await HomebrewManager.shared.runBrewUpdate() }
             }
             
-            // --- Auto-Discovery of Homebrew Casks ---
-            let now = Date()
-            // Run on first launch (distantPast) or if 24 hours (86400 seconds) have passed
-            if now.timeIntervalSince(self.lastCaskDiscoveryTime) > 86400 {
-                let manualRepos = ConfigManager.shared.config.repos.filter { $0.source == "manual" }
-                if !manualRepos.isEmpty {
-                    let caskMap = await HomebrewManager.shared.downloadGlobalCaskMap()
-                    if !caskMap.isEmpty {
-                        var didUpdate = false
-                        for (index, repoConf) in ConfigManager.shared.config.repos.enumerated() {
-                            if repoConf.source == "manual", let discoveredCask = caskMap[repoConf.name.lowercased()] {
-                                ConfigManager.shared.config.repos[index].source = "brew"
-                                ConfigManager.shared.config.repos[index].cask = discoveredCask
-                                didUpdate = true
-                                print("Auto-discovered cask '\(discoveredCask)' for repo '\(repoConf.name)'")
+            // --- Event-driven Cask Discovery ---
+            // For manual repos that just received a version update, attempt to find
+            // their Homebrew cask using local brew calls (no bulk JSON download needed).
+            if !manualReposToDiscoverCask.isEmpty {
+                Task {
+                    var didDiscover = false
+                    for repoName in manualReposToDiscoverCask {
+                        if let cask = await HomebrewManager.shared.findCaskForRepo(repoName: repoName) {
+                            await MainActor.run {
+                                if let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
+                                    ConfigManager.shared.config.repos[index].source = "brew"
+                                    ConfigManager.shared.config.repos[index].cask = cask
+                                    didDiscover = true
+                                    print("Auto-discovered cask '\(cask)' for updated repo '\(repoName)'")
+                                }
                             }
                         }
-                        if didUpdate {
+                    }
+                    if didDiscover {
+                        await MainActor.run {
                             ConfigManager.shared.saveConfig()
+                            self.setupMenu()
                         }
                     }
                 }
-                self.lastCaskDiscoveryTime = now
             }
-            // ----------------------------------------
+            // ------------------------------------
             
             self.isRefreshing = false
             self.lastRefreshTime = Date()
@@ -352,7 +358,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         
         let config = ConfigManager.shared.config
         let isSortedByName = config.sortBy == "name"
-        let currentLayout = config.menuLayout ?? "columns"
+        var currentLayout = config.menuLayout ?? "columns"
+        
+        // Migrate legacy "hybrid" layout to "columns"
+        if currentLayout == "hybrid" {
+            currentLayout = "columns"
+            ConfigManager.shared.config.menuLayout = "columns"
+            ConfigManager.shared.saveConfig()
+        }
         
         var sortedRepos = config.repos
         if isSortedByName {
@@ -373,7 +386,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         }
         
         // Build display data for each repo
-        let indicatorEnabled = config.showNewIndicator ?? true
         let thresholdDays = config.newIndicatorDays ?? Constants.newReleaseThresholdDays
         
         var displayDataList: [(RepoConfig, RepoDisplayData)] = []
@@ -395,7 +407,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             
             let ageInfo = Utils.getReleaseAge(dateString: info.date)
             let daysDiff = ageInfo.seconds.isInfinite ? Int.max : Int(ageInfo.seconds / 86400)
-            let newIndicator = (indicatorEnabled && !isLoading && !isError && daysDiff <= thresholdDays) ? " \(Constants.newReleaseIndicator)" : ""
             
             var isNewUpdate = false
             if !isLoading && !isError {
@@ -404,7 +415,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                 }
             }
             
-            // Freshness color for hybrid mode
+            // Freshness color (used by dot in columns/cards and pill in tags)
             let freshnessColor: NSColor
             if isLoading || isError {
                 freshnessColor = .systemGray
@@ -423,13 +434,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                 ageLabel: (isLoading || isError) ? nil : ageInfo.label,
                 ageSeconds: ageInfo.seconds,
                 originalDate: info.date,
-                newIndicator: newIndicator,
                 errorMessage: isError ? info.error : nil,
                 isLoading: isLoading,
                 caskName: repoObj.cask,
                 freshnessColor: freshnessColor,
                 isNew: isNewUpdate,
-                tags: repoObj.tags ?? []
+                tags: repoObj.tags ?? [],
+                isFavorite: repoObj.isFavorite ?? false
             )
             displayDataList.append((repoObj, data))
         }
@@ -438,7 +449,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         var maxNameWidth: CGFloat = 0
         var maxVersionWidth: CGFloat = 0
         
-        if currentLayout == "columns" || currentLayout == "hybrid" {
+        if currentLayout == "columns" {
             let nameFont = NSFont.menuBarFont(ofSize: 0)
             let versionFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
             let attrs: (NSFont) -> [NSAttributedString.Key: Any] = { [.font: $0] }
@@ -465,7 +476,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             let repoMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
             let customView = RepoMenuItemView(repoName: repoObj.name, displayData: data, layout: currentLayout, appDelegate: self)
             
-            if currentLayout == "columns" || currentLayout == "hybrid" {
+            if currentLayout == "columns" {
                 customView.nameColumnWidth = maxNameWidth
                 customView.versionColumnWidth = maxVersionWidth
             }

@@ -25,7 +25,7 @@ https://github.com/user-attachments/assets/3ca0d651-5059-4683-812f-c9f24b8aa8fc
 - **🎯 Multi-Hunt Window**: The floating "Add Repositories..." window acts as a persistent tracking hub. Keep it open while you browse Safari, and simply hit `CMD+C` on sequential GitHub URLs. Mino automatically sniffs your clipboard and queues them up for rapid batch-ingestion without ever losing focus.
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
 - **🔐 Secure Token Storage**: GitHub Personal Access Tokens stored in macOS Keychain — never in plain text
-- **✦ Configurable New Release Indicator**: Customizable threshold (1-30 days) with toggle, replacing the old fixed emoji
+- **★ Favorites**: Right-click any repository to mark it as a favorite. A gold ★ appears inline — toggles instantly without closing the menu.
 - **🌍 Localized**: English, Spanish, French, German, Italian, Portuguese, Mandarin Chinese, Hindi, Arabic, Russian, and Japanese with automatic system detection
 - **🔄 Auto-Start**: Launch at login via native macOS LaunchAgent
 - **🎨 Light & Dark Mode**: Full support, including a forced-dark HUD panel for notifications
@@ -99,7 +99,9 @@ Each repository displays its name, latest version, and time since release. Hover
 
 Click the row itself to open the repository's main GitHub page.
 
-Repos with recent releases show a **✦** indicator (configurable in Preferences).
+Repos with a recent release show a **●** freshness indicator (green / orange / grey) before the name when the *New Release Indicator* option is enabled in Preferences. The threshold (1–30 days) is configurable.
+
+Right-click any row to toggle a **★** favorite mark.
 
 ### Filtering
 Simply start typing in the **Integrated Search** field at the top of the menu to filter your repository list in real-time. The search field is compact and accessible without extra clicks.
@@ -114,9 +116,9 @@ Accessible via the **Preferences** menu item:
 | **Refresh Interval** | Slider: 1-24 hours between auto-checks |
 | **Start at Login** | Toggle macOS LaunchAgent |
 | **Show Owner Name** | Toggle `owner/` prefix in repo names |
-| **New Release Indicator** | Toggle the ✦ symbol and configure threshold (1-30 days) |
+| **New Release Indicator** | Toggle the ● freshness dot (Columns/Cards) or dynamic pill color (Tags) and configure threshold (1-30 days) |
 | **Sort by** | Segmented control: Date or Name |
-| **Menu layout** | Segmented control: Choose between 4 distinct UI arrangements |
+| **Menu layout** | Segmented control: Choose between 3 distinct UI arrangements (Columns, Cards, Tags) |
 | **Compact Menu** | Toggle extreme density (shrinks rows from 22pt to 16pt) |
 
 ### System Permissions

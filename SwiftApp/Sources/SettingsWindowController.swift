@@ -199,11 +199,10 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         let layoutLabel = NSTextField(labelWithString: Translations.get("layoutLabel"))
         layoutLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        layoutSegment.segmentCount = 4
+        layoutSegment.segmentCount = 3
         layoutSegment.setImage(NSImage(systemSymbolName: "list.bullet", accessibilityDescription: "Columns"), forSegment: 0)
         layoutSegment.setImage(NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "Cards"), forSegment: 1)
-        layoutSegment.setImage(NSImage(systemSymbolName: "list.bullet.rectangle", accessibilityDescription: "Hybrid"), forSegment: 2)
-        layoutSegment.setImage(NSImage(systemSymbolName: "tag", accessibilityDescription: "Tags"), forSegment: 3)
+        layoutSegment.setImage(NSImage(systemSymbolName: "tag", accessibilityDescription: "Tags"), forSegment: 2)
         layoutSegment.segmentStyle = .rounded
         layoutSegment.target = self
         layoutSegment.action = #selector(layoutChanged(_:))
@@ -346,7 +345,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         // Load Layout
         let layout = ConfigManager.shared.config.menuLayout ?? "columns"
-        let layoutIndex = ["columns", "cards", "hybrid", "tags"].firstIndex(of: layout) ?? 0
+        let layoutIndex = ["columns", "cards", "tags"].firstIndex(of: layout) ?? 0
         layoutSegment.selectedSegment = layoutIndex
         
         compactModeCheckbox.state = (ConfigManager.shared.config.isCompactMode == true) ? .on : .off
@@ -563,7 +562,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     @objc private func layoutChanged(_ sender: NSSegmentedControl) {
         isUpdatingSelf = true
-        let layoutModes = ["columns", "cards", "hybrid", "tags"]
+        let layoutModes = ["columns", "cards", "tags"]
         ConfigManager.shared.config.menuLayout = layoutModes[sender.selectedSegment]
         updateIndicatorStepperVisibility()
         
@@ -601,22 +600,11 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     private func updateIndicatorStepperVisibility() {
-        let layoutIndex = layoutSegment.selectedSegment
-        let isColorLayout = (layoutIndex == 2 || layoutIndex == 3) // Hybrid or Tags
-        
-        if isColorLayout {
-            newIndicatorCheckbox.isEnabled = false
-            newIndicatorCheckbox.state = .on // visually indicate feature is structural
-            
-            newIndicatorStepper.isEnabled = true
-        } else {
-            newIndicatorCheckbox.isEnabled = true
-            let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
-            newIndicatorCheckbox.state = showNewIndicator ? .on : .off
-            
-            let isEnabled = newIndicatorCheckbox.state == .on
-            newIndicatorStepper.isEnabled = isEnabled
-        }
+        // All three layouts (columns, cards, tags) now support showNewIndicator freely.
+        let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
+        newIndicatorCheckbox.isEnabled = true
+        newIndicatorCheckbox.state = showNewIndicator ? .on : .off
+        newIndicatorStepper.isEnabled = showNewIndicator
     }
     
 

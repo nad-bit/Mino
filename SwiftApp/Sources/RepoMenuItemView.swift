@@ -8,13 +8,13 @@ struct RepoDisplayData {
     let ageLabel: String?         // e.g. "3 days"
     let ageSeconds: Double
     let originalDate: String?     // Raw ISO8601 date from GitHub
-    let newIndicator: String      // "✦" or ""
     let errorMessage: String?
     let isLoading: Bool
     let caskName: String?
     let freshnessColor: NSColor   // 🟢/🟡/⚪ mapped to NSColor
     let isNew: Bool
     let tags: [String]
+    let isFavorite: Bool
 }
 
 class MenuActionButton: NSButton {
@@ -29,7 +29,6 @@ class MenuActionButton: NSButton {
     }
     
     override var intrinsicContentSize: NSSize {
-        // Expand height significantly so the layout system has room, but we rely on stack constraints
         return NSSize(width: 26, height: 40)
     }
     
@@ -59,8 +58,6 @@ class MenuActionButton: NSButton {
         layer?.backgroundColor = NSColor.clear.cgColor
     }
     
-    /// Resets hover state unconditionally. Call this when the button becomes invisible
-    /// (e.g. row loses highlight) so a missed mouseExited never leaves stale hover visuals.
     func resetHoverState() {
         guard isHovered else { return }
         isHovered = false
@@ -84,7 +81,8 @@ class RepoMenuItemView: NSView {
     private let versionLabel = NSTextField(labelWithString: "")
     private let ageLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")   // Cards mode line 2
-    private let dotLabel = NSTextField(labelWithString: "")        // Hybrid mode color dot
+    private let dotLabel = NSTextField(labelWithString: "")        // Freshness dot (columns/cards with indicator ON)
+    private let starLabel = NSTextField(labelWithString: "★")      // Favorite indicator (always present)
     
     // Data
     private let repoName: String
@@ -101,7 +99,7 @@ class RepoMenuItemView: NSView {
     private var lastHighlightState = false
     private var wasEverHovered = false
     
-    // Column widths (for columns/hybrid modes, set from outside)
+    // Column widths (for columns mode, set from outside)
     var nameColumnWidth: CGFloat = 0
     var versionColumnWidth: CGFloat = 0
     
@@ -125,8 +123,6 @@ class RepoMenuItemView: NSView {
         switch layout {
         case "cards":
             setupCardsView(data: displayData)
-        case "hybrid":
-            setupHybridView(data: displayData)
         case "tags":
             setupTagsView(data: displayData)
         case "columns":
@@ -174,6 +170,22 @@ class RepoMenuItemView: NSView {
         btn.wantsLayer = true
     }
     
+    // MARK: - Star Label (shared by all modes)
+    
+    /// Configures the ★ starLabel always present in the layout.
+    /// isFavorite=true → gold; false → clear (invisible but reserves space).
+    private func configureStarLabel(isFavorite: Bool, fontSize: CGFloat? = nil) {
+        let size: CGFloat = fontSize ?? (isCompact ? 9 : 11)
+        starLabel.stringValue = "★"
+        starLabel.font = .systemFont(ofSize: size)
+        starLabel.textColor = isFavorite ? .systemYellow : .clear
+        starLabel.alignment = .center
+        starLabel.translatesAutoresizingMaskIntoConstraints = false
+        starLabel.setContentHuggingPriority(.required, for: .horizontal)
+        starLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        starLabel.widthAnchor.constraint(equalToConstant: 16).isActive = true
+    }
+    
     // MARK: - Layout: Tags (Single line with colorful pill)
     
     private func setupTagsView(data: RepoDisplayData) {
@@ -184,13 +196,14 @@ class RepoMenuItemView: NSView {
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        // Dynamic freshness pill
+        // Pill: freshnessColor if showNewIndicator ON, fixed blue otherwise
+        let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? false
+        
         if let ver = data.version {
             versionLabel.stringValue = " \(ver) "
             versionLabel.font = .monospacedSystemFont(ofSize: isCompact ? 9 : 10, weight: .bold)
             versionLabel.textColor = .white
-            // Fallback to blue if the color is white/gray in dark mode to keep contrast high
-            let pillColor = data.freshnessColor == .tertiaryLabelColor ? NSColor.systemBlue : data.freshnessColor
+            let pillColor: NSColor = showNewIndicator ? data.freshnessColor : NSColor.systemBlue
             versionLabel.backgroundColor = pillColor.withAlphaComponent(0.85)
             versionLabel.isBezeled = false
             versionLabel.drawsBackground = true
@@ -212,7 +225,10 @@ class RepoMenuItemView: NSView {
             versionLabel.translatesAutoresizingMaskIntoConstraints = false
         }
         
-        let contentStack = NSStackView(views: [titleLabel, versionLabel])
+        // Star (matches pill font size)
+        configureStarLabel(isFavorite: data.isFavorite, fontSize: isCompact ? 9 : 10)
+        
+        let contentStack = NSStackView(views: [titleLabel, versionLabel, starLabel])
         contentStack.orientation = .horizontal
         contentStack.spacing = 8
         contentStack.alignment = .firstBaseline
@@ -237,7 +253,9 @@ class RepoMenuItemView: NSView {
     // MARK: - Layout: Cards (two-line)
     
     private func setupCardsView(data: RepoDisplayData) {
-        // Line 1: bold name + version pill
+        let showDot = ConfigManager.shared.config.showNewIndicator ?? false
+        
+        // Line 1: [●?] bold name + version pill
         titleLabel.stringValue = data.formattedName
         titleLabel.font = .boldSystemFont(ofSize: isCompact ? 11 : 13)
         titleLabel.textColor = .labelColor
@@ -271,9 +289,31 @@ class RepoMenuItemView: NSView {
             versionLabel.translatesAutoresizingMaskIntoConstraints = false
         }
         
-        // Line 2: age + indicator
+        // Dot (conditional on showNewIndicator)
+        var topRowViews: [NSView] = []
+        if showDot {
+            dotLabel.stringValue = "●"
+            dotLabel.font = .systemFont(ofSize: 8)
+            dotLabel.textColor = data.freshnessColor
+            dotLabel.alignment = .center
+            dotLabel.translatesAutoresizingMaskIntoConstraints = false
+            dotLabel.setContentHuggingPriority(.required, for: .horizontal)
+            dotLabel.widthAnchor.constraint(equalToConstant: 12).isActive = true
+            topRowViews.append(dotLabel)
+        }
+        topRowViews.append(contentsOf: [titleLabel, versionLabel])
+        
+        let topRow = NSStackView(views: topRowViews)
+        topRow.orientation = .horizontal
+        topRow.spacing = 6
+        topRow.alignment = .firstBaseline
+        topRow.translatesAutoresizingMaskIntoConstraints = false
+        
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        
+        // Line 2: age + ★
         if let age = data.ageLabel {
-            subtitleLabel.stringValue = "\(age)\(data.newIndicator)"
+            subtitleLabel.stringValue = age
         } else if let errorMsg = data.errorMessage {
             subtitleLabel.stringValue = Translations.get("error")
             subtitleLabel.toolTip = errorMsg
@@ -285,17 +325,18 @@ class RepoMenuItemView: NSView {
         subtitleLabel.lineBreakMode = .byTruncatingTail
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        // Top row: name + version pill
-        let topRow = NSStackView(views: [titleLabel, versionLabel])
-        topRow.orientation = .horizontal
-        topRow.spacing = 6
-        topRow.alignment = .firstBaseline
-        topRow.translatesAutoresizingMaskIntoConstraints = false
+        // Star matches subtitle font size
+        configureStarLabel(isFavorite: data.isFavorite, fontSize: isCompact ? 10 : 11)
         
-        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let bottomRow = NSStackView(views: [subtitleLabel, starLabel])
+        bottomRow.orientation = .horizontal
+        bottomRow.spacing = 4
+        bottomRow.alignment = .centerY
+        bottomRow.translatesAutoresizingMaskIntoConstraints = false
+        subtitleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         
-        // Vertical stack: topRow + subtitle
-        let vStack = NSStackView(views: [topRow, subtitleLabel])
+        // Vertical stack: topRow + bottomRow
+        let vStack = NSStackView(views: [topRow, bottomRow])
         vStack.orientation = .vertical
         vStack.alignment = .leading
         vStack.spacing = 1
@@ -316,20 +357,11 @@ class RepoMenuItemView: NSView {
         ])
     }
     
-    // MARK: - Layout: Columns (tabular)
+    // MARK: - Layout: Columns (tabular, with optional color dot)
     
     private func setupColumnsView(data: RepoDisplayData) {
-        setupColumnContent(data: data, showDot: false)
-    }
-    
-    // MARK: - Layout: Hybrid (columns + color dot)
-    
-    private func setupHybridView(data: RepoDisplayData) {
-        setupColumnContent(data: data, showDot: true)
-    }
-    
-    /// Shared setup for Columns and Hybrid modes
-    private func setupColumnContent(data: RepoDisplayData, showDot: Bool) {
+        let showDot = ConfigManager.shared.config.showNewIndicator ?? false
+        
         // Name column
         titleLabel.stringValue = data.formattedName
         titleLabel.font = isCompact ? .systemFont(ofSize: 11) : .menuBarFont(ofSize: 0)
@@ -353,20 +385,17 @@ class RepoMenuItemView: NSView {
         versionLabel.translatesAutoresizingMaskIntoConstraints = false
         
         // Age column
-        if let age = data.ageLabel {
-            let indicator = showDot ? "" : data.newIndicator
-            ageLabel.stringValue = "\(age)\(indicator)"
-        } else {
-            ageLabel.stringValue = ""
-        }
+        ageLabel.stringValue = data.ageLabel ?? ""
         ageLabel.font = .systemFont(ofSize: isCompact ? 9 : 11)
         ageLabel.textColor = .tertiaryLabelColor
         ageLabel.alignment = .right
         ageLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        // Build row
-        var rowViews: [NSView] = []
+        // Star
+        configureStarLabel(isFavorite: data.isFavorite)
         
+        // Dot (conditional)
+        var rowViews: [NSView] = []
         if showDot {
             dotLabel.stringValue = "●"
             dotLabel.font = .systemFont(ofSize: 8)
@@ -378,7 +407,7 @@ class RepoMenuItemView: NSView {
             rowViews.append(dotLabel)
         }
         
-        rowViews.append(contentsOf: [titleLabel, versionLabel, ageLabel])
+        rowViews.append(contentsOf: [titleLabel, versionLabel, ageLabel, starLabel])
         
         let contentStack = NSStackView(views: rowViews)
         contentStack.orientation = .horizontal
@@ -392,6 +421,7 @@ class RepoMenuItemView: NSView {
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         versionLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         ageLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        starLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
         
         // Fixed-width columns for alignment across rows
@@ -471,11 +501,7 @@ class RepoMenuItemView: NSView {
     }
     
     private func applyHighlightState(_ highlighted: Bool, animated: Bool = true) {
-        // To prevent NSStackView from recalculating layout and causing menu artifacts 
-        // on the right edge, we animate alphaValue instead of isHidden.
-        // We set the buttons to be fully transparent when not highlighted.
-        
-        // Ensure they are always part of the layout
+        // Ensure buttons are always part of the layout
         if installBtn.isHidden { installBtn.isHidden = false }
         if notesBtn.isHidden { notesBtn.isHidden = false }
         if openReleasesBtn.isHidden { openReleasesBtn.isHidden = false }
@@ -484,8 +510,6 @@ class RepoMenuItemView: NSView {
         let installAlpha: CGFloat = (caskName != nil && highlighted) ? 1.0 : 0.0
         let alpha: CGFloat = highlighted ? 1.0 : 0.0
 
-        // When fading out, reset hover state first so a missed mouseExited
-        // never leaves a button stuck in highlighted appearance.
         if !highlighted {
             installBtn.resetHoverState()
             notesBtn.resetHoverState()
@@ -520,13 +544,17 @@ class RepoMenuItemView: NSView {
         let btnBase: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
         let btnHover: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
         
-        applyTextWithIndicatorColor(to: titleLabel, baseColor: mainColor, highlighted: highlighted)
-        applyTextWithIndicatorColor(to: subtitleLabel, baseColor: secondaryColor, highlighted: highlighted)
+        applyOwnerDimming(to: titleLabel, baseColor: mainColor, highlighted: highlighted)
+        applyOwnerDimming(to: subtitleLabel, baseColor: secondaryColor, highlighted: highlighted)
         
+        // Version pill: white text in cards (inverts on highlight), secondary elsewhere
         versionLabel.textColor = (layoutMode == "cards") ? (highlighted ? mainColor : .white) : secondaryColor
         
-        // ageLabel shouldn't normally have the indicator since it's in the title/subtitle, but for safety:
-        applyTextWithIndicatorColor(to: ageLabel, baseColor: highlighted ? mainColor : tertiaryColor, highlighted: highlighted)
+        // Age: adapts to highlight
+        ageLabel.textColor = highlighted ? mainColor : tertiaryColor
+        
+        // Star: intentionally NOT changed — always gold (or clear if not a favorite)
+        // dotLabel: keeps its freshness color even on highlight (small element, readable)
         
         installBtn.baseColor = btnBase
         installBtn.hoverColor = btnHover
@@ -537,21 +565,19 @@ class RepoMenuItemView: NSView {
         deleteBtn.baseColor = btnBase
         deleteBtn.hoverColor = btnHover
         
-        // In cards mode, adjust the version pill background
+        // In cards mode, collapse the version pill background on highlight
         if layoutMode == "cards" {
             versionLabel.backgroundColor = highlighted ? .clear : NSColor.systemBlue.withAlphaComponent(0.7)
         }
     }
     
-    // Applies a base color to the entire string, but if the 'new release indicator' is present and
-    // the user requested 'gold', paints just that character yellow.
-    private func applyTextWithIndicatorColor(to label: NSTextField, baseColor: NSColor, highlighted: Bool) {
+    /// Applies a base color to the full string, dimming the "owner/" prefix in owner-visible mode.
+    private func applyOwnerDimming(to label: NSTextField, baseColor: NSColor, highlighted: Bool) {
         let text = label.stringValue
         if text.isEmpty { return }
         
         let attrStr = NSMutableAttributedString(string: text)
         
-        // Restore truncation line break mode that attributed strings wipe out by default
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = .byTruncatingTail
         let fullRange = NSRange(location: 0, length: attrStr.length)
@@ -559,6 +585,7 @@ class RepoMenuItemView: NSView {
         attrStr.addAttribute(.foregroundColor, value: baseColor, range: fullRange)
         attrStr.addAttribute(.paragraphStyle, value: paragraphStyle, range: fullRange)
         
+        // Dim "owner/" prefix in lighter weight when showing full owner/repo name
         if label === titleLabel, let slashIndex = text.firstIndex(of: "/") {
             let prefixNSRange = NSRange(text.startIndex...slashIndex, in: text)
             let ownerColor = highlighted ? baseColor.withAlphaComponent(0.6) : NSColor.secondaryLabelColor
@@ -567,13 +594,6 @@ class RepoMenuItemView: NSView {
             if let currentFont = label.font {
                 let regularFont = NSFont.systemFont(ofSize: currentFont.pointSize, weight: .regular)
                 attrStr.addAttribute(.font, value: regularFont, range: prefixNSRange)
-            }
-        }
-        
-        if !highlighted, text.contains(Constants.newReleaseIndicator) {
-            let indicatorRange = (text as NSString).range(of: Constants.newReleaseIndicator)
-            if indicatorRange.location != NSNotFound {
-                attrStr.addAttribute(.foregroundColor, value: NSColor.systemYellow, range: indicatorRange)
             }
         }
         
@@ -598,38 +618,32 @@ class RepoMenuItemView: NSView {
     override func layout() {
         super.layout()
         
-        // Dynamically calculate if the titleLabel is physically truncating its text.
-        // An unconstrained cell size measurement guarantees the true text width
-        // regardless of current view bounds or stack view compression.
         let unconstrainedWidth = titleLabel.cell?.cellSize(forBounds: NSMakeRect(0, 0, .greatestFiniteMagnitude, .greatestFiniteMagnitude)).width ?? titleLabel.intrinsicContentSize.width
         
-        // Retrieve the error message for this repository item from the data struct
         let hasError = versionLabel.stringValue == "⚠️" || subtitleLabel.stringValue == Translations.get("error")
-        // Find the injected error tooltip by checking current labels
         let errorTooltip = versionLabel.toolTip ?? subtitleLabel.toolTip
         
         let isTruncated = unconstrainedWidth > titleLabel.frame.width + 0.1
         
         if hasError, let err = errorTooltip {
-            // Always prioritize error message if it exists, as requested by the user
             titleLabel.toolTip = err
             versionLabel.toolTip = err
             subtitleLabel.toolTip = err
         } else if isTruncated {
-            // No error, but truncated: show full name
             let fullName = titleLabel.stringValue
             titleLabel.toolTip = fullName
             versionLabel.toolTip = fullName
             subtitleLabel.toolTip = fullName
         } else {
-            // Clean state
             titleLabel.toolTip = nil
             versionLabel.toolTip = nil
             subtitleLabel.toolTip = nil
         }
     }
     
-    // Click on row opens the repo's main GitHub page
+    // MARK: - Mouse Events
+    
+    // Left click: open GitHub repo page
     override func mouseUp(with event: NSEvent) {
         if enclosingMenuItem != nil {
             appDelegate.animateStatusIcon(with: .scale)
@@ -641,31 +655,36 @@ class RepoMenuItemView: NSView {
         }
     }
     
+    // Right click: toggle favorite (in-place, no menu rebuild)
+    override func rightMouseUp(with event: NSEvent) {
+        guard let index = ConfigManager.shared.config.repos
+            .firstIndex(where: { $0.name == repoName }) else { return }
+        
+        let newState = !(ConfigManager.shared.config.repos[index].isFavorite ?? false)
+        ConfigManager.shared.config.repos[index].isFavorite = newState
+        ConfigManager.shared.saveConfig()
+        
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            self.starLabel.animator().textColor = newState ? .systemYellow : .clear
+        }
+    }
+    
     // MARK: - Local Live Updates
     
     func updateAgeDisplay() {
         guard let date = originalDate else { return }
         
         let ageInfo = Utils.getReleaseAge(dateString: date)
-        let indicatorEnabled = ConfigManager.shared.config.showNewIndicator ?? true
-        let thresholdDays = ConfigManager.shared.config.newIndicatorDays ?? Constants.newReleaseThresholdDays
-        let daysDiff = ageInfo.seconds.isInfinite ? Int.max : Int(ageInfo.seconds / 86400)
-        let newIndicator = (indicatorEnabled && daysDiff <= thresholdDays) ? " \(Constants.newReleaseIndicator)" : ""
         
         switch layoutMode {
         case "cards":
-            if ageInfo.seconds.isInfinite {
-                subtitleLabel.stringValue = ""
-            } else {
-                subtitleLabel.stringValue = "\(ageInfo.label)\(newIndicator)"
-            }
-        case "columns", "hybrid":
-            let indicator = (layoutMode == "hybrid") ? "" : newIndicator
-            ageLabel.stringValue = "\(ageInfo.label)\(indicator)"
+            subtitleLabel.stringValue = ageInfo.seconds.isInfinite ? "" : ageInfo.label
+        case "columns":
+            ageLabel.stringValue = ageInfo.seconds.isInfinite ? "" : ageInfo.label
         default: break
         }
         
-        // Refresh colors and indicators (especially for the yellow indicator)
         applyHighlightState(lastHighlightState, animated: false)
     }
 }

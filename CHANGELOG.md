@@ -5,7 +5,24 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2026-04-07
+
+### Added
+- **Favorites (★):** Right-click any repository row to instantly toggle it as a favorite. A gold ★ appears after the release age (Columns, Cards) or after the version pill (Tags) — always reserving its space so column alignment is never disturbed. Favorite state persists in config and toggles in-place with a 150ms fade animation, keeping the menu open the whole time.
+
+### Changed
+- **Menu Layouts Redesigned (4 → 3):** The "Hybrid" layout has been retired and its best feature — the freshness color dot — has been absorbed into the other two row-based layouts:
+  - **Columns & Cards:** When *Indicar novedades* is enabled, a small ● appears before the repository name, colored by release freshness (🟢 recent / 🟠 aging / ⚫ old). When disabled, the row reverts to plain text with no indicator.
+  - **Tags:** The version pill is now dynamic — a fixed blue when the indicator is OFF, and freshness-colored when ON. All three layouts share the same Preferences checkbox uniformly (no more forced-on state for Tags).
+- **✦ Indicator Retired:** The four-pointed sparkle symbol has been removed from all layouts. The colored dot replaces it in Columns/Cards; the ★ exclusively denotes Favorites.
+- **Event-Driven Homebrew Cask Discovery:** Removed the heavy periodic download of the global `cask.json` catalog (triggered on launch and every 24 h). Discovery now fires reactively — only when a `manual` repository receives a real version update — using local `brew search`/`brew info` calls. Startup time and network traffic reduced significantly for large tracking lists.
+
+### Fixed
+- **Automatic Layout Migration:** Users who had "Hybrid" selected in their preferences are automatically and silently migrated to "Columns" on the next launch — no data loss, no user action required.
+- **Tags Layout Preferences:** Corrected the *Indicar novedades* checkbox and stepper, which were previously stuck in a disabled state when the Tags layout was active.
+
 ## [1.5.1] - 2026-04-05
+
 
 ### Fixed
 - **Sticky Button Hover State:** Resolved a visual glitch where inline action buttons (Install, Notes, Open Releases, Delete) and header/footer controls (Refresh, Add, Preferences, Quit) would remain stuck in their highlighted appearance the next time the menu was opened. The root cause was that macOS never delivers the `mouseExited` event when a click dismisses the menu mid-hover. A defensive `resetHoverState()` method now forcefully clears hover visuals whenever a button fades out of view, guaranteeing a perfectly clean state on every menu open.

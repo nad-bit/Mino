@@ -13,7 +13,6 @@ enum Constants {
     
     // UI Constants
     static let newReleaseThresholdDays: Int = 7 // Fallback default, overridden by config
-    static let newReleaseIndicator = "✦"  // Monochromatically neutral sparkle
     
     // System Constants
     static let launchAgentLabel = "com.nad.mino"
