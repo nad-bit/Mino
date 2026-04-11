@@ -171,7 +171,7 @@ cask "mino" do
   end
 
   name "Mino"
-  desc "A lightweight, native macOS menu bar app to track GitHub releases"
+  desc "A lightweight, native macOS menu bar app to track GitHub releases with Homebrew integration"
   homepage "https://github.com/nad-bit/Mino"
 
   depends_on macos: ">= :monterey"
