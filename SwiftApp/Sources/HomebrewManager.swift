@@ -25,10 +25,10 @@ class HomebrewManager {
                 
                 do {
                     try process.run()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
                     
                     if process.terminationStatus == 0 {
-                        let data = pipe.fileHandleForReading.readDataToEndOfFile()
                         if let output = String(data: data, encoding: .utf8) {
                             let casks = output.components(separatedBy: .newlines).filter { !$0.isEmpty }.sorted()
                             continuation.resume(returning: casks)
@@ -56,10 +56,10 @@ class HomebrewManager {
                 
                 do {
                     try process.run()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
                     
                     if process.terminationStatus == 0 {
-                        let data = pipe.fileHandleForReading.readDataToEndOfFile()
                         if let output = String(data: data, encoding: .utf8) {
                             continuation.resume(returning: output)
                             return
@@ -186,9 +186,9 @@ class HomebrewManager {
                 
                 do {
                     try process.run()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
                     if process.terminationStatus == 0 {
-                        let data = pipe.fileHandleForReading.readDataToEndOfFile()
                         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let casks = json["casks"] as? [[String: Any]] {
                             
@@ -221,9 +221,9 @@ class HomebrewManager {
                 process.standardOutput = pipe
                 do {
                     try process.run()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
                     if process.terminationStatus == 0 {
-                        let data = pipe.fileHandleForReading.readDataToEndOfFile()
                         if let output = String(data: data, encoding: .utf8) {
                             let results = output.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
                             continuation.resume(returning: results)

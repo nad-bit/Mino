@@ -50,6 +50,7 @@ enum Translations {
             "sudoRequiredTitle": "Administrator Privileges Required",
             "sudoRequiredDesc": "The application '{cask_name}' requires system permissions (sudo) to be installed.\n\nPlease open your Terminal and run:\nbrew reinstall --cask {cask_name}",
             "tagSearchTitle": "Tags...", "indexingTags": "Building tag index in the background...", "noTagsFound": "No tags found",
+            "apiRepoNotFound": "Repository not found or private", "apiRateLimit": "API rate limit exceeded", "apiHttpError": "HTTP Error {code}",
         ],
         "es": [
             "addingRepo": "Añadiendo {repo}...",
@@ -99,6 +100,7 @@ enum Translations {
             "sudoRequiredTitle": "Permisos de Administrador Requeridos",
             "sudoRequiredDesc": "La aplicación '{cask_name}' necesita permisos del sistema (sudo) para instalarse.\n\nPor favor, abre tu Terminal y ejecuta:\nbrew reinstall --cask {cask_name}",
             "tagSearchTitle": "Etiquetas...", "indexingTags": "Construyendo índice de etiquetas en segundo plano...", "noTagsFound": "No se encontraron etiquetas",
+            "apiRepoNotFound": "Repositorio no encontrado o privado", "apiRateLimit": "Límite de peticiones a la API excedido", "apiHttpError": "Error HTTP {code}",
         ],
         "fr": [
             "addingRepo": "Ajout de {repo}...",
@@ -148,6 +150,7 @@ enum Translations {
             "sudoRequiredTitle": "Droits d'administrateur requis",
             "sudoRequiredDesc": "L'application '{cask_name}' nécessite des autorisations système (sudo) pour être installée.\n\nVeuillez ouvrir votre Terminal et exécuter:\nbrew reinstall --cask {cask_name}",
             "tagSearchTitle": "Tags...", "indexingTags": "Création de l'index des tags en arrière-plan...", "noTagsFound": "Aucun tag trouvé",
+            "apiRepoNotFound": "Dépôt introuvable ou privé", "apiRateLimit": "Limite de requêtes API dépassée", "apiHttpError": "Erreur HTTP {code}",
         ],
         "de": [
             "addingRepo": "Füge {repo} hinzu...",
@@ -197,6 +200,7 @@ enum Translations {
             "sudoRequiredTitle": "Administratorrechte erforderlich",
             "sudoRequiredDesc": "Die Anwendung '{cask_name}' benötigt Systemberechtigungen (sudo), um installiert zu werden.\n\nBitte öffnen Sie Ihr Terminal und führen Sie aus:\nbrew reinstall --cask {cask_name}",
             "tagSearchTitle": "Tags...", "indexingTags": "Erstelle Tag-Index im Hintergrund...", "noTagsFound": "Keine Tags gefunden",
+            "apiRepoNotFound": "Repository nicht gefunden oder privat", "apiRateLimit": "API-Ratenlimit überschritten", "apiHttpError": "HTTP-Fehler {code}",
         ],
         "it": [
             "addingRepo": "Aggiunta di {repo}...",
@@ -246,6 +250,7 @@ enum Translations {
             "sudoRequiredTitle": "Privilegi di Amministratore Richiesti",
             "sudoRequiredDesc": "L'applicazione '{cask_name}' richiede i permessi di sistema (sudo) per essere installata.\n\nPer favore, apri il tuo Terminale ed esegui:\nbrew reinstall --cask {cask_name}",
             "tagSearchTitle": "Tag...", "indexingTags": "Creazione indice tag in background...", "noTagsFound": "Nessun tag trovato",
+            "apiRepoNotFound": "Repository non trovato o privato", "apiRateLimit": "Limite di richieste API superato", "apiHttpError": "Errore HTTP {code}",
         ],
         "pt": [
             "addingRepo": "Adicionando {repo}...",
@@ -295,6 +300,7 @@ enum Translations {
             "sudoRequiredTitle": "Privilégios de Administrador Necessários",
             "sudoRequiredDesc": "Este aplicativo '{cask_name}' requer permissões do sistema (sudo) para ser instalado.\n\nPor favor, abra seu Terminal e execute:\nbrew reinstall --cask {cask_name}",
             "tagSearchTitle": "Tags...", "indexingTags": "Construindo índice de tags em segundo plano...", "noTagsFound": "Nenhuma tag encontrada",
+            "apiRepoNotFound": "Repositório não encontrado ou privado", "apiRateLimit": "Limite de requisições da API excedido", "apiHttpError": "Erro HTTP {code}",
         ],
          "zh": [
             "addingRepo": "正在添加 {repo}...",
@@ -344,6 +350,7 @@ enum Translations {
             "sudoRequiredTitle": "需要管理员权限",
             "sudoRequiredDesc": "安装 '{cask_name}' 需要系统权限 (sudo)。\n\n请打开终端并运行:\nbrew reinstall --cask {cask_name}",
             "tagSearchTitle": "标签...", "indexingTags": "正在后台构建标签索引...", "noTagsFound": "未找到标签",
+            "apiRepoNotFound": "找不到仓库或为私有", "apiRateLimit": "超出 API 速率限制", "apiHttpError": "HTTP 错误 {code}",
         ],
         "hi": [
             "addingRepo": "{repo} जोड़ा जा रहा है...",
@@ -393,6 +400,7 @@ enum Translations {
             "sudoRequiredTitle": "व्यवस्थापक विशेषाधिकार आवश्यक हैं",
             "sudoRequiredDesc": "एप्लिकेशन '{cask_name}' को स्थापित करने के लिए सिस्टम अनुमतियों (sudo) की आवश्यकता है।\n\nकृपया अपना टर्मिनल खोलें और चलाएं:\nbrew reinstall --cask {cask_name}",
             "tagSearchTitle": "टैग...", "indexingTags": "पृष्ठभूमि में टैग इंडेक्स बनाया जा रहा है...", "noTagsFound": "कोई टैग नहीं मिला",
+            "apiRepoNotFound": "भंडार नहीं मिला या निजी है", "apiRateLimit": "API दर सीमा पार हो गई", "apiHttpError": "HTTP त्रुटि {code}",
         ],
         "ar": [
             "addingRepo": "جاري إضافة {repo}...",
@@ -442,6 +450,7 @@ enum Translations {
             "sudoRequiredTitle": "الامتيازات الإدارية مطلوبة",
             "sudoRequiredDesc": "يتطلب التطبيق '{cask_name}' أذونات النظام (sudo) للتثبيت.\n\nالرجاء فتح المحطة الطرفية وتشغيل:\nbrew reinstall --cask {cask_name}",
             "tagSearchTitle": "العلامات...", "indexingTags": "بناء فهرس العلامات في الخلفية...", "noTagsFound": "لم يتم العثور على علامات",
+            "apiRepoNotFound": "لم يتم العثور على المستودع أو أنه خاص", "apiRateLimit": "تم تجاوز حد معدل API", "apiHttpError": "خطأ HTTP {code}",
         ],
         "ru": [
             "addingRepo": "Добавление {repo}...",
@@ -491,6 +500,7 @@ enum Translations {
             "sudoRequiredTitle": "Требуются права администратора",
             "sudoRequiredDesc": "Для установки приложения '{cask_name}' требуются системные разрешения (sudo).\n\nПожалуйста, откройте терминал и выполните:\nbrew reinstall --cask {cask_name}",
             "tagSearchTitle": "Теги...", "indexingTags": "Создание индекса тегов в фоновом режиме...", "noTagsFound": "Теги не найдены",
+            "apiRepoNotFound": "Репозиторий не найден или является приватным", "apiRateLimit": "Превышен лимит запросов API", "apiHttpError": "Ошибка HTTP {code}",
         ],
         "ja": [
             "addingRepo": "{repo} を追加中...",
@@ -540,7 +550,8 @@ enum Translations {
             "sudoRequiredTitle": "管理者権限が必要です",
             "sudoRequiredDesc": "アプリケーション '{cask_name}' をインストールするにはシステム権限 (sudo) が必要です。\n\nターミナルを開いて実行してください:\nbrew reinstall --cask {cask_name}",
             "tagSearchTitle": "タグ...", "indexingTags": "バックグラウンドでタグインデックスを作成中...", "noTagsFound": "タグが見つかりません",
-        ]
+            "apiRepoNotFound": "リポジトリが見つからないかプライベートです", "apiRateLimit": "API レート制限を超えました", "apiHttpError": "HTTP エラー {code}",
+        ],
     ]
     
     static var currentLanguage: String {

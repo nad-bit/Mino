@@ -51,11 +51,12 @@ class GitHubAPI {
         }
         
         if httpResponse.statusCode == 404 {
-            throw NSError(domain: "GitHubAPI", code: 404, userInfo: [NSLocalizedDescriptionKey: "Repository not found or private."])
+            throw NSError(domain: "GitHubAPI", code: 404, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRepoNotFound")])
         } else if httpResponse.statusCode == 403 {
-            throw NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: "API rate limit exceeded."])
+            throw NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRateLimit")])
         } else if httpResponse.statusCode != 200 {
-            throw NSError(domain: "GitHubAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP Error \(httpResponse.statusCode)"])
+            let msg = Translations.get("apiHttpError").format(with: ["code": "\(httpResponse.statusCode)"])
+            throw NSError(domain: "GitHubAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
         }
         
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -94,11 +95,12 @@ class GitHubAPI {
         }
         
         if httpResponse.statusCode == 404 {
-            throw NSError(domain: "GitHubAPI", code: 404, userInfo: [NSLocalizedDescriptionKey: "Repository not found or private."])
+            throw NSError(domain: "GitHubAPI", code: 404, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRepoNotFound")])
         } else if httpResponse.statusCode == 403 {
-            throw NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: "API rate limit exceeded."])
+            throw NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRateLimit")])
         } else if httpResponse.statusCode != 200 {
-            throw NSError(domain: "GitHubAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP Error \(httpResponse.statusCode)"])
+            let msg = Translations.get("apiHttpError").format(with: ["code": "\(httpResponse.statusCode)"])
+            throw NSError(domain: "GitHubAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
         }
         
         let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]]

@@ -2,8 +2,8 @@
 set -e
 
 APP_NAME="Mino"
-VERSION="1.5.2"
-BUILD_NUMBER="213"
+VERSION="1.5.3"
+BUILD_NUMBER="214"
 BUILD_DIR="build"
 
 echo "🧹 Cleaning previous build..."
@@ -117,6 +117,7 @@ if [ "$1" != "--release" ]; then
         if [ $? -eq 0 ]; then
             mv "$APP_NAME.app/Contents/MacOS/$APP_NAME" "${APP_NAME}_universal_temp"
             mv "${APP_NAME}_arm64" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
+            codesign --sign - --force --deep "$APP_NAME.app"
             zip -qr "${APP_NAME}_v${VERSION}_AppleSilicon.zip" "$APP_NAME.app"
             echo "✅ Created Apple Silicon build"
             
@@ -124,13 +125,16 @@ if [ "$1" != "--release" ]; then
             lipo -extract x86_64 "${APP_NAME}_universal_temp" -output "${APP_NAME}_x86_64" 2>/dev/null
             if [ $? -eq 0 ]; then
                 mv "${APP_NAME}_x86_64" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
+                codesign --sign - --force --deep "$APP_NAME.app"
                 zip -qr "${APP_NAME}_v${VERSION}_Intel.zip" "$APP_NAME.app"
                 echo "✅ Created Intel build"
             fi
             
             # 3. Universal Zip (Restore the fat binary)
             mv "${APP_NAME}_universal_temp" "$APP_NAME.app/Contents/MacOS/$APP_NAME"
+            codesign --sign - --force --deep "$APP_NAME.app"
             zip -qr "${APP_NAME}_v${VERSION}_Universal.zip" "$APP_NAME.app"
+            echo "✅ Created Universal build"
         fi
     fi
 

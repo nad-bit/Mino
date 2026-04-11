@@ -467,20 +467,21 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         confirm.addButton(withTitle: Translations.get("deleteToken"))
         confirm.addButton(withTitle: Translations.get("cancel"))
         
-        let response = confirm.runModal()
-        guard response == .alertFirstButtonReturn else { return }
-        
-        _ = ConfigManager.shared.deleteTokenFromKeychain()
-        ConfigManager.shared.token = nil
-        self.loadCurrentSettings()
-        
-        // Notify user of reverted limits
-        HUDPanel.shared.show(title: Translations.get("deleteToken"), subtitle: Translations.get("tokenValidationEmpty"))
-        
-        if let delegate = NSApp.delegate as? AppDelegate {
-             delegate.triggerFullRefresh(nil)
+        confirm.beginSheetModal(for: self.window!) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            
+            _ = ConfigManager.shared.deleteTokenFromKeychain()
+            ConfigManager.shared.token = nil
+            self.loadCurrentSettings()
+            
+            // Notify user of reverted limits
+            HUDPanel.shared.show(title: Translations.get("deleteToken"), subtitle: Translations.get("tokenValidationEmpty"))
+            
+            if let delegate = NSApp.delegate as? AppDelegate {
+                 delegate.triggerFullRefresh(nil)
+            }
+            self.window?.makeFirstResponder(nil)
         }
-        self.window?.makeFirstResponder(nil)
     }
     
     @objc private func toggleLogin(_ sender: NSSwitch) {

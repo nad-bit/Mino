@@ -5,6 +5,19 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.3] - 2026-04-11
+
+### Added
+- **API Error Localization:** Network errors and warnings natively surfaced from the GitHub architecture ("Repository not found", "API Rate Limit exceeded") are now completely localized across all 11 supported languages. Messages are correctly parameterized for dynamic HTTP status codes and strict punctuation has been eliminated for a cleaner aesthetic.
+
+### Changed
+- **Native macOS Modal Sheets:** Promoted the embedded generic `NSAlert` confirmation panels in Preferences (e.g. Delete GitHub Token) to true macOS interactive sheets via `beginSheetModal`. These natively darken the parent window and slide down structurally from the title bar, locking focus gracefully as expected in AppKit.
+- **UI Legacy Cleanup:** Pruned deprecated floating Window and Alert overlays across `UIHandlers.swift` tracking back to version 1.2.0, streamlining the central handler exclusively for global non-anchored commands.
+
+### Fixed
+- **Homebrew Discovery Deadlock:** Rewrote the background `Process` execution pipeline within `HomebrewManager` to read pipeline payloads concurrently before enforcing the `waitUntilExit` event loop. This completely eradicates a native macOS 64KB pipe-buffer overflow deadlock that would freeze the "Add Repository" UI state (causing an infinite "Añadiendo repo..." bug) whenever an ambiguously-named repository (like "CapSoftware/Cap") triggered a massively verbose Cask lookup payload.
+- **Apple Silicon Fatal Crashes:** Instated an explicit `codesign --sign - --force --deep` post-compilation procedure directly into the `build.sh` pipeline exactly prior to payload zipping. By explicitly restoring ad-hoc integrity hashes uniquely into the finalized bundles after performing `lipo` architectural extraction, M-series Macs will no longer execute Mino with a native `Killed: 9` termination crash upon launch.
+
 ## [1.5.2] - 2026-04-07
 
 ### Added

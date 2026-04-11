@@ -23,45 +23,7 @@ class UIHandlers {
         return response == .alertFirstButtonReturn
     }
     
-    func showReleaseNotes(info: RepoInfo) {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = Translations.get("releaseNotes")
-        
-        let caskName = ConfigManager.shared.config.repos.first(where: { $0.name == info.name && $0.source == "brew" })?.cask
-        var infoText = info.name
-        if let cask = caskName {
-            infoText += "\nCask: \(cask)"
-        }
-        alert.informativeText = infoText
-        alert.addButton(withTitle: Translations.get("ok"))
-        
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 450, height: 250))
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        
-        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 430, height: 250))
-        textView.string = info.body ?? Translations.get("noNotes")
-        textView.isEditable = false
-        textView.font = NSFont.systemFont(ofSize: 12)
-        
-        scrollView.documentView = textView
-        alert.accessoryView = scrollView
-        
-        alert.runModal()
-    }
-    
-    func showAlert(title: String, message: String) {
-        if let delegate = NSApp.delegate as? AppDelegate {
-            delegate.animateStatusIcon(with: .wiggle)
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = message
-        alert.addButton(withTitle: Translations.get("ok"))
-        alert.runModal()
-    }
+
     
 
     // showUnifiedAddRepoDialog and showReleaseNotes were migrated to standalone WindowControllers
