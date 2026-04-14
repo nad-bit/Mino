@@ -175,12 +175,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         
         var refreshTitle = Translations.get("refreshNow")
         if lastRefreshTime != Date.distantPast && nextRefreshSeconds > 0 {
-            if nextRefreshSeconds < 3600 {
-                let nextRefreshMinutes = Int(ceil(nextRefreshSeconds / 60))
-                refreshTitle = "\(Translations.get("refreshNow")) (\(nextRefreshMinutes) \(Translations.get("minutes")))"
+            let totalMinutes = Int(ceil(nextRefreshSeconds / 60))
+            let h = totalMinutes / 60
+            let m = totalMinutes % 60
+            
+            if h > 0 {
+                refreshTitle = "\(Translations.get("refreshNow")) (\(h) \(Translations.get("hours")), \(m) \(Translations.get("minutes")))"
             } else {
-                let nextRefreshHours = Int(ceil(nextRefreshSeconds / 3600))
-                refreshTitle = "\(Translations.get("refreshNow")) (\(nextRefreshHours) \(Translations.get("hours")))"
+                refreshTitle = "\(Translations.get("refreshNow")) (\(m) \(Translations.get("minutes")))"
             }
         }
         return refreshTitle
@@ -222,8 +224,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             var results: [(String, RepoInfo)] = []
             await withTaskGroup(of: (String, RepoInfo).self) { group in
                 for repo in reposToFetch {
+                    // Detect if we already had a release version (not commit SHA) for this repo.
+                    // A release version typically starts with 'v' or is a semver-like string,
+                    // while a commit fallback is a 7-char hex SHA. We use a simple heuristic:
+                    // if the cached version doesn't look like a 7-char lowercase hex, it's a release.
+                    let cachedVersion = self.repoCache[repo]?.version
+                    let looksLikeSHA = cachedVersion?.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
+                    let hasExistingRelease = cachedVersion != nil && !looksLikeSHA
+                    
                     group.addTask {
-                        let info = await GitHubAPI.shared.fetchRepoInfo(repo: repo)
+                        let info = await GitHubAPI.shared.fetchRepoInfo(repo: repo, hasExistingRelease: hasExistingRelease)
                         return (repo, info)
                     }
                 }
@@ -270,7 +280,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                         newCaskVersionsDetected = true
                     }
                 }
-                self.repoCache[repo] = info
+                if info.error != nil {
+                    // Update only checking error, but preserve version/date/body
+                    if var existingInfo = self.repoCache[repo] {
+                        existingInfo.error = info.error
+                        // We intentionally don't update version to keep the cache alive
+                        self.repoCache[repo] = existingInfo
+                    } else {
+                        // If it's a completely new repo and we hit an error on first fetch
+                        self.repoCache[repo] = info
+                    }
+                } else {
+                    // Successful fetch: replace entirely
+                    self.repoCache[repo] = info
+                }
             }
             
             if hasFreshUpdates {
@@ -377,6 +400,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
                 return s1 < s2
             }
         }
+        // Repos in error state always go to the bottom, regardless of sort order
+        sortedRepos.sort { r1, r2 in
+            let e1 = self.repoCache[r1.name]?.error != nil
+            let e2 = self.repoCache[r2.name]?.error != nil
+            if e1 != e2 { return !e1 } // non-error before error
+            return false // preserve relative order within each group
+        }
         
         if sortedRepos.isEmpty {
             let noRepos = NSMenuItem(title: Translations.get("noRepos"), action: nil, keyEquivalent: "")
@@ -430,8 +460,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             let data = RepoDisplayData(
                 repoName: repoName,
                 formattedName: formattedName,
-                version: info.version,
-                ageLabel: (isLoading || isError) ? nil : ageInfo.label,
+                version: info.version,        // pass cached version even on error
+                ageLabel: isLoading ? nil : ageInfo.label,   // show cached date too unless loading
                 ageSeconds: ageInfo.seconds,
                 originalDate: info.date,
                 errorMessage: isError ? info.error : nil,

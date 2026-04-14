@@ -23,6 +23,14 @@ class ResponsiveImageAttachment: NSTextAttachment {
     }
 }
 
+/// NSTextField subclass that shows a pointing-hand cursor on hover.
+/// Used for the version pill in the Release Notes window.
+class ClickableTextField: NSTextField {
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+}
+
 class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
     private var textView: NSTextView!
     private var titleLabel: NSTextField!
@@ -30,6 +38,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
     private var tagsFooterView: WrappingTagsView!
     private var scrollContainer: NSVisualEffectView!
     private(set) var currentRepoName: String?
+    private var repoReleasesURL: URL?
     
     init() {
         let windowRect = NSRect(x: 0, y: 0, width: 640, height: 480)
@@ -58,8 +67,8 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         titleLabel.alignment = .center
         visualEffectView.addSubview(titleLabel)
         
-        // 3. Metadata Pill (Version & Date)
-        versionLabel = NSTextField(labelWithString: "")
+        // 3. Metadata Pill (Version & Date) — clickable, opens releases page
+        versionLabel = ClickableTextField(labelWithString: "")
         versionLabel.font = .systemFont(ofSize: 12, weight: .medium)
         versionLabel.textColor = .white
         versionLabel.backgroundColor = NSColor.controlAccentColor
@@ -71,6 +80,11 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         versionLabel.layer?.masksToBounds = true
         versionLabel.translatesAutoresizingMaskIntoConstraints = false
         visualEffectView.addSubview(versionLabel)
+        
+        // Make the version pill clickable — opens the releases page and closes the window
+        let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(versionPillClicked))
+        versionLabel.addGestureRecognizer(clickGesture)
+        versionLabel.toolTip = Translations.get("openReleases")
         
         // Inner padding for the pill (achieved via constraints on an invisible wrapper or just wide text)
         // We'll just pad the string with spaces, or rely on intrinsic size.
@@ -127,6 +141,12 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         fatalError("init(coder:) has not been implemented")
     }
     
+    @objc private func versionPillClicked() {
+        guard let url = repoReleasesURL else { return }
+        self.close()
+        NSWorkspace.shared.open(url)
+    }
+    
     func loadNotes(for info: RepoInfo) {
         self.currentRepoName = info.name
         let caskName = ConfigManager.shared.config.repos.first(where: { $0.name == info.name && $0.source == "brew" })?.cask
@@ -153,6 +173,8 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         titleLabel.attributedStringValue = attrString
         
         // --- METADATA PILL ---
+        let releasesURLString = "https://github.com/\(info.name)/releases"
+        repoReleasesURL = URL(string: releasesURLString)
         let versionText = "  \(info.version ?? "N/A")  "
         versionLabel.stringValue = versionText
         versionLabel.isHidden = (info.version == nil || info.version == "N/A")

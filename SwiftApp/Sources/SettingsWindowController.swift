@@ -100,12 +100,12 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
         ])
         
-        // --- 0. About Section ---
-        let aboutStack = NSStackView()
-        aboutStack.orientation = .vertical
-        aboutStack.alignment = .centerX
-        aboutStack.spacing = 5
-        aboutStack.translatesAutoresizingMaskIntoConstraints = false
+        // --- 0. Header (Icon + Name) ---
+        let headerStack = NSStackView()
+        headerStack.orientation = .vertical
+        headerStack.alignment = .centerX
+        headerStack.spacing = 5
+        headerStack.translatesAutoresizingMaskIntoConstraints = false
         
         let appIconImage = NSImage(named: NSImage.applicationIconName) ?? NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
         let iconView = NSImageView(image: appIconImage!)
@@ -113,11 +113,20 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.widthAnchor.constraint(equalToConstant: 64).isActive = true
         iconView.heightAnchor.constraint(equalToConstant: 64).isActive = true
-        aboutStack.addArrangedSubview(iconView)
+        headerStack.addArrangedSubview(iconView)
         
         let appNameLabel = NSTextField(labelWithString: "Mino")
         appNameLabel.font = .boldSystemFont(ofSize: 18)
-        aboutStack.addArrangedSubview(appNameLabel)
+        headerStack.addArrangedSubview(appNameLabel)
+        
+        stackView.addArrangedSubview(headerStack)
+        
+        // --- Footer (Author + Version) ---
+        let footerStack = NSStackView()
+        footerStack.orientation = .vertical
+        footerStack.alignment = .centerX
+        footerStack.spacing = 5
+        footerStack.translatesAutoresizingMaskIntoConstraints = false
         
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
@@ -127,9 +136,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         appVersionLabel.alignment = .center
         appVersionLabel.textColor = .secondaryLabelColor
         appVersionLabel.font = .systemFont(ofSize: 12)
-        aboutStack.addArrangedSubview(appVersionLabel)
-        
-        stackView.addArrangedSubview(aboutStack)
+        footerStack.addArrangedSubview(appVersionLabel)
         
         // Adjust alignment for the rest of the form
         let formStack = NSStackView()
@@ -151,8 +158,17 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         tokenDeleteBtn.action = #selector(deleteToken(_:))
         addSettingsRow(to: tokenStack, label: tokenLabel, controls: [tokenStatusLabel, tokenConnectBtn, tokenDeleteBtn])
         
-        oauthCodeLabel.font = .monospacedSystemFont(ofSize: 14, weight: .bold)
+        // Setup oauthCodeLabel
+        oauthCodeLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        oauthCodeLabel.textColor = .labelColor
+        oauthCodeLabel.alignment = .center
         oauthCodeLabel.isSelectable = true
+        oauthCodeLabel.lineBreakMode = .byWordWrapping
+        if let cell = oauthCodeLabel.cell as? NSTextFieldCell {
+            cell.wraps = true
+        }
+        oauthCodeLabel.maximumNumberOfLines = 0
+        
         oauthActionBtn.target = self
         oauthActionBtn.action = #selector(openGitHubAuth(_:))
         oauthCancelBtn.target = self
@@ -163,30 +179,37 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         oauthSpinner.isDisplayedWhenStopped = false
         oauthSpinner.translatesAutoresizingMaskIntoConstraints = false
         
-        oauthStack.orientation = .horizontal
-        oauthStack.alignment = .top
+        oauthStack.orientation = .vertical
+        oauthStack.alignment = .centerX
+        oauthStack.spacing = 0
         oauthStack.translatesAutoresizingMaskIntoConstraints = false
         
-        let emptyLabel = NSTextField(labelWithString: "")
-        emptyLabel.isBordered = false
-        emptyLabel.drawsBackground = false
-        emptyLabel.isEditable = false
-        oauthStack.addArrangedSubview(emptyLabel)
+        let oauthBox = NSBox()
+        oauthBox.boxType = .custom
+        oauthBox.cornerRadius = 8
+        oauthBox.borderWidth = 1
+        oauthBox.borderColor = NSColor.separatorColor.withAlphaComponent(0.2)
+        oauthBox.fillColor = NSColor.controlBackgroundColor.withAlphaComponent(0.5)
+        oauthBox.titlePosition = .noTitle
+        oauthBox.translatesAutoresizingMaskIntoConstraints = false
         
-        let spring = NSView()
-        spring.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        oauthStack.addArrangedSubview(spring)
+        let oauthInnerStack = NSStackView()
+        oauthInnerStack.orientation = .vertical
+        oauthInnerStack.alignment = .centerX
+        oauthInnerStack.spacing = 16
+        oauthInnerStack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
         
-        let oauthButtonStack = NSStackView(views: [oauthActionBtn, oauthCancelBtn, oauthSpinner])
+        let oauthButtonStack = NSStackView(views: [oauthCancelBtn, oauthActionBtn, oauthSpinner])
         oauthButtonStack.orientation = .horizontal
         oauthButtonStack.spacing = 10
+        oauthButtonStack.alignment = .centerY
         
-        let oauthContentStack = NSStackView(views: [oauthCodeLabel, oauthButtonStack])
-        oauthContentStack.orientation = .vertical
-        oauthContentStack.alignment = .trailing
-        oauthContentStack.spacing = 10
+        oauthInnerStack.addArrangedSubview(oauthCodeLabel)
+        oauthInnerStack.addArrangedSubview(oauthButtonStack)
         
-        oauthStack.addArrangedSubview(oauthContentStack)
+        oauthBox.contentView = oauthInnerStack
+        oauthStack.addArrangedSubview(oauthBox)
+        
         oauthStack.isHidden = true
         
         tokenStack.addArrangedSubview(oauthStack)
@@ -305,6 +328,28 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         spacer.translatesAutoresizingMaskIntoConstraints = false
         spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
         stackView.addArrangedSubview(spacer)
+        
+        stackView.addArrangedSubview(footerStack)
+    }
+    
+    private func setOAuthStack(hidden: Bool) {
+        if oauthStack.isHidden == hidden { return }
+        oauthStack.isHidden = hidden
+        
+        if let window = self.window, let contentView = window.contentView {
+            contentView.needsLayout = true
+            contentView.layoutSubtreeIfNeeded()
+            let fittingSize = contentView.fittingSize
+            var newFrame = window.frame
+            newFrame.origin.y += newFrame.size.height - fittingSize.height
+            newFrame.size.height = fittingSize.height
+            
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.25
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                window.animator().setFrame(newFrame, display: true)
+            }, completionHandler: nil)
+        }
     }
     
     private func loadCurrentSettings() {
@@ -324,7 +369,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             tokenConnectBtn.isEnabled = true
         }
         
-        oauthStack.isHidden = true
+        setOAuthStack(hidden: true)
         oauthSpinner.stopAnimation(nil)
         GitHubAuth.shared.cancelPolling()
         
@@ -403,7 +448,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     
     @objc private func startOAuth(_ sender: NSButton) {
         tokenConnectBtn.isEnabled = false
-        oauthStack.isHidden = false
+        setOAuthStack(hidden: false)
         oauthSpinner.startAnimation(nil)
         oauthCodeLabel.stringValue = Translations.get("loading")
         oauthActionBtn.isHidden = true
@@ -477,8 +522,10 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             // Notify user of reverted limits
             HUDPanel.shared.show(title: Translations.get("deleteToken"), subtitle: Translations.get("tokenValidationEmpty"))
             
+            // Only redraw the menu — don't re-fetch. The cache is still valid.
+            // A full re-fetch without a token would immediately exhaust the unauthenticated rate limit (60/hr).
             if let delegate = NSApp.delegate as? AppDelegate {
-                 delegate.triggerFullRefresh(nil)
+                 delegate.setupMenu()
             }
             self.window?.makeFirstResponder(nil)
         }

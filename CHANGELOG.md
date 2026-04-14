@@ -5,6 +5,27 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.4] - 2026-04-14
+
+### Added
+- **Error Indicator in Menu:** All three menu layouts (Columns, Cards, Tags) now display a red warning triangle (SF Symbol) before the repository name when a network or API error occurs, replacing or complementing the freshness dot. The triangle is sized to match the dot slot (12pt) for perfect alignment across all rows.
+- **Cached Data on Error:** When a repository enters an error state, its last known version is preserved and displayed in a subdued style (plain secondary-color text) alongside the error indicator, making it clear the data is historical but still available.
+- **Errors Sorted to Bottom:** Repositories in an error state are always pushed to the end of the list, regardless of the active sort order (name or date), preventing alignment disruptions in the healthy portion of the list.
+- **Refresh Tooltip with Minutes:** The Refresh button tooltip now shows hours *and* minutes when more than one hour remains until the next automatic update (e.g. "Actualizar (3 horas, 17 min)").
+- **HTTP 429 Localization:** Specialized localization for "Too Many Requests" (429) across all 11 supported languages, replacing the generic technical error with a descriptive, user-friendly message.
+
+### Changed
+- **Preferences Footer:** The author and version string moves to the footer of the Preferences window; the app icon and name remain in the header.
+- **OAuth UI Redesign:** The GitHub OAuth connection flow now renders inside a styled card (NSBox) with centered layout, softer typography, and smooth animated window resizing when the panel appears or dismisses.
+- **No Refresh on Token Deletion:** Disconnecting a GitHub account no longer triggers an immediate full re-fetch (which would exhaust the unauthenticated rate limit of 60 req/hr). The menu is redrawn using the existing cache instead.
+- **Smarter Commit Fallback:** When a repository previously had a release version cached and the unauthenticated API returns a 404, Mino no longer falls back to the commit SHA. The 404 is treated as a false negative (common for org repos without a token) and the existing cache is preserved.
+
+### Fixed
+- **API Error Ghost Highlights:** Resolved a visual glitch where repositories would unexpectedly light up as "newly updated" following a temporary network lapse or GitHub API rate limit error.
+- **Resilient Memory Cache:** When the API fails, existing `RepoInfo` (version, date, body) is preserved in memory. Only the `error` field is updated, preventing false-positive "new release" highlights upon recovery.
+- **Ghost Pill in Tags Layout:** Fixed an invisible empty oval appearing in the Tags layout for error-state repositories with no cached version, caused by stale `drawsBackground`/`backgroundColor` state on the reused shared label.
+- **Cached Version Not Displaying:** Fixed a double-write bug where a second `if errorMessage != nil` block inside the stack-building code was silently clearing the version string that had just been configured in the block above it.
+
 ## [1.5.3] - 2026-04-11
 
 ### Added

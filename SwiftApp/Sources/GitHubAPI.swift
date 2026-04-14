@@ -12,7 +12,7 @@ class GitHubAPI {
         self.session = URLSession(configuration: config)
     }
     
-    func fetchRepoInfo(repo: String) async -> RepoInfo {
+    func fetchRepoInfo(repo: String, hasExistingRelease: Bool = false) async -> RepoInfo {
         var requestHeaders: [String: String] = [
             "Accept": "application/vnd.github.html+json"
         ]
@@ -25,7 +25,15 @@ class GitHubAPI {
             // Try Releases first
             let releaseData = try await fetchRelease(repo: repo, headers: requestHeaders)
             return releaseData
-        } catch {
+        } catch let releaseError as NSError {
+            // If a 404 occurs and we already had a valid release version cached,
+            // don’t fall back to commits — the 404 may be a false negative from the
+            // unauthenticated API (e.g. org repos). Return the error instead so the
+            // existing cache entry is preserved by triggerFullRefresh.
+            if releaseError.code == 404 && hasExistingRelease {
+                return RepoInfo(name: repo, error: releaseError.localizedDescription)
+            }
+            
             do {
                 // Try Commits fallback
                 let commitData = try await fetchCommits(repo: repo, headers: requestHeaders)
@@ -54,6 +62,8 @@ class GitHubAPI {
             throw NSError(domain: "GitHubAPI", code: 404, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRepoNotFound")])
         } else if httpResponse.statusCode == 403 {
             throw NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRateLimit")])
+        } else if httpResponse.statusCode == 429 {
+            throw NSError(domain: "GitHubAPI", code: 429, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiTooManyRequests")])
         } else if httpResponse.statusCode != 200 {
             let msg = Translations.get("apiHttpError").format(with: ["code": "\(httpResponse.statusCode)"])
             throw NSError(domain: "GitHubAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
@@ -98,6 +108,8 @@ class GitHubAPI {
             throw NSError(domain: "GitHubAPI", code: 404, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRepoNotFound")])
         } else if httpResponse.statusCode == 403 {
             throw NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRateLimit")])
+        } else if httpResponse.statusCode == 429 {
+            throw NSError(domain: "GitHubAPI", code: 429, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiTooManyRequests")])
         } else if httpResponse.statusCode != 200 {
             let msg = Translations.get("apiHttpError").format(with: ["code": "\(httpResponse.statusCode)"])
             throw NSError(domain: "GitHubAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])

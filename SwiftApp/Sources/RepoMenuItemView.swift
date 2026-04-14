@@ -84,6 +84,23 @@ class RepoMenuItemView: NSView {
     private let dotLabel = NSTextField(labelWithString: "")        // Freshness dot (columns/cards with indicator ON)
     private let starLabel = NSTextField(labelWithString: "★")      // Favorite indicator (always present)
     
+    /// Returns a fixed-size NSImageView with the SF Symbol warning icon.
+    /// Using SF Symbol instead of ⚠️ emoji ensures the icon respects the given pointSize
+    /// and never clips within a fixed-width slot.
+    private func makeWarningView(pointSize: CGFloat, tooltip: String?) -> NSView {
+        let cfg = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .medium)
+        let img = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(cfg)
+        let iv = NSImageView(image: img ?? NSImage())
+        iv.contentTintColor = .systemRed
+        iv.imageScaling = .scaleProportionallyUpOrDown
+        iv.toolTip = tooltip
+        iv.translatesAutoresizingMaskIntoConstraints = false
+        iv.widthAnchor.constraint(equalToConstant: 12).isActive = true
+        iv.setContentHuggingPriority(.required, for: .horizontal)
+        return iv
+    }
+    
     // Data
     private let repoName: String
     private let caskName: String?
@@ -199,7 +216,31 @@ class RepoMenuItemView: NSView {
         // Pill: freshnessColor if showNewIndicator ON, fixed blue otherwise
         let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? false
         
-        if let ver = data.version {
+        if data.errorMessage != nil {
+            if let ver = data.version {
+                // Plain text — no pill when data is stale/errored
+                versionLabel.stringValue = ver
+                versionLabel.font = .monospacedSystemFont(ofSize: isCompact ? 9 : 10, weight: .regular)
+                versionLabel.textColor = .secondaryLabelColor
+                versionLabel.drawsBackground = false
+                versionLabel.backgroundColor = .clear
+                versionLabel.isBezeled = false
+                versionLabel.alignment = .left
+                versionLabel.wantsLayer = true
+                versionLabel.layer?.cornerRadius = 0
+                versionLabel.layer?.masksToBounds = false
+                versionLabel.layer?.backgroundColor = NSColor.clear.cgColor
+                versionLabel.translatesAutoresizingMaskIntoConstraints = false
+                versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+                versionLabel.toolTip = nil
+            } else {
+                versionLabel.stringValue = ""
+                versionLabel.toolTip = nil
+                versionLabel.drawsBackground = false
+                versionLabel.backgroundColor = .clear
+                versionLabel.translatesAutoresizingMaskIntoConstraints = false
+            }
+        } else if let ver = data.version {
             versionLabel.stringValue = " \(ver) "
             versionLabel.font = .monospacedSystemFont(ofSize: isCompact ? 9 : 10, weight: .bold)
             versionLabel.textColor = .white
@@ -218,17 +259,20 @@ class RepoMenuItemView: NSView {
             versionLabel.font = .systemFont(ofSize: isCompact ? 9 : 10)
             versionLabel.textColor = .secondaryLabelColor
             versionLabel.translatesAutoresizingMaskIntoConstraints = false
-        } else if let errorMsg = data.errorMessage {
-            versionLabel.stringValue = "⚠️"
-            versionLabel.font = .systemFont(ofSize: isCompact ? 9 : 10)
-            versionLabel.toolTip = errorMsg
-            versionLabel.translatesAutoresizingMaskIntoConstraints = false
         }
         
         // Star (matches pill font size)
         configureStarLabel(isFavorite: data.isFavorite, fontSize: isCompact ? 9 : 10)
         
-        let contentStack = NSStackView(views: [titleLabel, versionLabel, starLabel])
+        // Build content row: [⚠?] name + version/star
+        var contentViews: [NSView] = []
+        if data.errorMessage != nil {
+            let warningView = makeWarningView(pointSize: isCompact ? 8 : 9, tooltip: data.errorMessage)
+            contentViews.append(warningView)
+        }
+        contentViews.append(contentsOf: [titleLabel, versionLabel, starLabel])
+        
+        let contentStack = NSStackView(views: contentViews)
         contentStack.orientation = .horizontal
         contentStack.spacing = 8
         contentStack.alignment = .firstBaseline
@@ -262,8 +306,25 @@ class RepoMenuItemView: NSView {
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        // Version pill
-        if let ver = data.version {
+        // Version pill: grayed out on error to show cached data, full pill when healthy
+        if data.errorMessage != nil {
+            if let ver = data.version {
+                versionLabel.stringValue = ver
+                versionLabel.font = .monospacedSystemFont(ofSize: isCompact ? 9 : 10, weight: .medium)
+                versionLabel.textColor = .tertiaryLabelColor
+                versionLabel.backgroundColor = .clear
+                versionLabel.drawsBackground = false
+                versionLabel.isBezeled = false
+                versionLabel.toolTip = nil
+                versionLabel.translatesAutoresizingMaskIntoConstraints = false
+                versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+                versionLabel.setContentHuggingPriority(.required, for: .horizontal)
+            } else {
+                versionLabel.stringValue = ""
+                versionLabel.toolTip = nil
+                versionLabel.translatesAutoresizingMaskIntoConstraints = false
+            }
+        } else if let ver = data.version {
             versionLabel.stringValue = ver
             versionLabel.font = .monospacedSystemFont(ofSize: isCompact ? 9 : 10, weight: .medium)
             versionLabel.textColor = .white
@@ -282,16 +343,15 @@ class RepoMenuItemView: NSView {
             versionLabel.font = .systemFont(ofSize: isCompact ? 9 : 10)
             versionLabel.textColor = .secondaryLabelColor
             versionLabel.translatesAutoresizingMaskIntoConstraints = false
-        } else if let errorMsg = data.errorMessage {
-            versionLabel.stringValue = "⚠️"
-            versionLabel.font = .systemFont(ofSize: isCompact ? 9 : 10)
-            versionLabel.toolTip = errorMsg
-            versionLabel.translatesAutoresizingMaskIntoConstraints = false
         }
         
-        // Dot (conditional on showNewIndicator)
+        // Leading slot: error warning OR freshness dot
         var topRowViews: [NSView] = []
-        if showDot {
+        if data.errorMessage != nil {
+            // SF Symbol warning replaces the freshness dot
+            let warningView = makeWarningView(pointSize: isCompact ? 8 : 9, tooltip: data.errorMessage)
+            topRowViews.append(warningView)
+        } else if showDot {
             dotLabel.stringValue = "●"
             dotLabel.font = .systemFont(ofSize: 8)
             dotLabel.textColor = data.freshnessColor
@@ -311,15 +371,15 @@ class RepoMenuItemView: NSView {
         
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         
-        // Line 2: age + ★
+        // Line 2: age + ★ (no error tooltip here — it's already on the triangle icon)
         if let age = data.ageLabel {
             subtitleLabel.stringValue = age
-        } else if let errorMsg = data.errorMessage {
+        } else if data.errorMessage != nil {
             subtitleLabel.stringValue = Translations.get("error")
-            subtitleLabel.toolTip = errorMsg
         } else {
             subtitleLabel.stringValue = ""
         }
+        subtitleLabel.toolTip = nil
         subtitleLabel.font = .systemFont(ofSize: isCompact ? 10 : 11)
         subtitleLabel.textColor = .secondaryLabelColor
         subtitleLabel.lineBreakMode = .byTruncatingTail
@@ -370,14 +430,19 @@ class RepoMenuItemView: NSView {
         titleLabel.alignment = .left
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        // Version column
-        if let ver = data.version {
+        // Version column: grayed out if showing cached data under an error, normal otherwise
+        if data.errorMessage != nil {
+            if let ver = data.version {
+                versionLabel.stringValue = ver
+                versionLabel.textColor = .tertiaryLabelColor
+            } else {
+                versionLabel.stringValue = ""
+            }
+            versionLabel.toolTip = nil
+        } else if let ver = data.version {
             versionLabel.stringValue = ver
         } else if data.isLoading {
             versionLabel.stringValue = "…"
-        } else if let errorMsg = data.errorMessage {
-            versionLabel.stringValue = "⚠️"
-            versionLabel.toolTip = errorMsg
         }
         versionLabel.font = .monospacedSystemFont(ofSize: isCompact ? 10 : 12, weight: .regular)
         versionLabel.textColor = .secondaryLabelColor
@@ -394,9 +459,13 @@ class RepoMenuItemView: NSView {
         // Star
         configureStarLabel(isFavorite: data.isFavorite)
         
-        // Dot (conditional)
+        // Leading slot: error warning OR freshness dot
         var rowViews: [NSView] = []
-        if showDot {
+        if data.errorMessage != nil {
+            // SF Symbol warning replaces the freshness dot
+            let warningView = makeWarningView(pointSize: isCompact ? 8 : 9, tooltip: data.errorMessage)
+            rowViews.append(warningView)
+        } else if showDot {
             dotLabel.stringValue = "●"
             dotLabel.font = .systemFont(ofSize: 8)
             dotLabel.textColor = data.freshnessColor
