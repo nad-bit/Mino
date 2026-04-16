@@ -5,6 +5,18 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.5] - 2026-04-14
+
+### Added
+- **Hybrid Refresh Model (Burst Mode):** Combined the best of both worlds—Mino now prioritizes your most critical repositories (Favorites first, then new additions) but lets the macOS native network stack manage the concurrency queue. This restores the "instantaneous" feel for large lists while maintaining a smart update order.
+- **High-Performance Sorting:** Optimized the list preparation logic for users with large collections (200+ repositories). By switching to a hash-map based sorting algorithm (O(N) lookup), the refresh operation now starts instantly with zero UI lag.
+- **Centralized UI Design System:** Migrated all hardcoded UI dimensions, timings, and typography rules into a unified constants architecture. This enables a consistent scale across all menu layouts and simplifies future aesthetic adjustments (e.g. global font scaling).
+- **Instant Account Disconnection:** Optimized the GitHub logout process by removing redundant UI reconstructions. Disconnecting an account is now immediate and zero-cost, as the existing menu cache remains valid.
+
+### Changed
+- **Relative Typography Scaling:** All text elements in the menu now derive their size from a single base font constant (`menuBaseFontSize`), ensuring perfect proportions regardless of layout density or mode.
+- **Unified Menu Width Logic:** Standardized minimum (320pt) and target (400pt) widths across the search, header, and content views to prevent layout flicker during rapid interactions.
+
 ## [1.5.4] - 2026-04-14
 
 ### Added

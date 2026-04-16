@@ -216,18 +216,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         self.headerView?.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
         self.animateStatusIcon(with: .rotate)
         
-        let reposToFetch = ConfigManager.shared.config.repos.map { $0.name }
+        // 1. Optimized prioritized sorting (O(N) lookup preparation)
+        let repoConfigs = ConfigManager.shared.config.repos
+        let configMap = Dictionary(uniqueKeysWithValues: repoConfigs.map { ($0.name, $0) })
+        
+        let sortedRepos = repoConfigs.map { $0.name }.sorted { a, b in
+            // Favorites first
+            let isFavA = configMap[a]?.isFavorite ?? false
+            let isFavB = configMap[b]?.isFavorite ?? false
+            if isFavA != isFavB { return isFavA }
+            
+            // New repositories (no cached data) next
+            let dateA = self.repoCache[a]?.date
+            let dateB = self.repoCache[b]?.date
+            if (dateA == nil) != (dateB == nil) { return dateA == nil }
+            
+            // Most recent releases first
+            return (dateA ?? "") > (dateB ?? "")
+        }
         
         Task { [weak self] in
             guard let self = self else { return }
-            // Concurrent fetching for all repos
+            
+            // 2. Optimized burst fetching: prioritized order, OS-managed concurrency
             var results: [(String, RepoInfo)] = []
             await withTaskGroup(of: (String, RepoInfo).self) { group in
-                for repo in reposToFetch {
-                    // Detect if we already had a release version (not commit SHA) for this repo.
-                    // A release version typically starts with 'v' or is a semver-like string,
-                    // while a commit fallback is a 7-char hex SHA. We use a simple heuristic:
-                    // if the cached version doesn't look like a 7-char lowercase hex, it's a release.
+                for repo in sortedRepos {
                     let cachedVersion = self.repoCache[repo]?.version
                     let looksLikeSHA = cachedVersion?.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
                     let hasExistingRelease = cachedVersion != nil && !looksLikeSHA
@@ -518,7 +532,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         // Calculate uniform width, ignoring the action button stack width (approx 100px)
         // because we don't want the menu to permanently widen just to hold them 
         // since they overlap the right margin when they appear.
-        let maxWidth = repoEntries.reduce(CGFloat(400)) { maxSoFar, entry in
+        let maxWidth = repoEntries.reduce(Constants.menuDefaultWidth) { maxSoFar, entry in
             let fittingWidth = entry.1.fittingSize.width
             // Assume the button stack takes about 104pt (4 buttons * 26pt). We subtract it
             // from the fitting size so the menu stays compact.
@@ -546,12 +560,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
 
         // Apply uniform width to header
         headerView.targetWidth = maxWidth
-        headerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 30)
+        headerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: Constants.menuHeaderFooterHeight)
         
         // Add footer
         let footerMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         let footerView = FooterMenuItemView(appDelegate: self)
-        footerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 30)
+        footerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: Constants.menuHeaderFooterHeight)
         footerMenuItem.view = footerView
         menu.addItem(footerMenuItem)
         
@@ -1051,7 +1065,7 @@ extension AppDelegate {
                 return a.value > b.value
             }
             return a.key.lowercased() < b.key.lowercased()
-        }.prefix(25).map { 
+        }.prefix(Constants.tagCloudMaxTags).map { 
             let clean = $0.key.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
             return "#\(clean)"
         }

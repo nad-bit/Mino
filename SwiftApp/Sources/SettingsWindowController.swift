@@ -428,7 +428,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         intervalSaveWorkItem = pendingSave
         // Delay ensures we only save once the user settles on a value
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pendingSave)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.interactiveControlDelaySeconds, execute: pendingSave)
     }
     
     private func updateIntervalLabel() {
@@ -522,11 +522,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             // Notify user of reverted limits
             HUDPanel.shared.show(title: Translations.get("deleteToken"), subtitle: Translations.get("tokenValidationEmpty"))
             
-            // Only redraw the menu — don't re-fetch. The cache is still valid.
-            // A full re-fetch without a token would immediately exhaust the unauthenticated rate limit (60/hr).
-            if let delegate = NSApp.delegate as? AppDelegate {
-                 delegate.setupMenu()
-            }
             self.window?.makeFirstResponder(nil)
         }
     }
@@ -549,7 +544,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             self?.isUpdatingSelf = false
         }
         generalSaveWorkItem = pending
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pending)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
     }
     
     @objc private func sortChanged(_ sender: NSSegmentedControl) {
@@ -566,7 +561,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             self?.isUpdatingSelf = false
         }
         generalSaveWorkItem = pending
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pending)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
     }
     
     @objc private func toggleNewIndicator(_ sender: NSButton) {
@@ -583,7 +578,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             self?.isUpdatingSelf = false
         }
         generalSaveWorkItem = pending
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pending)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
     }
     
     @objc private func indicatorDaysChanged(_ sender: NSStepper) {
@@ -605,7 +600,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         indicatorSaveWorkItem = pendingSave
         // Delay ensures holding the button is fast while only the final value is saved
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pendingSave)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.interactiveControlDelaySeconds, execute: pendingSave)
     }
     
     @objc private func layoutChanged(_ sender: NSSegmentedControl) {
@@ -623,7 +618,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             self?.isUpdatingSelf = false
         }
         generalSaveWorkItem = pending
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pending)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
     }
     
     @objc private func toggleCompactMode(_ sender: NSButton) {
@@ -639,7 +634,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             self?.isUpdatingSelf = false
         }
         generalSaveWorkItem = pending
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pending)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
     }
     
     private func updateIndicatorDaysLabel() {

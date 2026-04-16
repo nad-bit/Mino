@@ -10,7 +10,7 @@ class NoSearchResultsView: NSView {
     private let tagCloudContainer = FlippedView()
     
     var onTagSelected: ((String) -> Void)?
-    var targetWidth: CGFloat = 400.0 {
+    var targetWidth: CGFloat = Constants.menuDefaultWidth {
         didSet {
             if oldValue != targetWidth {
                 needsLayout = true
@@ -19,7 +19,7 @@ class NoSearchResultsView: NSView {
     }
     
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 400, height: 40))
+        super.init(frame: NSRect(x: 0, y: 0, width: Constants.menuDefaultWidth, height: 40))
         self.autoresizingMask = [.width]
         setupView()
     }
@@ -30,7 +30,7 @@ class NoSearchResultsView: NSView {
     
     private func setupView() {
         // --- Error Stack Component ---
-        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
+        let config = NSImage.SymbolConfiguration(pointSize: Constants.menuBaseFontSize + 1, weight: .semibold)
         let image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "No results")?.withSymbolConfiguration(config)
         
         iconView.image = image
@@ -41,7 +41,7 @@ class NoSearchResultsView: NSView {
         textLabel.drawsBackground = false
         textLabel.isEditable = false
         textLabel.isSelectable = false
-        textLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        textLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 1, weight: .medium)
         textLabel.textColor = .secondaryLabelColor
         textLabel.alignment = .center
         textLabel.lineBreakMode = .byTruncatingTail
@@ -103,7 +103,7 @@ class NoSearchResultsView: NSView {
             btn.action = #selector(tagClicked(_:))
             
             // Explicit typography measurement
-            let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+            let font = NSFont.systemFont(ofSize: Constants.menuBaseFontSize - 1, weight: .medium)
             let titleSize = (tag as NSString).size(withAttributes: [.font: font])
             let btnWidth = ceil(titleSize.width) + 16.0 
             let btnHeight = max(ceil(titleSize.height) + 8.0, 22.0)
@@ -124,7 +124,7 @@ class NoSearchResultsView: NSView {
     @discardableResult
     private func performFlowLayout(width: CGFloat) -> CGFloat {
         let availableWidth = width
-        if availableWidth <= 32.0 || tagCloudContainer.isHidden { return 40.0 }
+        if availableWidth <= Constants.menuBaseFontSize * 2 || tagCloudContainer.isHidden { return 40.0 }
         
         let paddingX: CGFloat = 18.0
         let paddingY: CGFloat = 16.0
@@ -165,7 +165,7 @@ class NoSearchResultsView: NSView {
         let availableWidth = max(targetWidth, max(bounds.width, carbonWidth))
         
         // Final guard against 0 or negative values to prevent infinite recursion
-        let finalAvailableWidth = max(availableWidth, 400.0)
+        let finalAvailableWidth = max(availableWidth, Constants.menuDefaultWidth)
         
         let finalHeight = performFlowLayout(width: finalAvailableWidth)
         
@@ -203,7 +203,7 @@ class TagButton: NSButton {
         super.init(frame: .zero)
         self.title = title // Title ALREADY includes `#` from AppDelegate cache
         self.isBordered = false
-        self.font = .systemFont(ofSize: 12, weight: .medium)
+        self.font = .systemFont(ofSize: Constants.menuBaseFontSize - 1, weight: .medium)
         self.contentTintColor = .secondaryLabelColor
         
         self.wantsLayer = true

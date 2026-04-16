@@ -27,7 +27,7 @@ class HeaderMenuItemView: NSView {
     
     /// Target width set by AppDelegate after calculating menu size
     private var widthConstraint: NSLayoutConstraint?
-    var targetWidth: CGFloat = 320 {
+    var targetWidth: CGFloat = Constants.menuMinWidth {
         didSet {
             widthConstraint?.constant = targetWidth
             widthConstraint?.isActive = true
@@ -36,7 +36,7 @@ class HeaderMenuItemView: NSView {
     
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
-        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 30))
+        super.init(frame: NSRect(x: 0, y: 0, width: Constants.menuMinWidth, height: Constants.menuHeaderFooterHeight))
         self.autoresizingMask = [.width]
         self.wantsLayer = true
         setupView()
@@ -48,7 +48,7 @@ class HeaderMenuItemView: NSView {
     
     private func setupView() {
         // Refresh Button
-        let refreshConfig = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        let refreshConfig = NSImage.SymbolConfiguration(pointSize: Constants.menuBaseFontSize - 2, weight: .semibold)
         refreshBtn.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")?.withSymbolConfiguration(refreshConfig)
         refreshBtn.isBordered = false
         refreshBtn.target = self
@@ -58,7 +58,7 @@ class HeaderMenuItemView: NSView {
         refreshBtn.translatesAutoresizingMaskIntoConstraints = false
         
         // Add Button
-        let addConfig = NSImage.SymbolConfiguration(pointSize: 13, weight: .bold)
+        let addConfig = NSImage.SymbolConfiguration(pointSize: Constants.menuBaseFontSize, weight: .bold)
         addBtn.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add Repository")?.withSymbolConfiguration(addConfig)
         addBtn.isBordered = false
         addBtn.target = self
@@ -72,7 +72,7 @@ class HeaderMenuItemView: NSView {
         self.searchField = MenuSearchField(appDelegate: appDelegate)
         searchField.placeholderString = Translations.get("search")
         searchField.controlSize = .small
-        searchField.font = .systemFont(ofSize: 11)
+        searchField.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2)
         searchField.alignment = .center
         searchField.focusRingType = .none
         searchField.translatesAutoresizingMaskIntoConstraints = false
@@ -82,7 +82,7 @@ class HeaderMenuItemView: NSView {
         searchField.isHidden = false
         
         // Quick Add Label (Clipboard)
-        quickAddLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        quickAddLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .medium)
         quickAddLabel.textColor = .secondaryLabelColor
         quickAddLabel.lineBreakMode = .byTruncatingMiddle
         quickAddLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -144,7 +144,7 @@ class HeaderMenuItemView: NSView {
         quickAddHitAreaTrailingToSearch?.isActive = true
         
         // Define width constraint (initially inactive until targetWidth is set)
-        widthConstraint = widthAnchor.constraint(equalToConstant: 320)
+        widthConstraint = widthAnchor.constraint(equalToConstant: Constants.menuMinWidth)
     }
     
     func updateClipboardState(repo: String?) {

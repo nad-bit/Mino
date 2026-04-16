@@ -13,7 +13,7 @@ class FooterMenuItemView: NSView {
     
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
-        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: 30)) // slightly taller for safe framing at bottom
+        super.init(frame: NSRect(x: 0, y: 0, width: Constants.menuMinWidth, height: Constants.menuHeaderFooterHeight)) // slightly taller for safe framing at bottom
         self.autoresizingMask = [.width]
         setupView()
     }
@@ -24,7 +24,7 @@ class FooterMenuItemView: NSView {
     
     private func setupView() {
         // Settings Button
-        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        let config = NSImage.SymbolConfiguration(pointSize: Constants.menuBaseFontSize - 2, weight: .semibold)
         settingsBtn.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: Translations.get("preferences"))?.withSymbolConfiguration(config)
         settingsBtn.isBordered = false
         settingsBtn.target = self
@@ -45,7 +45,7 @@ class FooterMenuItemView: NSView {
         quitBtn.translatesAutoresizingMaskIntoConstraints = false
         
         // Repo Count Label
-        repoCountLabel.font = .systemFont(ofSize: 11)
+        repoCountLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2)
         repoCountLabel.textColor = .tertiaryLabelColor
         repoCountLabel.alignment = .center
         repoCountLabel.isBezeled = false
