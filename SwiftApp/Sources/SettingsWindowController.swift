@@ -23,7 +23,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     private let newIndicatorStepper = NSStepper()
     let sortSegment = NSSegmentedControl()
     let layoutSegment = NSSegmentedControl()
-    private let compactModeCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let textSizePicker = NSSegmentedControl()
     
     var tempToken: String?
     private var isUpdatingSelf = false
@@ -31,6 +31,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     // Debounce properties for saving settings
     private var intervalSaveWorkItem: DispatchWorkItem?
     private var indicatorSaveWorkItem: DispatchWorkItem?
+    private var textSizeSaveWorkItem: DispatchWorkItem?
     private var generalSaveWorkItem: DispatchWorkItem?
 
     
@@ -227,9 +228,26 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         layoutSegment.setImage(NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "Cards"), forSegment: 1)
         layoutSegment.setImage(NSImage(systemSymbolName: "tag", accessibilityDescription: "Tags"), forSegment: 2)
         layoutSegment.segmentStyle = .rounded
+        for i in 0..<3 { layoutSegment.setWidth(38, forSegment: i) }
         layoutSegment.target = self
         layoutSegment.action = #selector(layoutChanged(_:))
         addSettingsRow(to: menuStack, label: layoutLabel, controls: [layoutSegment])
+        
+        // Text Size Picker Row — same style as layoutSegment
+        let textSizeRowLabel = NSTextField(labelWithString: Translations.get("textSizeLabel"))
+        textSizeRowLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        
+        let chevronCfg = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        textSizePicker.segmentCount = 3
+        textSizePicker.setImage(NSImage(systemSymbolName: "chevron.left",  accessibilityDescription: "Decrease")?.withSymbolConfiguration(chevronCfg), forSegment: 0)
+        textSizePicker.setLabel("", forSegment: 1)   // value set in loadCurrentSettings
+        textSizePicker.setImage(NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Increase")?.withSymbolConfiguration(chevronCfg), forSegment: 2)
+        textSizePicker.segmentStyle = .rounded
+        for i in 0..<3 { textSizePicker.setWidth(38, forSegment: i) }
+        textSizePicker.trackingMode = .momentary
+        textSizePicker.target = self
+        textSizePicker.action = #selector(textSizePickerAction(_:))
+        addSettingsRow(to: menuStack, label: textSizeRowLabel, controls: [textSizePicker])
         
         // Sorting Row
         let sortLabel = NSTextField(labelWithString: Translations.get("sortLabel"))
@@ -255,13 +273,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         checklistStack.spacing = 12
         checklistStack.translatesAutoresizingMaskIntoConstraints = false
         
-        // 1. Owner Checkbox
-        ownerCheckbox.title = Translations.get("showOwner")
-        ownerCheckbox.target = self
-        ownerCheckbox.action = #selector(toggleOwner(_:))
-        checklistStack.addArrangedSubview(ownerCheckbox)
-        
-        // 2. New Indicator (Dynamic Checkbox + Right Stepper)
+        // 1. New Indicator (Dynamic Checkbox + Right Stepper)
         let indicatorRow = NSStackView()
         indicatorRow.orientation = .horizontal
         indicatorRow.alignment = .centerY
@@ -288,11 +300,11 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         checklistStack.addArrangedSubview(indicatorRow)
         indicatorRow.widthAnchor.constraint(equalTo: checklistStack.widthAnchor).isActive = true
         
-        // 3. Compact Mode Checkbox
-        compactModeCheckbox.title = Translations.get("compactModeLabel")
-        compactModeCheckbox.target = self
-        compactModeCheckbox.action = #selector(toggleCompactMode(_:))
-        checklistStack.addArrangedSubview(compactModeCheckbox)
+        // 2. Owner Checkbox
+        ownerCheckbox.title = Translations.get("showOwner")
+        ownerCheckbox.target = self
+        ownerCheckbox.action = #selector(toggleOwner(_:))
+        checklistStack.addArrangedSubview(ownerCheckbox)
         
         menuStack.addArrangedSubview(checklistStack)
         checklistStack.widthAnchor.constraint(equalTo: menuStack.widthAnchor).isActive = true
@@ -393,7 +405,10 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let layoutIndex = ["columns", "cards", "tags"].firstIndex(of: layout) ?? 0
         layoutSegment.selectedSegment = layoutIndex
         
-        compactModeCheckbox.state = (ConfigManager.shared.config.isCompactMode == true) ? .on : .off
+        // Load Text Size
+        let currentFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        textSizePicker.setLabel("\(Int(currentFontSize))", forSegment: 1)
+        updateTextSizePicker()
         
         let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
         newIndicatorCheckbox.state = showNewIndicator ? .on : .off
@@ -621,19 +636,38 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
     }
     
-    @objc private func toggleCompactMode(_ sender: NSButton) {
-        isUpdatingSelf = true
-        ConfigManager.shared.config.isCompactMode = sender.state == .on
-        
-        generalSaveWorkItem?.cancel()
+    @objc private func textSizePickerAction(_ sender: NSSegmentedControl) {
+        let current = Int(sender.label(forSegment: 1) ?? "") ?? Int(Constants.menuBaseFontSize)
+        let newValue: Int
+        switch sender.selectedSegment {
+        case 0: newValue = max(Int(Constants.menuFontSizeMin), current - 1)
+        case 2: newValue = min(Int(Constants.menuFontSizeMax), current + 1)
+        default: return  // middle segment — display only, no action
+        }
+        textSizePicker.setLabel("\(newValue)", forSegment: 1)
+        updateTextSizePicker()
+        scheduleTextSizeSave(CGFloat(newValue))
+    }
+    
+    private func updateTextSizePicker() {
+        let current = Int(textSizePicker.label(forSegment: 1) ?? "") ?? Int(Constants.menuBaseFontSize)
+        textSizePicker.setEnabled(current > Int(Constants.menuFontSizeMin), forSegment: 0)
+        textSizePicker.setEnabled(current < Int(Constants.menuFontSizeMax), forSegment: 2)
+    }
+    
+    private func scheduleTextSizeSave(_ size: CGFloat) {
+        textSizeSaveWorkItem?.cancel()
         let pending = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.isUpdatingSelf = true
+            ConfigManager.shared.config.menuFontSize = size
             ConfigManager.shared.saveConfig()
             if let delegate = NSApp.delegate as? AppDelegate {
                 delegate.setupMenu()
             }
-            self?.isUpdatingSelf = false
+            self.isUpdatingSelf = false
         }
-        generalSaveWorkItem = pending
+        textSizeSaveWorkItem = pending
         DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
     }
     

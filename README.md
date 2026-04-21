@@ -19,8 +19,9 @@ https://github.com/user-attachments/assets/3ca0d651-5059-4683-812f-c9f24b8aa8fc
 - **👀 Menu Bar Integration**: Unobtrusive status bar icon with inline repository information
 - **⚡️ Inline Actions**: Hover over any repository to reveal contextual action buttons with expanded, easy-to-click target areas — view release notes, open releases, install via Homebrew, or delete
 - **🍺 Homebrew Integration**: Detects installed Casks automatically and enables one-click install/update directly from the menu (only shown if Homebrew is installed)
-- **🧩 Integrated Search**: A sleek, centered search field built directly into the menu header for instant repository filtering.
-- **🧠 Hybrid Quick Add**: Copy a GitHub repository URL, open the menu, and the header intelligently transforms into a "Quick Add" action. Bypass modal windows completely!
+- **🧩 Integrated Search**: A sleek, centered search field with an intelligent Tag Cloud. Filter your repositories by language, topic, or status instantly using the auto-generated suggestion cloud.
+- **🧠 Hybrid Quick Add**: Copy a GitHub repository URL, open the menu, and the header intelligently transforms into a "Quick Add" action with dynamic iconography. Bypass modal windows completely!
+- **📏 Dynamic Typography**: Choose your preferred text size (10pt to 16pt). The entire menu UI, from repository names to release notes, scales proportionally to ensure perfect legibility for every user.
 - **⏱ Tooltip Tracker**: The refresh countdown is hidden for a cleaner look — simply hover over the refresh icon to see the time remaining.
 - **🎯 Multi-Hunt Window**: The floating "Add Repositories..." window acts as a persistent tracking hub. Keep it open while you browse Safari, and simply hit `CMD+C` on sequential GitHub URLs. Mino automatically sniffs your clipboard and queues them up for rapid batch-ingestion without ever losing focus.
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
@@ -80,7 +81,6 @@ Click the `(+)` button in the menu to open the floating Window.
 - Don't close the window! Keep it hovering on your screen.
 - Go to your browser, copy a URL (`CMD+C`). Watch Mino automatically catch the link. Click the Add button.
 - The window remains open and the text field clears. Cycle through your browser tabs, copying and adding rapidly.
-- Includes a cute, animated visual confirmation (`paw swipe`) for successful additions.
 
 **Standard Manual Input:**
 - Enter `owner/repo` format (e.g., `microsoft/vscode`).
@@ -104,7 +104,7 @@ Repos with a recent release show a **●** freshness indicator (green / orange /
 Right-click any row to toggle a **★** favorite mark.
 
 ### Filtering
-Simply start typing in the **Integrated Search** field at the top of the menu to filter your repository list in real-time. The search field is compact and accessible without extra clicks.
+Simply start typing in the **Integrated Search** field at the top of the menu to filter your repository list in real-time. It features an intelligent **Tag Cloud** that suggests languages and topics from your collection for instant filtering without typing.
 
 ### Preferences
 
@@ -113,13 +113,13 @@ Accessible via the **Preferences** menu item:
 | Option | Description |
 |--------|-------------|
 | **GitHub Account** | Connect via OAuth for 5,000 req/hr limit (vs 60/hr unauthenticated) |
+| **Menu layout** | Segmented control: Choose between 3 distinct UI arrangements (Columns, Cards, Tags) |
+| **Text Size** | Segmented control: Choose your preferred reading comfort (10pt to 16pt) |
+| **Sort by** | Segmented control: Date or Name |
+| **New Release Indicator** | Toggle the ● freshness dot (Columns/Cards) or dynamic pill color (Tags) and configure threshold (1-30 days) |
+| **Show Owner Name** | Toggle `owner/` prefix in repo names |
 | **Refresh Interval** | Slider: 1-24 hours between auto-checks |
 | **Start at Login** | Toggle macOS LaunchAgent |
-| **Show Owner Name** | Toggle `owner/` prefix in repo names |
-| **New Release Indicator** | Toggle the ● freshness dot (Columns/Cards) or dynamic pill color (Tags) and configure threshold (1-30 days) |
-| **Sort by** | Segmented control: Date or Name |
-| **Menu layout** | Segmented control: Choose between 3 distinct UI arrangements (Columns, Cards, Tags) |
-| **Compact Menu** | Toggle extreme density (shrinks rows from 22pt to 16pt) |
 
 ### System Permissions
 
@@ -149,20 +149,20 @@ Configuration is stored in:
 SwiftApp/
 ├── build.sh                    # One-step build script (no Xcode required)
 └── Sources/
-    ├── main.swift              # App entry point
-    ├── AppDelegate.swift       # Menu bar, lifecycle, NSMenuDelegate
-    ├── RepoMenuItemView.swift  # Custom inline menu item with hover actions
+    ├── main.swift                      # App entry point
+    ├── AppDelegate.swift               # Menu bar, lifecycle, NSMenuDelegate
+    ├── RepoMenuItemView.swift          # Custom inline menu item with hover actions
     ├── SettingsWindowController.swift  # Preferences window
-    ├── ConfigManager.swift     # JSON config + Keychain management
-    ├── GitHubAPI.swift         # GitHub REST API client
-    ├── GitHubAuth.swift        # GitHub Device Flow OAuth handling
-    ├── HomebrewManager.swift   # Homebrew Cask detection and installation
-    ├── HUDPanel.swift          # Floating notification panel
-    ├── UIHandlers.swift        # Dialogs and alert helpers
-    ├── Models.swift            # Data structures (RepoInfo, AppConfig)
-    ├── Constants.swift         # App-wide constants
-    ├── Translations.swift      # i18n (English, Spanish, French, German, Italian, Portuguese)
-    └── Utils.swift             # Date formatting utilities
+    ├── ConfigManager.swift             # JSON config + Keychain management
+    ├── GitHubAPI.swift                 # GitHub REST API client
+    ├── GitHubAuth.swift                # GitHub Device Flow OAuth handling
+    ├── HomebrewManager.swift           # Homebrew Cask detection and installation
+    ├── HUDPanel.swift                  # Floating notification panel
+    ├── UIHandlers.swift                # Dialogs and alert helpers
+    ├── Models.swift                    # Data structures (RepoInfo, AppConfig)
+    ├── Constants.swift                 # App-wide constants
+    ├── Translations.swift              # i18n (en, es, fr, de, it, pt, zh, hi, ar, ru, ja)
+    └── Utils.swift                     # Date formatting utilities
 ```
 
 ## License

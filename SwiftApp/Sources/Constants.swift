@@ -17,8 +17,10 @@ enum Constants {
     static let menuHeaderFooterHeight: CGFloat = 30.0
     static let menuMinWidth: CGFloat = 320.0
     static let menuDefaultWidth: CGFloat = 400.0
-    static let tagCloudMaxTags: Int = 25
+    static let tagCloudMaxTags: Int = 27
     static let menuBaseFontSize: CGFloat = 13.0
+    static let menuFontSizeMin: CGFloat = 10.0
+    static let menuFontSizeMax: CGFloat = 16.0
     
     // System Constants
     static let launchAgentLabel = "com.nad.mino"

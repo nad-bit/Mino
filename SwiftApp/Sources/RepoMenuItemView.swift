@@ -28,8 +28,19 @@ class MenuActionButton: NSButton {
         didSet { if isHovered { contentTintColor = hoverColor } }
     }
     
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        self.wantsLayer = true
+        self.layer?.cornerRadius = 6
+        self.layer?.masksToBounds = true
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
     override var intrinsicContentSize: NSSize {
-        return NSSize(width: 26, height: 40)
+        return NSSize(width: 28, height: NSView.noIntrinsicMetric)
     }
     
     override func updateTrackingAreas() {
@@ -46,23 +57,21 @@ class MenuActionButton: NSButton {
         super.mouseEntered(with: event)
         isHovered = true
         contentTintColor = hoverColor
-        wantsLayer = true
-        layer?.cornerRadius = 6
-        layer?.backgroundColor = hoverColor.withAlphaComponent(0.2).cgColor
+        self.layer?.backgroundColor = hoverColor.withAlphaComponent(0.15).cgColor
     }
     
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         isHovered = false
         contentTintColor = baseColor
-        layer?.backgroundColor = NSColor.clear.cgColor
+        self.layer?.backgroundColor = NSColor.clear.cgColor
     }
     
     func resetHoverState() {
         guard isHovered else { return }
         isHovered = false
         contentTintColor = baseColor
-        layer?.backgroundColor = NSColor.clear.cgColor
+        self.layer?.backgroundColor = NSColor.clear.cgColor
     }
 }
 
@@ -106,7 +115,7 @@ class RepoMenuItemView: NSView {
     private let caskName: String?
     private let appDelegate: AppDelegate
     private let layoutMode: String
-    private let isCompact: Bool
+    private let baseFontSize: CGFloat
     private let originalDate: String?
     
     // Public exposure for AppDelegate search filtering
@@ -125,12 +134,11 @@ class RepoMenuItemView: NSView {
         self.caskName = displayData.caskName
         self.appDelegate = appDelegate
         self.layoutMode = layout
-        self.isCompact = ConfigManager.shared.config.isCompactMode ?? false
+        self.baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
         self.displayData = displayData
         self.originalDate = displayData.originalDate
         
-        var rowHeight: CGFloat = (layout == "cards") ? 40 : 22
-        if isCompact { rowHeight -= 6 }
+        let rowHeight: CGFloat = (layout == "cards") ? baseFontSize + 27 : baseFontSize + 9
         
         super.init(frame: NSRect(x: 0, y: 0, width: 400, height: rowHeight))
         self.autoresizingMask = [.width]
@@ -175,7 +183,7 @@ class RepoMenuItemView: NSView {
     }
     
     private func setupButton(_ btn: MenuActionButton, icon: String, action: Selector, tooltip: String) {
-        let size: CGFloat = isCompact ? Constants.menuBaseFontSize - 2 : Constants.menuBaseFontSize
+        let size: CGFloat = baseFontSize
         let imageConfig = NSImage.SymbolConfiguration(pointSize: size, weight: .regular)
         btn.image = NSImage(systemSymbolName: icon, accessibilityDescription: tooltip)?.withSymbolConfiguration(imageConfig)
         btn.isBordered = false
@@ -192,7 +200,7 @@ class RepoMenuItemView: NSView {
     /// Configures the ★ starLabel always present in the layout.
     /// isFavorite=true → gold; false → clear (invisible but reserves space).
     private func configureStarLabel(isFavorite: Bool, fontSize: CGFloat? = nil) {
-        let size: CGFloat = fontSize ?? (isCompact ? Constants.menuBaseFontSize - 4 : Constants.menuBaseFontSize - 2)
+        let size: CGFloat = fontSize ?? (baseFontSize - 2)
         starLabel.stringValue = "★"
         starLabel.font = .systemFont(ofSize: size)
         starLabel.textColor = isFavorite ? .systemYellow : .clear
@@ -208,7 +216,7 @@ class RepoMenuItemView: NSView {
     private func setupTagsView(data: RepoDisplayData) {
         // Name
         titleLabel.stringValue = data.formattedName
-        titleLabel.font = .boldSystemFont(ofSize: isCompact ? Constants.menuBaseFontSize - 2 : Constants.menuBaseFontSize)
+        titleLabel.font = .boldSystemFont(ofSize: baseFontSize)
         titleLabel.textColor = .labelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -220,7 +228,7 @@ class RepoMenuItemView: NSView {
             if let ver = data.version {
                 // Plain text — no pill when data is stale/errored
                 versionLabel.stringValue = ver
-                versionLabel.font = .monospacedSystemFont(ofSize: isCompact ? Constants.menuBaseFontSize - 4 : Constants.menuBaseFontSize - 3, weight: .regular)
+                versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 3, weight: .regular)
                 versionLabel.textColor = .secondaryLabelColor
                 versionLabel.drawsBackground = false
                 versionLabel.backgroundColor = .clear
@@ -242,7 +250,7 @@ class RepoMenuItemView: NSView {
             }
         } else if let ver = data.version {
             versionLabel.stringValue = " \(ver) "
-            versionLabel.font = .monospacedSystemFont(ofSize: isCompact ? Constants.menuBaseFontSize - 4 : Constants.menuBaseFontSize - 3, weight: .bold)
+            versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 3, weight: .bold)
             versionLabel.textColor = .white
             let pillColor: NSColor = showNewIndicator ? data.freshnessColor : NSColor.systemBlue
             versionLabel.backgroundColor = pillColor.withAlphaComponent(0.85)
@@ -256,18 +264,18 @@ class RepoMenuItemView: NSView {
             versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         } else if data.isLoading {
             versionLabel.stringValue = Translations.get("loading")
-            versionLabel.font = .systemFont(ofSize: isCompact ? Constants.menuBaseFontSize - 4 : Constants.menuBaseFontSize - 3)
+            versionLabel.font = .systemFont(ofSize: baseFontSize - 3)
             versionLabel.textColor = .secondaryLabelColor
             versionLabel.translatesAutoresizingMaskIntoConstraints = false
         }
         
         // Star (matches pill font size)
-        configureStarLabel(isFavorite: data.isFavorite, fontSize: isCompact ? Constants.menuBaseFontSize - 4 : Constants.menuBaseFontSize - 3)
+        configureStarLabel(isFavorite: data.isFavorite, fontSize: baseFontSize - 3)
         
         // Build content row: [⚠?] name + version/star
         var contentViews: [NSView] = []
         if data.errorMessage != nil {
-            let warningView = makeWarningView(pointSize: isCompact ? 8 : 9, tooltip: data.errorMessage)
+            let warningView = makeWarningView(pointSize: baseFontSize - 3, tooltip: data.errorMessage)
             contentViews.append(warningView)
         }
         contentViews.append(contentsOf: [titleLabel, versionLabel, starLabel])
@@ -301,7 +309,7 @@ class RepoMenuItemView: NSView {
         
         // Line 1: [●?] bold name + version pill
         titleLabel.stringValue = data.formattedName
-        titleLabel.font = .boldSystemFont(ofSize: isCompact ? Constants.menuBaseFontSize - 2 : Constants.menuBaseFontSize)
+        titleLabel.font = .boldSystemFont(ofSize: baseFontSize)
         titleLabel.textColor = .labelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -310,7 +318,7 @@ class RepoMenuItemView: NSView {
         if data.errorMessage != nil {
             if let ver = data.version {
                 versionLabel.stringValue = ver
-                versionLabel.font = .monospacedSystemFont(ofSize: isCompact ? Constants.menuBaseFontSize - 4 : Constants.menuBaseFontSize - 3, weight: .medium)
+                versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 3, weight: .medium)
                 versionLabel.textColor = .tertiaryLabelColor
                 versionLabel.backgroundColor = .clear
                 versionLabel.drawsBackground = false
@@ -326,7 +334,7 @@ class RepoMenuItemView: NSView {
             }
         } else if let ver = data.version {
             versionLabel.stringValue = ver
-            versionLabel.font = .monospacedSystemFont(ofSize: isCompact ? Constants.menuBaseFontSize - 4 : Constants.menuBaseFontSize - 3, weight: .medium)
+            versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 3, weight: .medium)
             versionLabel.textColor = .white
             versionLabel.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.7)
             versionLabel.isBezeled = false
@@ -340,7 +348,7 @@ class RepoMenuItemView: NSView {
             versionLabel.setContentHuggingPriority(.required, for: .horizontal)
         } else if data.isLoading {
             versionLabel.stringValue = Translations.get("loading")
-            versionLabel.font = .systemFont(ofSize: isCompact ? Constants.menuBaseFontSize - 4 : Constants.menuBaseFontSize - 3)
+            versionLabel.font = .systemFont(ofSize: baseFontSize - 3)
             versionLabel.textColor = .secondaryLabelColor
             versionLabel.translatesAutoresizingMaskIntoConstraints = false
         }
@@ -349,7 +357,7 @@ class RepoMenuItemView: NSView {
         var topRowViews: [NSView] = []
         if data.errorMessage != nil {
             // SF Symbol warning replaces the freshness dot
-            let warningView = makeWarningView(pointSize: isCompact ? 8 : 9, tooltip: data.errorMessage)
+            let warningView = makeWarningView(pointSize: baseFontSize - 3, tooltip: data.errorMessage)
             topRowViews.append(warningView)
         } else if showDot {
             dotLabel.stringValue = "●"
@@ -380,13 +388,13 @@ class RepoMenuItemView: NSView {
             subtitleLabel.stringValue = ""
         }
         subtitleLabel.toolTip = nil
-        subtitleLabel.font = .systemFont(ofSize: isCompact ? Constants.menuBaseFontSize - 3 : Constants.menuBaseFontSize - 2)
+        subtitleLabel.font = .systemFont(ofSize: baseFontSize - 2)
         subtitleLabel.textColor = .secondaryLabelColor
         subtitleLabel.lineBreakMode = .byTruncatingTail
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
         
         // Star matches subtitle font size
-        configureStarLabel(isFavorite: data.isFavorite, fontSize: isCompact ? Constants.menuBaseFontSize - 3 : Constants.menuBaseFontSize - 2)
+        configureStarLabel(isFavorite: data.isFavorite, fontSize: baseFontSize - 2)
         
         let bottomRow = NSStackView(views: [subtitleLabel, starLabel])
         bottomRow.orientation = .horizontal
@@ -424,7 +432,7 @@ class RepoMenuItemView: NSView {
         
         // Name column
         titleLabel.stringValue = data.formattedName
-        titleLabel.font = isCompact ? .systemFont(ofSize: Constants.menuBaseFontSize - 2) : .menuBarFont(ofSize: 0)
+        titleLabel.font = .systemFont(ofSize: baseFontSize)
         titleLabel.textColor = .labelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.alignment = .left
@@ -444,14 +452,14 @@ class RepoMenuItemView: NSView {
         } else if data.isLoading {
             versionLabel.stringValue = "…"
         }
-        versionLabel.font = .monospacedSystemFont(ofSize: isCompact ? Constants.menuBaseFontSize - 3 : Constants.menuBaseFontSize - 1, weight: .regular)
+        versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 1, weight: .regular)
         versionLabel.textColor = .secondaryLabelColor
         versionLabel.alignment = .left
         versionLabel.translatesAutoresizingMaskIntoConstraints = false
         
         // Age column
         ageLabel.stringValue = data.ageLabel ?? ""
-        ageLabel.font = .systemFont(ofSize: isCompact ? Constants.menuBaseFontSize - 4 : Constants.menuBaseFontSize - 2)
+        ageLabel.font = .systemFont(ofSize: baseFontSize - 2)
         ageLabel.textColor = .tertiaryLabelColor
         ageLabel.alignment = .right
         ageLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -463,7 +471,7 @@ class RepoMenuItemView: NSView {
         var rowViews: [NSView] = []
         if data.errorMessage != nil {
             // SF Symbol warning replaces the freshness dot
-            let warningView = makeWarningView(pointSize: isCompact ? 8 : 9, tooltip: data.errorMessage)
+            let warningView = makeWarningView(pointSize: baseFontSize - 3, tooltip: data.errorMessage)
             rowViews.append(warningView)
         } else if showDot {
             dotLabel.stringValue = "●"
@@ -716,7 +724,7 @@ class RepoMenuItemView: NSView {
     override func mouseUp(with event: NSEvent) {
         if enclosingMenuItem != nil {
             appDelegate.animateStatusIcon(with: .scale)
-            appDelegate.menu.cancelTracking()
+            appDelegate.mainMenu.cancelTracking()
             if let url = URL(string: "https://github.com/\(repoName)") {
                 NSWorkspace.shared.open(url)
                 appDelegate.hideInformationalWindows()

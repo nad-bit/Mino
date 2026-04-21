@@ -7,7 +7,9 @@ class HeaderMenuItemView: NSView {
     private let addBtn = MenuActionButton()
     public var searchField: MenuSearchField!
     
+    private let quickAddIcon = NSImageView()
     private let quickAddLabel = NSTextField(labelWithString: "")
+    private let quickAddStack = NSStackView()
     private var quickAddRepoStr: String? = nil
     
     private let leftStack = NSStackView()
@@ -81,13 +83,35 @@ class HeaderMenuItemView: NSView {
         searchField.alphaValue = 0.5
         searchField.isHidden = false
         
+        // Quick Add Icon
+        let quickAddIconCfg = NSImage.SymbolConfiguration(pointSize: Constants.menuBaseFontSize - 1, weight: .semibold)
+        quickAddIcon.image = NSImage(systemSymbolName: "arrow.right", accessibilityDescription: nil)?.withSymbolConfiguration(quickAddIconCfg)
+        quickAddIcon.contentTintColor = .secondaryLabelColor
+        quickAddIcon.imageAlignment = .alignCenter
+        quickAddIcon.imageScaling = .scaleNone
+        quickAddIcon.translatesAutoresizingMaskIntoConstraints = false
+        
         // Quick Add Label (Clipboard)
         quickAddLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .medium)
         quickAddLabel.textColor = .secondaryLabelColor
         quickAddLabel.lineBreakMode = .byTruncatingMiddle
+        // CRITICAL for truncation inside NSStackView: 
+        // 1. Allow it to be compressed easily
         quickAddLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // 2. Allow it to stretch/shrink horizontally without resistance
+        quickAddLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
         quickAddLabel.translatesAutoresizingMaskIntoConstraints = false
-        quickAddLabel.isHidden = true
+        
+        // Quick Add Stack
+        quickAddStack.addArrangedSubview(quickAddIcon)
+        quickAddStack.addArrangedSubview(quickAddLabel)
+        quickAddStack.orientation = .horizontal
+        quickAddStack.spacing = 6
+        quickAddStack.alignment = .centerY
+        // Ensure the stack doesn't grow beyond its constraints
+        quickAddStack.setViews([quickAddIcon, quickAddLabel], in: .leading)
+        quickAddStack.translatesAutoresizingMaskIntoConstraints = false
+        quickAddStack.isHidden = true
         
         // Quick Add Hit Area (makes the text clickable)
         quickAddHitArea.isTransparent = true
@@ -103,7 +127,7 @@ class HeaderMenuItemView: NSView {
         leftStack.translatesAutoresizingMaskIntoConstraints = false
         
         addSubview(leftStack)
-        addSubview(quickAddLabel)
+        addSubview(quickAddStack)
         addSubview(quickAddHitArea)
         addSubview(searchField)
         addSubview(addBtn)
@@ -116,8 +140,11 @@ class HeaderMenuItemView: NSView {
             searchField.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.40),
             searchField.centerYAnchor.constraint(equalTo: centerYAnchor),
             
-            quickAddLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
-            quickAddLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            quickAddStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            quickAddStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            
+            quickAddIcon.widthAnchor.constraint(equalToConstant: 24),
+            quickAddIcon.heightAnchor.constraint(equalToConstant: 24),
             
             quickAddHitArea.leadingAnchor.constraint(equalTo: leadingAnchor),
             quickAddHitArea.topAnchor.constraint(equalTo: topAnchor),
@@ -133,8 +160,8 @@ class HeaderMenuItemView: NSView {
         ])
         
         // Define swappable constraints
-        quickAddTrailingToSearch = quickAddLabel.trailingAnchor.constraint(equalTo: searchField.leadingAnchor, constant: -10)
-        quickAddTrailingToAddBtn = quickAddLabel.trailingAnchor.constraint(equalTo: addBtn.leadingAnchor, constant: -10)
+        quickAddTrailingToSearch = quickAddStack.trailingAnchor.constraint(equalTo: searchField.leadingAnchor, constant: -10)
+        quickAddTrailingToAddBtn = quickAddStack.trailingAnchor.constraint(equalTo: addBtn.leadingAnchor, constant: -10)
         
         quickAddHitAreaTrailingToSearch = quickAddHitArea.trailingAnchor.constraint(equalTo: searchField.leadingAnchor)
         quickAddHitAreaTrailingToAddBtn = quickAddHitArea.trailingAnchor.constraint(equalTo: addBtn.leadingAnchor, constant: -10)
@@ -155,7 +182,7 @@ class HeaderMenuItemView: NSView {
             
             // Show Quick Add
             quickAddLabel.stringValue = Translations.get("quickAddHead").format(with: ["repo": r])
-            quickAddLabel.isHidden = false
+            quickAddStack.isHidden = false
             quickAddHitArea.isHidden = false
             
             let tip = Translations.get("quickAdd").format(with: ["repo": r])
@@ -170,12 +197,19 @@ class HeaderMenuItemView: NSView {
             quickAddHitAreaTrailingToAddBtn?.isActive = true
             
             searchField.isHidden = true
+            
+            // Force layout recalculation to avoid "ghost" invisible views
+            self.needsLayout = true
+            self.layoutSubtreeIfNeeded()
         } else {
             // Show Refresh
             leftStack.isHidden = false
             
             searchField.isHidden = false
             updateSearchOpacity()
+            
+            quickAddStack.isHidden = true
+            quickAddHitArea.isHidden = true
             
             // Layout Swap: Revert to restricted width
             quickAddTrailingToAddBtn?.isActive = false
@@ -184,11 +218,11 @@ class HeaderMenuItemView: NSView {
             quickAddTrailingToSearch?.isActive = true
             quickAddHitAreaTrailingToSearch?.isActive = true
             
-            // Hide Quick Add
-            quickAddLabel.isHidden = true
-            quickAddHitArea.isHidden = true
-            
             addBtn.toolTip = Translations.get("addRepoUnified")
+            
+            // Force layout recalculation
+            self.needsLayout = true
+            self.layoutSubtreeIfNeeded()
         }
         
         let shouldHighlightStyle = lastHighlightState && quickAddRepoStr != nil
@@ -254,6 +288,7 @@ class HeaderMenuItemView: NSView {
         addBtn.hoverColor = hoverSecondary
         
         quickAddLabel.textColor = baseSecondary
+        quickAddIcon.contentTintColor = baseSecondary
         
         // Reset hover visuals if row is no longer highlighted,
         // in case mouseExited was never delivered after a click.

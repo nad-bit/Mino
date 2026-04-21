@@ -5,6 +5,23 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.6] - 2026-04-21
+
+### Added
+- **Dynamic Text Size Selector:** Replaced the binary "Compact Mode" toggle with a flexible text size picker (10pt–16pt) that scales the entire menu UI proportionally.
+- **Visual Symmetry Refinement:** Perfectly aligned the header icons (Refresh/Quick Add) with footer buttons (Preferences) on a shared vertical axis (30pt).
+- **Quick Add Iconography:** Added a dynamic `arrow.right` symbol to the Quick Add interface for clearer action feedback.
+- **Scalable Empty State:** Implemented `EmptyMenuPlaceholderView`, a custom centered placeholder that respects the user's preferred text size.
+- **Universal Accessibility Scaling:** Extended font scaling to the Release Notes window and the search Tag Cloud.
+- **Justified Tag Cloud Layout:** Re-engineered the tag suggestion interface with a fluid, justified flow layout.
+- **Smart Search Feedback:** Implemented a mutually exclusive search state (No results vs. Tag Cloud).
+
+### Fixed
+- **Time Format Pluralization:** Restored the universal abbreviated time format (e.g. `1h 15min`) in tooltips, fixing pluralization errors across all languages.
+- **Search UI Stability:** Fixed layout glitches where search messages would wrap into multiple lines; enforced 400pt minimum width.
+- **Quick Add Stability:** Fixed 'ghost' visibility bugs and implemented middle-truncation for extremely long repository names.
+- **Legacy Cleanup:** Fully removed the deprecated "isCompactMode" logic.
+
 ## [1.5.5] - 2026-04-14
 
 ### Added

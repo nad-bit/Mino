@@ -11,19 +11,20 @@ enum SymbolAnimation {
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFieldDelegate {
     var statusItem: NSStatusItem!
-    var statusIconView: NSImageView!
-    var statusIndicatorDot: NSBox!
-    var menu: NSMenu!
+    private var statusIconView: NSImageView!
+    private var statusIndicatorDot: NSBox!
+    var mainMenu: NSMenu!
     
     var repoCache: [String: RepoInfo] = [:]
     
-    var headerMenuItem: NSMenuItem!
-    var headerView: HeaderMenuItemView!
+    private var headerMenuItem: NSMenuItem!
+    private var headerView: HeaderMenuItemView!
+    private var noSearchResultsMenuItem: NSMenuItem!
+    private var emptyMenuPlaceholderItem: NSMenuItem?
     
     // Search properties
-    var searchField: NSSearchField?
-    var searchMenuItem: NSMenuItem?
-    var noSearchResultsMenuItem: NSMenuItem!
+    private var searchField: NSSearchField?
+    private var searchMenuItem: NSMenuItem?
     var repoMenuItems: [(item: NSMenuItem, data: RepoDisplayData)] = []
     private var readReposThisSession: Set<String> = []
     
@@ -112,10 +113,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         
         updateStatusIcon(hasUpdates: false)
         
-        menu = NSMenu()
-        menu.delegate = self
-        menu.autoenablesItems = false
-        statusItem.menu = menu
+        mainMenu = NSMenu()
+        mainMenu.delegate = self
+        mainMenu.autoenablesItems = false
+        statusItem.menu = mainMenu
         
         updatePopularTagsCache()
         setupMenu()
@@ -173,19 +174,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         let nextRefreshDate = lastRefreshTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
         let nextRefreshSeconds = nextRefreshDate.timeIntervalSince(Date())
         
-        var refreshTitle = Translations.get("refreshNow")
+        let refreshNow = Translations.get("refreshNow")
         if lastRefreshTime != Date.distantPast && nextRefreshSeconds > 0 {
             let totalMinutes = Int(ceil(nextRefreshSeconds / 60))
             let h = totalMinutes / 60
             let m = totalMinutes % 60
             
             if h > 0 {
-                refreshTitle = "\(Translations.get("refreshNow")) (\(h) \(Translations.get("hours")), \(m) \(Translations.get("minutes")))"
+                if m > 0 {
+                    return "\(refreshNow) (\(h)h \(m)min)"
+                } else {
+                    return "\(refreshNow) (\(h)h)"
+                }
             } else {
-                refreshTitle = "\(Translations.get("refreshNow")) (\(m) \(Translations.get("minutes")))"
+                return "\(refreshNow) (\(m) min)"
             }
         }
-        return refreshTitle
+        return refreshNow
     }
     
     @objc func updateCountdown() {
@@ -198,7 +203,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         // Lightweight update of repository age labels and header title
         headerView?.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
         
-        for menuItem in menu.items {
+        for menuItem in mainMenu.items {
             if let repoView = menuItem.view as? RepoMenuItemView {
                 repoView.updateAgeDisplay()
             }
@@ -356,7 +361,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     }
     
     func setupMenu() {
-        menu.removeAllItems()
+        mainMenu.removeAllItems()
         repoMenuItems.removeAll()
         
         // Hidden NSMenuItems for keyboard shortcuts MUST be at the very top.
@@ -376,14 +381,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             item.target = self
             item.isHidden = true
             item.allowsKeyEquivalentWhenHidden = true
-            menu.addItem(item)
+            mainMenu.addItem(item)
         }
         
         headerMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         headerView = HeaderMenuItemView(appDelegate: self)
         headerView.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
         headerMenuItem.view = headerView
-        menu.addItem(headerMenuItem)
+        mainMenu.addItem(headerMenuItem)
         
         // Link the app delegate's search field reference to the one in the header
         self.searchField = headerView.searchField
@@ -391,7 +396,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         
 
         
-        menu.addItem(NSMenuItem.separator())
+        mainMenu.addItem(NSMenuItem.separator())
         
         let config = ConfigManager.shared.config
         let isSortedByName = config.sortBy == "name"
@@ -423,10 +428,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         }
         
         if sortedRepos.isEmpty {
-            let noRepos = NSMenuItem(title: Translations.get("noRepos"), action: nil, keyEquivalent: "")
-            noRepos.isEnabled = false
-            noRepos.image = NSImage(systemSymbolName: "slash.circle", accessibilityDescription: nil)
-            menu.addItem(noRepos)
+            let noRepos = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            noRepos.view = EmptyMenuPlaceholderView()
+            mainMenu.addItem(noRepos)
+            self.emptyMenuPlaceholderItem = noRepos
+        } else {
+            self.emptyMenuPlaceholderItem = nil
         }
         
         // Build display data for each repo
@@ -510,9 +517,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         }
         
         // Create views
-        let isCompact = config.isCompactMode ?? false
-        var rowHeight: CGFloat = (currentLayout == "cards") ? 40 : 22
-        if isCompact { rowHeight -= 6 }
+        let baseFontSize = config.menuFontSize ?? Constants.menuBaseFontSize
+        let rowHeight: CGFloat = (currentLayout == "cards") ? baseFontSize + 27 : baseFontSize + 9
         
         var repoEntries: [(NSMenuItem, RepoMenuItemView)] = []
         
@@ -543,19 +549,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         self.currentMenuWidth = maxWidth
         for (menuItem, customView) in repoEntries {
             customView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: rowHeight)
-            menu.addItem(menuItem)
+            mainMenu.addItem(menuItem)
             repoMenuItems.append((item: menuItem, data: customView.displayData))
         }
         
         noSearchResultsMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         let noResultsView = NoSearchResultsView()
         noResultsView.targetWidth = maxWidth
-        noResultsView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: rowHeight == 16 ? 24 : rowHeight)
+        noResultsView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: 44)
         noSearchResultsMenuItem.view = noResultsView
         noSearchResultsMenuItem.isHidden = true
-        menu.addItem(noSearchResultsMenuItem)
+        mainMenu.addItem(noSearchResultsMenuItem)
         
-        menu.addItem(NSMenuItem.separator())
+        mainMenu.addItem(NSMenuItem.separator())
         
 
         // Apply uniform width to header
@@ -567,7 +573,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         let footerView = FooterMenuItemView(appDelegate: self)
         footerView.frame = NSRect(x: 0, y: 0, width: maxWidth, height: Constants.menuHeaderFooterHeight)
         footerMenuItem.view = footerView
-        menu.addItem(footerMenuItem)
+        mainMenu.addItem(footerMenuItem)
         
         let hasPulse = UserDefaults.standard.bool(forKey: "HasUnreadPulse")
         updateStatusIcon(hasUpdates: hasPulse)
@@ -742,7 +748,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     
     func performAfterMenuClose(_ action: @escaping () -> Void) {
         self.pendingMenuAction = action
-        self.menu.cancelTracking()
+        self.mainMenu.cancelTracking()
     }
     
     /// Call this INSTEAD of NSApp.activate() whenever the app needs to show a window/alert.
@@ -1074,6 +1080,9 @@ extension AppDelegate {
     func filterMenuBySearchQuery(_ query: String) {
         let q = query.lowercased()
         var visibleCount = 0
+        
+        // Hide the "No repos" placeholder if we are filtering
+        emptyMenuPlaceholderItem?.isHidden = !q.isEmpty
         
         for map in repoMenuItems {
             if q.isEmpty {

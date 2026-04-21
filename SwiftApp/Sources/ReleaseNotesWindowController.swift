@@ -101,7 +101,9 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         textView.drawsBackground = false // Transparent to show vibrancy
         textView.textColor = .labelColor // Fallback safety layer
         // 4. Editorial Typography
-        textView.font = .systemFont(ofSize: 14, weight: .regular)
+        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        let offset = baseFontSize - 13.0
+        textView.font = .systemFont(ofSize: 14 + offset, weight: .regular)
         textView.textContainerInset = NSSize(width: 24, height: 24)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
@@ -166,10 +168,14 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
             attrString.append(NSAttributedString(attachment: attachment))
             attrString.append(NSAttributedString(string: " \(cask)"))
         }
+        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        let offset = baseFontSize - 13.0
+        let titleFontSize = 24 + (offset * 0.5)
+        
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
         attrString.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: attrString.length))
-        attrString.addAttribute(.font, value: NSFont.systemFont(ofSize: 24, weight: .bold), range: NSRange(location: 0, length: attrString.length))
+        attrString.addAttribute(.font, value: NSFont.systemFont(ofSize: titleFontSize, weight: .bold), range: NSRange(location: 0, length: attrString.length))
         titleLabel.attributedStringValue = attrString
         
         // --- METADATA PILL ---
@@ -177,6 +183,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         repoReleasesURL = URL(string: releasesURLString)
         let versionText = "  \(info.version ?? "N/A")  "
         versionLabel.stringValue = versionText
+        versionLabel.font = .systemFont(ofSize: 12 + offset, weight: .medium)
         versionLabel.isHidden = (info.version == nil || info.version == "N/A")
         
         // --- FOOTER TAGS (Omni-Search Visuals) ---
@@ -257,10 +264,10 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
                     if let font = value as? NSFont {
                         // Attempt to preserve bold/italic while standardizing the face
                         let isBold = font.fontDescriptor.symbolicTraits.contains(.bold)
-                        let newFont = NSFont.systemFont(ofSize: 14, weight: isBold ? .bold : .regular)
+                        let newFont = NSFont.systemFont(ofSize: 14 + offset, weight: isBold ? .bold : .regular)
                         htmlAttrStr.addAttribute(.font, value: newFont, range: range)
                     } else {
-                        htmlAttrStr.addAttribute(.font, value: NSFont.systemFont(ofSize: 14, weight: .regular), range: range)
+                        htmlAttrStr.addAttribute(.font, value: NSFont.systemFont(ofSize: 14 + offset, weight: .regular), range: range)
                     }
                 }
                 
@@ -334,7 +341,7 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
                 // Add a default font to the whole range if a specific one wasn't applied by Markdown (like bold)
                 nsAttrStr.enumerateAttribute(.font, in: NSRange(location: 0, length: nsAttrStr.length), options: .longestEffectiveRangeNotRequired) { value, range, stop in
                     if value == nil {
-                        nsAttrStr.addAttribute(.font, value: NSFont.systemFont(ofSize: 14, weight: .regular), range: range)
+                        nsAttrStr.addAttribute(.font, value: NSFont.systemFont(ofSize: 14 + offset, weight: .regular), range: range)
                     }
                 }
                 // Also set text color to adapt to Dark Mode vibrancy
@@ -366,9 +373,11 @@ class WrappingTagsView: NSView {
     
     func set(tags: [String]) {
         subviews.forEach { $0.removeFromSuperview() }
+        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        let offset = baseFontSize - 13.0
         for tag in tags {
             let pillNode = NSTextField(labelWithString: "  #\(tag)  ")
-            pillNode.font = .systemFont(ofSize: 11, weight: .medium)
+            pillNode.font = .systemFont(ofSize: 11 + offset, weight: .medium)
             pillNode.textColor = .secondaryLabelColor
             pillNode.backgroundColor = NSColor.textColor.withAlphaComponent(0.08)
             pillNode.drawsBackground = true
