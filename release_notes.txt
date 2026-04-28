@@ -1,6 +1,0 @@
-### Added
-- **Frictionless Deletion:** Deleting a repository from the menu is now instantaneous and inline. This removes the intrusive modal confirmation dialog while maintaining safety through a deliberate two-click interaction pattern.
-
-### Changed
-- **Under-the-Hood:** Conducted a major architectural refactor, decomposing the main application delegate into specialized coordinators to improve code maintainability.
-- **Code Optimization:** Centralized and DRYed up the UI layout engine and repository data cleanup logic, reducing boilerplate and improving performance.
