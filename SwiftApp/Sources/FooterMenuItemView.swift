@@ -54,13 +54,7 @@ class FooterMenuItemView: NSView {
         repoCountLabel.lineBreakMode = .byTruncatingTail
         repoCountLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        let count = ConfigManager.shared.config.repos.count
-        if count == 1 {
-            repoCountLabel.stringValue = Translations.get("repoCountSingular")
-        } else {
-            let baseString = Translations.get("repoCount")
-            repoCountLabel.stringValue = baseString.replacingOccurrences(of: "{count}", with: "\(count)")
-        }
+        updateRepoCount()
         
         addSubview(settingsBtn)
         addSubview(quitBtn)
@@ -82,6 +76,16 @@ class FooterMenuItemView: NSView {
             repoCountLabel.leadingAnchor.constraint(greaterThanOrEqualTo: settingsBtn.trailingAnchor, constant: 8),
             repoCountLabel.trailingAnchor.constraint(lessThanOrEqualTo: quitBtn.leadingAnchor, constant: -8)
         ])
+    }
+    
+    /// Refreshes the repo count label from the current config.
+    func updateRepoCount() {
+        let count = ConfigManager.shared.config.repos.count
+        if count == 1 {
+            repoCountLabel.stringValue = Translations.get("repoCountSingular")
+        } else {
+            repoCountLabel.stringValue = Translations.get("repoCount").format(with: ["count": "\(count)"])
+        }
     }
     
     @objc private func settingsClicked() {

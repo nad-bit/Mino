@@ -18,9 +18,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var repoCache: [String: RepoInfo] = [:]
     
     private var headerMenuItem: NSMenuItem!
-    private var headerView: HeaderMenuItemView!
+    var headerView: HeaderMenuItemView!
     private var noSearchResultsMenuItem: NSMenuItem!
-    private var emptyMenuPlaceholderItem: NSMenuItem?
+    var emptyMenuPlaceholderItem: NSMenuItem?
     
     // Search properties
     private var searchField: NSSearchField?
@@ -28,10 +28,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var repoMenuItems: [(item: NSMenuItem, data: RepoDisplayData)] = []
     private var readReposThisSession: Set<String> = []
     
-    // Refresh Logic and States
-    var lastRefreshTime: Date = Date.distantPast
-    var countdownTimer: Timer?
-    var isRefreshing = false
     var menuIsOpen = false
     
     // Defer actions until menu completes its closing animation
@@ -46,8 +42,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var releaseNotesWindowController: ReleaseNotesWindowController?
     var addRepoWindowController: AddRepoWindowController?
     
+    // Coordinators
+    var refreshCoordinator: RefreshCoordinator!
+    var repoCoordinator: RepoCoordinator!
+    
     // Ensure only one of our custom windows is visible at a time
-    private func hideAllWindowsExcept(keep: NSWindowController?) {
+    func hideAllWindowsExcept(keep: NSWindowController?) {
         // Force-close any blocking NSAlert or Modal Window
         if let modal = NSApp.modalWindow {
             NSApp.stopModal()
@@ -118,247 +118,66 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         mainMenu.autoenablesItems = false
         statusItem.menu = mainMenu
         
+        // Initialize coordinators
+        refreshCoordinator = RefreshCoordinator(delegate: self)
+        repoCoordinator = RepoCoordinator(delegate: self)
+        
         updatePopularTagsCache()
         setupMenu()
-        startTimers()
+        refreshCoordinator.startTimers()
         
         triggerFullRefresh(nil)
-        startTagBackfillSequence()
-    }
-    
-    /// Silently fetches topics for legacy repositories to enable zero-configuration hashtag searching
-    private func startTagBackfillSequence() {
-        Task {
-            let reposToUpdate = ConfigManager.shared.config.repos.compactMap { repo -> String? in
-                return repo.tags == nil ? repo.name : nil
-            }
-            
-            guard !reposToUpdate.isEmpty else { return }
-            
-            for repoName in reposToUpdate {
-                let fetchedTags = await GitHubAPI.shared.fetchRepoTags(repo: repoName)
-                
-                await MainActor.run {
-                    if let currentIndex = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
-                        ConfigManager.shared.config.repos[currentIndex].tags = fetchedTags ?? []
-                        ConfigManager.shared.saveConfig()
-                    }
-                }
-                
-                // Throttle to 1 request/second to avoid triggering GitHub API secondary rate limits
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-            }
-            // Once all 200+ repos are processed, we update the cache exactly once for stability.
-            await MainActor.run {
-                self.updatePopularTagsCache()
-                self.setupMenu() // Re-render tag cloud if it's currently relevant
-            }
-        }
+        refreshCoordinator.startTagBackfillSequence()
     }
     
     func applicationWillTerminate(_ aNotification: Notification) {
-        countdownTimer?.invalidate()
+        refreshCoordinator.countdownTimer?.invalidate()
     }
     
-    func startTimers() {
-        countdownTimer?.invalidate()
-        let timer = Timer(timeInterval: Constants.countdownTimerIntervalSeconds, target: self, selector: #selector(updateCountdown), userInfo: nil, repeats: true)
-        RunLoop.main.add(timer, forMode: .common)
-        countdownTimer = timer
+    // MARK: - Forwarding to RefreshCoordinator
+    
+    var isRefreshing: Bool {
+        get { refreshCoordinator?.isRefreshing ?? false }
+        set { refreshCoordinator?.isRefreshing = newValue }
     }
     
     func getRefreshTitle() -> String {
-        if isRefreshing { return Translations.get("refreshing") }
-        
-        let refreshMinutes = ConfigManager.shared.config.refreshMinutes
-        let nextRefreshDate = lastRefreshTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
-        let nextRefreshSeconds = nextRefreshDate.timeIntervalSince(Date())
-        
-        let refreshNow = Translations.get("refreshNow")
-        if lastRefreshTime != Date.distantPast && nextRefreshSeconds > 0 {
-            let totalMinutes = Int(ceil(nextRefreshSeconds / 60))
-            let h = totalMinutes / 60
-            let m = totalMinutes % 60
-            
-            if h > 0 {
-                if m > 0 {
-                    return "\(refreshNow) (\(h)h \(m)min)"
-                } else {
-                    return "\(refreshNow) (\(h)h)"
-                }
-            } else {
-                return "\(refreshNow) (\(m) min)"
-            }
-        }
-        return refreshNow
-    }
-    
-    @objc func updateCountdown() {
-        if isRefreshing { return }
-        
-        let refreshMinutes = ConfigManager.shared.config.refreshMinutes
-        let nextRefreshDate = lastRefreshTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
-        let nextRefreshSeconds = nextRefreshDate.timeIntervalSince(Date())
-        
-        // Lightweight update of repository age labels and header title
-        headerView?.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
-        
-        for menuItem in mainMenu.items {
-            if let repoView = menuItem.view as? RepoMenuItemView {
-                repoView.updateAgeDisplay()
-            }
-        }
-        
-        if nextRefreshSeconds <= 0 {
-            triggerFullRefresh(nil)
-        }
+        return refreshCoordinator.getRefreshTitle()
     }
     
     @objc func triggerFullRefresh(_ sender: Any?) {
-        if isRefreshing { return }
-        isRefreshing = true
-        
-        self.headerView?.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
-        self.animateStatusIcon(with: .rotate)
-        
-        // 1. Optimized prioritized sorting (O(N) lookup preparation)
-        let repoConfigs = ConfigManager.shared.config.repos
-        let configMap = Dictionary(uniqueKeysWithValues: repoConfigs.map { ($0.name, $0) })
-        
-        let sortedRepos = repoConfigs.map { $0.name }.sorted { a, b in
-            // Favorites first
-            let isFavA = configMap[a]?.isFavorite ?? false
-            let isFavB = configMap[b]?.isFavorite ?? false
-            if isFavA != isFavB { return isFavA }
-            
-            // New repositories (no cached data) next
-            let dateA = self.repoCache[a]?.date
-            let dateB = self.repoCache[b]?.date
-            if (dateA == nil) != (dateB == nil) { return dateA == nil }
-            
-            // Most recent releases first
-            return (dateA ?? "") > (dateB ?? "")
-        }
-        
-        Task { [weak self] in
-            guard let self = self else { return }
-            
-            // 2. Optimized burst fetching: prioritized order, OS-managed concurrency
-            var results: [(String, RepoInfo)] = []
-            await withTaskGroup(of: (String, RepoInfo).self) { group in
-                for repo in sortedRepos {
-                    let cachedVersion = self.repoCache[repo]?.version
-                    let looksLikeSHA = cachedVersion?.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
-                    let hasExistingRelease = cachedVersion != nil && !looksLikeSHA
-                    
-                    group.addTask {
-                        let info = await GitHubAPI.shared.fetchRepoInfo(repo: repo, hasExistingRelease: hasExistingRelease)
-                        return (repo, info)
-                    }
-                }
-                
-                for await result in group {
-                    results.append(result)
-                }
-            }
-            
-            // All fetches done, safely update the UI properties from within the MainActor Context
-            var newCaskVersionsDetected = false
-            var manualReposToDiscoverCask: [String] = []
-            var hasFreshUpdates = false
-            let lastNotifiedVersions = UserDefaults.standard.dictionary(forKey: "LastNotifiedVersions") as? [String: String] ?? [:]
-            var updatedNotifiedVersions = lastNotifiedVersions
-
-            for (repo, info) in results {
-                if let currentVersion = info.version {
-                    if let oldVersion = lastNotifiedVersions[repo] {
-                        if currentVersion != oldVersion {
-                            hasFreshUpdates = true
-                            updatedNotifiedVersions[repo] = currentVersion
-                        }
-                    } else if self.repoCache[repo] != nil || ConfigManager.shared.config.repos.contains(where: { $0.name == repo }) {
-                        // It's a repo we know about but haven't notified for this specific version yet
-                        hasFreshUpdates = true
-                        updatedNotifiedVersions[repo] = currentVersion
-                    }
-                }
-
-                if let oldInfo = self.repoCache[repo], let newVersion = info.version, let oldVersion = oldInfo.version {
-                    if newVersion != oldVersion {
-                        if let repoConf = ConfigManager.shared.config.repos.first(where: { $0.name == repo }) {
-                            if repoConf.cask != nil {
-                                newCaskVersionsDetected = true
-                            } else if repoConf.source == "manual" && HomebrewManager.shared.brewPath != nil {
-                                manualReposToDiscoverCask.append(repo)
-                            }
-                        }
-                    }
-                } else if self.repoCache[repo] == nil && info.version != nil {
-                    // Newly added repo fetched its first version
-                    if ConfigManager.shared.config.repos.first(where: { $0.name == repo })?.cask != nil {
-                        newCaskVersionsDetected = true
-                    }
-                }
-                if info.error != nil {
-                    // Update only checking error, but preserve version/date/body
-                    if var existingInfo = self.repoCache[repo] {
-                        existingInfo.error = info.error
-                        // We intentionally don't update version to keep the cache alive
-                        self.repoCache[repo] = existingInfo
-                    } else {
-                        // If it's a completely new repo and we hit an error on first fetch
-                        self.repoCache[repo] = info
-                    }
-                } else {
-                    // Successful fetch: replace entirely
-                    self.repoCache[repo] = info
-                }
-            }
-            
-            if hasFreshUpdates {
-                UserDefaults.standard.set(updatedNotifiedVersions, forKey: "LastNotifiedVersions")
-                UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
-            }
-
-            if newCaskVersionsDetected {
-                Task { let _ = await HomebrewManager.shared.runBrewUpdate() }
-            }
-            
-            // --- Event-driven Cask Discovery ---
-            // For manual repos that just received a version update, attempt to find
-            // their Homebrew cask using local brew calls (no bulk JSON download needed).
-            if !manualReposToDiscoverCask.isEmpty {
-                Task {
-                    var didDiscover = false
-                    for repoName in manualReposToDiscoverCask {
-                        if let cask = await HomebrewManager.shared.findCaskForRepo(repoName: repoName) {
-                            await MainActor.run {
-                                if let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
-                                    ConfigManager.shared.config.repos[index].source = "brew"
-                                    ConfigManager.shared.config.repos[index].cask = cask
-                                    didDiscover = true
-                                    print("Auto-discovered cask '\(cask)' for updated repo '\(repoName)'")
-                                }
-                            }
-                        }
-                    }
-                    if didDiscover {
-                        await MainActor.run {
-                            ConfigManager.shared.saveConfig()
-                            self.setupMenu()
-                        }
-                    }
-                }
-            }
-            // ------------------------------------
-            
-            self.isRefreshing = false
-            self.lastRefreshTime = Date()
-            self.startTimers()
-            self.updatePopularTagsCache()
-            self.setupMenu()
-        }
+        refreshCoordinator.triggerFullRefresh(sender)
     }
+    
+    // MARK: - Forwarding to RepoCoordinator
+    
+
+    
+    func deleteRepoInline(repoName: String) {
+        repoCoordinator.deleteRepoInline(repoName: repoName)
+    }
+    
+    @objc func handleOpenReleases(_ sender: NSMenuItem) {
+        repoCoordinator.handleOpenReleases(sender)
+    }
+    
+    @objc func handleShowNotes(_ sender: NSMenuItem) {
+        repoCoordinator.handleShowNotes(sender)
+    }
+    
+    @objc func handleInstallBrewCask(_ sender: NSMenuItem) {
+        repoCoordinator.handleInstallBrewCask(sender)
+    }
+    
+    @objc func unifiedAddRepoDialog(_ sender: Any) {
+        repoCoordinator.openAddRepoDialog(sender)
+    }
+    
+    func addRepoSmart(repoName: String) async -> Bool {
+        return await repoCoordinator.addRepoSmart(repoName: repoName)
+    }
+    
+    // MARK: - Menu Construction
     
     func setupMenu() {
         mainMenu.removeAllItems()
@@ -740,7 +559,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     // MARK: - Handlers
     
     @objc func quitApp(_ sender: Any) {
-        countdownTimer?.invalidate()
+        refreshCoordinator.countdownTimer?.invalidate()
         NSApplication.shared.terminate(self)
     }
     
@@ -762,113 +581,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         // No-op
     }
     
-    @objc func handleOpenReleases(_ sender: NSMenuItem) {
-        guard let repoName = sender.representedObject as? String else { return }
-        
-        hideInformationalWindows()
-        
-        if let url = URL(string: "https://github.com/\(repoName)/releases") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-    
-    @objc func handleShowNotes(_ sender: NSMenuItem) {
-        guard let repoName = sender.representedObject as? String else { return }
-        let info = repoCache[repoName] ?? RepoInfo(name: repoName, error: nil)
-        
-        if releaseNotesWindowController == nil {
-            releaseNotesWindowController = ReleaseNotesWindowController()
-        }
-        
-        hideAllWindowsExcept(keep: releaseNotesWindowController)
-        bringToFront()
-        releaseNotesWindowController?.loadNotes(for: info)
-        releaseNotesWindowController?.showWindow(self)
-    }
-    
-    @objc func handleDeleteRepo(_ sender: NSMenuItem) {
-        guard let repoName = sender.representedObject as? String else { return }
-        if UIHandlers.shared.confirmDeleteRepo(name: repoName) {
-            ConfigManager.shared.config.repos.removeAll { $0.name == repoName }
-            repoCache.removeValue(forKey: repoName)
-            // Clean up seen state so re-adding this repo later triggers the red dot
-            var seenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
-            seenVersions.removeValue(forKey: repoName)
-            UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
-            
-            var notifiedVersions = UserDefaults.standard.dictionary(forKey: "LastNotifiedVersions") as? [String: String] ?? [:]
-            notifiedVersions.removeValue(forKey: repoName)
-            UserDefaults.standard.set(notifiedVersions, forKey: "LastNotifiedVersions")
-            // Close release notes window if it's showing the deleted repo
-            if releaseNotesWindowController?.currentRepoName == repoName {
-                releaseNotesWindowController?.window?.orderOut(nil)
-            }
-            ConfigManager.shared.saveConfig()
-            self.updatePopularTagsCache()
-            setupMenu()
-            animateStatusIcon(with: .replaceWithSlash)
-        }
-    }
-    
-    @objc func handleInstallBrewCask(_ sender: NSMenuItem) {
-        guard let caskName = sender.representedObject as? String else { return }
-        
-        // Show indefinite persistent installing notification while Brew works
-        HUDPanel.shared.show(title: Translations.get("installingTitle"), subtitle: Translations.get("installingMsg").format(with: ["cask_name": caskName]), duration: nil)
-        
-        Task { [weak self] in
-            guard let self = self else { return }
-            let result = await HomebrewManager.shared.installCask(cask: caskName)
-            
-            if result.success {
-                let msgId = result.message == "alreadyInstalled" ? "alreadyInstalled" : "installComplete"
-                self.sendNotification(title: "Mino", subtitle: Translations.get(msgId).format(with: ["cask_name": caskName]))
-                
-                // Reveal in Finder
-                self.revealCaskInFinder(caskName: caskName)
-            } else if result.message == "requires_sudo" {
-                // Aborted because Homebrew asked for a password
-                DispatchQueue.main.async {
-                    self.animateStatusIcon(with: .wiggle)
-                    HUDPanel.shared.hide()
-                    let alert = NSAlert()
-                    alert.messageText = Translations.get("sudoRequiredTitle")
-                    alert.informativeText = Translations.get("sudoRequiredDesc").format(with: ["cask_name": caskName])
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "OK")
-                    NSApp.activate(ignoringOtherApps: true)
-                    alert.runModal()
-                }
-            } else {
-                self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("installFailed").format(with: ["cask_name": caskName]), message: String(result.message.prefix(100)))
-            }
-        }
-    }
-    
-    func revealCaskInFinder(caskName: String) {
-        Task {
-            if let jsonOutput = await HomebrewManager.shared.infoForCask(cask: caskName),
-               let data = jsonOutput.data(using: .utf8),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let casks = json["casks"] as? [[String: Any]],
-               let firstCask = casks.first,
-               let artifacts = firstCask["artifacts"] as? [[String: Any]] {
-                
-                for artifact in artifacts {
-                    if let appArray = artifact["app"] as? [String], let appName = appArray.first {
-                        let appPath = "/Applications/\(appName)"
-                        NSWorkspace.shared.selectFile(appPath, inFileViewerRootedAtPath: "/Applications")
-                        return
-                    } else if let appName = artifact["app"] as? String {
-                        let appPath = "/Applications/\(appName)"
-                        NSWorkspace.shared.selectFile(appPath, inFileViewerRootedAtPath: "/Applications")
-                        return
-                    }
-                }
-            }
-        }
-    }
-    
     @objc func openSettingsWindow(_ sender: Any) {
         if settingsWindowController == nil {
             settingsWindowController = SettingsWindowController()
@@ -877,162 +589,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         hideAllWindowsExcept(keep: settingsWindowController)
         bringToFront()
         settingsWindowController?.showWindow(self)
-    }
-    
-    @objc func unifiedAddRepoDialog(_ sender: Any) {
-        if addRepoWindowController == nil {
-            addRepoWindowController = AddRepoWindowController()
-            addRepoWindowController?.completionHandler = { [weak self] repoName, source, cask, completion in
-                guard let self = self else { return }
-                if let repo = repoName {
-                    self.quickAddingRepo = repo
-                }
-                Task {
-                    var success = false
-                    if let repo = repoName, source == "manual" {
-                        success = await self.addRepoSmart(repoName: repo)
-                    } else if source == "brew", let caskName = cask {
-                        success = await self.processBrewSelection(caskName: caskName)
-                    }
-                    await MainActor.run {
-                        self.quickAddingRepo = nil
-                        completion(success)
-                    }
-                }
-            }
-        }
-        
-        hideAllWindowsExcept(keep: addRepoWindowController)
-        bringToFront()
-        addRepoWindowController?.resetAndShow()
-    }
-    
-    func addRepoSmart(repoName: String) async -> Bool {
-        if HomebrewManager.shared.brewPath == nil {
-            return await addRepo(repoName: repoName, source: "manual")
-        }
-        
-        if ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == repoName.lowercased() }) {
-            return await addRepo(repoName: repoName, source: "manual")
-        }
-        
-        let parts = repoName.split(separator: "/")
-        if parts.count != 2 {
-            return await addRepo(repoName: repoName, source: "manual")
-        }
-        
-        if let cask = await HomebrewManager.shared.findCaskForRepo(repoName: repoName) {
-            return await addRepo(repoName: repoName, source: "brew", cask: cask)
-        } else {
-            return await addRepo(repoName: repoName, source: "manual")
-        }
-    }
-    
-    func addRepo(repoName: String, source: String, cask: String? = nil) async -> Bool {
-        if ConfigManager.shared.config.repos.contains(where: { $0.name == repoName }) {
-            if let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
-                if ConfigManager.shared.config.repos[index].source == "manual" && source == "brew" {
-                    ConfigManager.shared.config.repos[index].source = "brew"
-                    ConfigManager.shared.config.repos[index].cask = cask
-                    ConfigManager.shared.saveConfig()
-                    await MainActor.run {
-                        self.setupMenu()
-                        self.animateStatusIcon(with: .bounce)
-                    }
-                    return true
-                } else {
-                    await MainActor.run {
-                        self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoExists"))
-                    }
-                    return false
-                }
-            }
-            return false
-        }
-        
-        let info = await GitHubAPI.shared.fetchRepoInfo(repo: repoName)
-        if info.error != nil {
-            await MainActor.run {
-                self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoNotFound"))
-            }
-            return false
-        } else {
-            let fetchedTags = await GitHubAPI.shared.fetchRepoTags(repo: repoName)
-            let newRepo = RepoConfig(name: repoName, source: source, cask: cask, tags: fetchedTags ?? [])
-            ConfigManager.shared.config.repos.append(newRepo)
-            ConfigManager.shared.saveConfig()
-            
-            await MainActor.run {
-                self.repoCache[repoName] = info
-                UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
-                self.updatePopularTagsCache()
-                self.setupMenu()
-                self.animateStatusIcon(with: .bounce)
-            }
-            return true
-        }
-    }
-    
-    func processBrewSelection(caskName: String) async -> Bool {
-        // Early check: if any repo already has this cask, show duplicate message
-        if ConfigManager.shared.config.repos.contains(where: { $0.cask?.lowercased() == caskName.lowercased() }) {
-            await MainActor.run {
-                self.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoExists"))
-            }
-            return false
-        }
-        
-        guard let url = URL(string: "https://formulae.brew.sh/api/cask/\(caskName).json") else { return false }
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            
-            // TAP casks (e.g. from custom taps) are not in the public API and return 404
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-                await MainActor.run {
-                    self.sendNotification(title: Translations.get("brewErrorTitle"), subtitle: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
-                }
-                return false
-            }
-            
-            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                var repoName: String? = nil
-                let regex = try NSRegularExpression(pattern: "github\\.com/([^/]+/[^/\\s\"]+)")
-                
-                let searchKeys = ["verified", "homepage", "url"]
-                for key in searchKeys {
-                    if repoName != nil { break }
-                    var urlString = ""
-                    if key == "verified" {
-                        urlString = (json["url_specs"] as? [String: Any])?["verified"] as? String ?? ""
-                    } else {
-                        urlString = json[key] as? String ?? ""
-                    }
-                    
-                    if !urlString.isEmpty {
-                        let range = NSRange(location: 0, length: urlString.utf16.count)
-                        if let match = regex.firstMatch(in: urlString, options: [], range: range) {
-                            if let r = Range(match.range(at: 1), in: urlString) {
-                                repoName = String(urlString[r]).replacingOccurrences(of: ".git", with: "")
-                            }
-                        }
-                    }
-                }
-                
-                if let r = repoName {
-                    return await addRepo(repoName: r, source: "brew", cask: caskName)
-                } else {
-                    await MainActor.run {
-                        self.sendNotification(title: Translations.get("brewErrorTitle"), subtitle: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
-                    }
-                    return false
-                }
-            }
-        } catch {
-            await MainActor.run {
-                self.sendNotification(title: Translations.get("brewErrorTitle"), subtitle: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
-            }
-        }
-        return false
     }
     
     // MARK: - Preferences Logics
@@ -1059,7 +615,7 @@ extension AppDelegate {
     }
     // MARK: - Search Filtering
     
-    private func updatePopularTagsCache() {
+    func updatePopularTagsCache() {
         var counts: [String: Int] = [:]
         for repo in ConfigManager.shared.config.repos {
             repo.tags?.forEach { counts[$0, default: 0] += 1 }

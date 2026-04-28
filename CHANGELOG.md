@@ -5,6 +5,15 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.7] - 2026-04-28
+
+### Added
+- **Frictionless Deletion:** Deleting a repository from the menu is now instantaneous and inline. This removes the intrusive modal confirmation dialog while maintaining safety through a deliberate two-click interaction pattern.
+
+### Changed
+- **Under-the-Hood:** Conducted a major architectural refactor, decomposing the main application delegate into specialized coordinators to improve code maintainability.
+- **Code Optimization:** Centralized and DRYed up the UI layout engine and repository data cleanup logic, reducing boilerplate and improving performance.
+
 ## [1.5.6] - 2026-04-21
 
 ### Added

@@ -125,6 +125,10 @@ class RepoMenuItemView: NSView {
     private var lastHighlightState = false
     private var wasEverHovered = false
     
+    // Inline delete confirmation state
+    private var isConfirmingDelete = false
+    private var deleteConfirmTimer: Timer?
+    
     // Column widths (for columns mode, set from outside)
     var nameColumnWidth: CGFloat = 0
     var versionColumnWidth: CGFloat = 0
@@ -221,53 +225,9 @@ class RepoMenuItemView: NSView {
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        // Pill: freshnessColor if showNewIndicator ON, fixed blue otherwise
-        let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? false
-        
-        if data.errorMessage != nil {
-            if let ver = data.version {
-                // Plain text — no pill when data is stale/errored
-                versionLabel.stringValue = ver
-                versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 3, weight: .regular)
-                versionLabel.textColor = .secondaryLabelColor
-                versionLabel.drawsBackground = false
-                versionLabel.backgroundColor = .clear
-                versionLabel.isBezeled = false
-                versionLabel.alignment = .left
-                versionLabel.wantsLayer = true
-                versionLabel.layer?.cornerRadius = 0
-                versionLabel.layer?.masksToBounds = false
-                versionLabel.layer?.backgroundColor = NSColor.clear.cgColor
-                versionLabel.translatesAutoresizingMaskIntoConstraints = false
-                versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-                versionLabel.toolTip = nil
-            } else {
-                versionLabel.stringValue = ""
-                versionLabel.toolTip = nil
-                versionLabel.drawsBackground = false
-                versionLabel.backgroundColor = .clear
-                versionLabel.translatesAutoresizingMaskIntoConstraints = false
-            }
-        } else if let ver = data.version {
-            versionLabel.stringValue = " \(ver) "
-            versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 3, weight: .bold)
-            versionLabel.textColor = .white
-            let pillColor: NSColor = showNewIndicator ? data.freshnessColor : NSColor.systemBlue
-            versionLabel.backgroundColor = pillColor.withAlphaComponent(0.85)
-            versionLabel.isBezeled = false
-            versionLabel.drawsBackground = true
-            versionLabel.alignment = .center
-            versionLabel.wantsLayer = true
-            versionLabel.layer?.cornerRadius = 6
-            versionLabel.layer?.masksToBounds = true
-            versionLabel.translatesAutoresizingMaskIntoConstraints = false
-            versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-        } else if data.isLoading {
-            versionLabel.stringValue = Translations.get("loading")
-            versionLabel.font = .systemFont(ofSize: baseFontSize - 3)
-            versionLabel.textColor = .secondaryLabelColor
-            versionLabel.translatesAutoresizingMaskIntoConstraints = false
-        }
+        // Version Pill / Text
+        // Version Pill
+        configureVersionPill(data: data, layout: "tags")
         
         // Star (matches pill font size)
         configureStarLabel(isFavorite: data.isFavorite, fontSize: baseFontSize - 3)
@@ -314,44 +274,8 @@ class RepoMenuItemView: NSView {
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        // Version pill: grayed out on error to show cached data, full pill when healthy
-        if data.errorMessage != nil {
-            if let ver = data.version {
-                versionLabel.stringValue = ver
-                versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 3, weight: .medium)
-                versionLabel.textColor = .tertiaryLabelColor
-                versionLabel.backgroundColor = .clear
-                versionLabel.drawsBackground = false
-                versionLabel.isBezeled = false
-                versionLabel.toolTip = nil
-                versionLabel.translatesAutoresizingMaskIntoConstraints = false
-                versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-                versionLabel.setContentHuggingPriority(.required, for: .horizontal)
-            } else {
-                versionLabel.stringValue = ""
-                versionLabel.toolTip = nil
-                versionLabel.translatesAutoresizingMaskIntoConstraints = false
-            }
-        } else if let ver = data.version {
-            versionLabel.stringValue = ver
-            versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 3, weight: .medium)
-            versionLabel.textColor = .white
-            versionLabel.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.7)
-            versionLabel.isBezeled = false
-            versionLabel.drawsBackground = true
-            versionLabel.alignment = .center
-            versionLabel.wantsLayer = true
-            versionLabel.layer?.cornerRadius = 4
-            versionLabel.layer?.masksToBounds = true
-            versionLabel.translatesAutoresizingMaskIntoConstraints = false
-            versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-            versionLabel.setContentHuggingPriority(.required, for: .horizontal)
-        } else if data.isLoading {
-            versionLabel.stringValue = Translations.get("loading")
-            versionLabel.font = .systemFont(ofSize: baseFontSize - 3)
-            versionLabel.textColor = .secondaryLabelColor
-            versionLabel.translatesAutoresizingMaskIntoConstraints = false
-        }
+        // Version Pill
+        configureVersionPill(data: data, layout: "cards")
         
         // Leading slot: error warning OR freshness dot
         var topRowViews: [NSView] = []
@@ -423,6 +347,58 @@ class RepoMenuItemView: NSView {
             buttonStack.bottomAnchor.constraint(equalTo: bottomAnchor),
             buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: vStack.trailingAnchor, constant: 8)
         ])
+    }
+    
+    // MARK: - Version Label Helper
+    
+    private func configureVersionPill(data: RepoDisplayData, layout: String) {
+        let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? false
+        let isCards = layout == "cards"
+        let padding = isCards ? "" : " "
+        let cornerRadius: CGFloat = isCards ? 4 : 6
+        let fontWeight: NSFont.Weight = isCards ? .medium : .bold
+        let errorWeight: NSFont.Weight = isCards ? .medium : .regular
+        let errorColor: NSColor = isCards ? .tertiaryLabelColor : .secondaryLabelColor
+        let pillColor: NSColor = isCards ? NSColor.systemBlue.withAlphaComponent(0.7) : (showNewIndicator ? data.freshnessColor : NSColor.systemBlue).withAlphaComponent(0.85)
+
+        versionLabel.translatesAutoresizingMaskIntoConstraints = false
+        versionLabel.toolTip = nil
+        versionLabel.isBezeled = false
+        versionLabel.drawsBackground = false
+        versionLabel.backgroundColor = .clear
+
+        if data.errorMessage != nil {
+            if let ver = data.version {
+                versionLabel.stringValue = ver
+                versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 3, weight: errorWeight)
+                versionLabel.textColor = errorColor
+                versionLabel.alignment = .left
+                versionLabel.wantsLayer = true
+                versionLabel.layer?.cornerRadius = 0
+                versionLabel.layer?.masksToBounds = false
+                versionLabel.layer?.backgroundColor = NSColor.clear.cgColor
+                versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+                versionLabel.setContentHuggingPriority(.required, for: .horizontal)
+            } else {
+                versionLabel.stringValue = ""
+            }
+        } else if let ver = data.version {
+            versionLabel.stringValue = "\(padding)\(ver)\(padding)"
+            versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 3, weight: fontWeight)
+            versionLabel.textColor = .white
+            versionLabel.backgroundColor = pillColor
+            versionLabel.drawsBackground = true
+            versionLabel.alignment = .center
+            versionLabel.wantsLayer = true
+            versionLabel.layer?.cornerRadius = cornerRadius
+            versionLabel.layer?.masksToBounds = true
+            versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+            versionLabel.setContentHuggingPriority(.required, for: .horizontal)
+        } else if data.isLoading {
+            versionLabel.stringValue = Translations.get("loading")
+            versionLabel.font = .systemFont(ofSize: baseFontSize - 3)
+            versionLabel.textColor = .secondaryLabelColor
+        }
     }
     
     // MARK: - Layout: Columns (tabular, with optional color dot)
@@ -551,13 +527,73 @@ class RepoMenuItemView: NSView {
     }
     
     @objc private func deleteClicked() {
-        if let menuItem = enclosingMenuItem {
+        if isConfirmingDelete {
+            // Second click — confirmed, execute inline delete
+            deleteConfirmTimer?.invalidate()
+            deleteConfirmTimer = nil
+            isConfirmingDelete = false
             appDelegate.animateStatusIcon(with: .scale)
-            menuItem.representedObject = repoName
-            appDelegate.performAfterMenuClose {
-                self.appDelegate.handleDeleteRepo(menuItem)
+            
+            // Fire-and-forget fade animation for visual polish
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                self.animator().alphaValue = 0
             }
+            
+            // Use a Timer in .common mode (fires during NSMenu tracking)
+            // instead of NSAnimationContext completion handler which may not fire
+            let deleteTimer = Timer(timeInterval: 0.25, repeats: false) { [weak self] _ in
+                guard let self = self else { return }
+                MainActor.assumeIsolated {
+                    self.appDelegate.deleteRepoInline(repoName: self.repoName)
+                }
+            }
+            RunLoop.main.add(deleteTimer, forMode: .common)
+        } else {
+            // First click — arm confirmation
+            isConfirmingDelete = true
+            
+            // Swap icon to filled trash (armed state)
+            let imageConfig = NSImage.SymbolConfiguration(pointSize: baseFontSize, weight: .medium)
+            deleteBtn.image = NSImage(systemSymbolName: "trash.fill", accessibilityDescription: Translations.get("confirmDelete"))?.withSymbolConfiguration(imageConfig)
+            deleteBtn.contentTintColor = .white
+            deleteBtn.toolTip = Translations.get("confirmDelete")
+            
+            // Fade out other action buttons to focus attention on confirmation
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.15
+                self.installBtn.animator().alphaValue = 0
+                self.notesBtn.animator().alphaValue = 0
+                self.openReleasesBtn.animator().alphaValue = 0
+            }
+            
+            needsDisplay = true
+            
+            // Auto-cancel after 2s (must use .common mode to fire during NSMenu tracking)
+            let timer = Timer(timeInterval: 2.0, repeats: false) { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.cancelDeleteConfirm()
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            deleteConfirmTimer = timer
         }
+    }
+    
+    private func cancelDeleteConfirm() {
+        guard isConfirmingDelete else { return }
+        isConfirmingDelete = false
+        deleteConfirmTimer?.invalidate()
+        deleteConfirmTimer = nil
+        
+        // Restore trash icon
+        let imageConfig = NSImage.SymbolConfiguration(pointSize: baseFontSize, weight: .regular)
+        deleteBtn.image = NSImage(systemSymbolName: "trash", accessibilityDescription: Translations.get("deleteRepo"))?.withSymbolConfiguration(imageConfig)
+        deleteBtn.toolTip = Translations.get("deleteRepo")
+        
+        // Restore normal highlight appearance
+        applyHighlightState(lastHighlightState, animated: true)
+        needsDisplay = true
     }
     
     // MARK: - Highlight Drawing
@@ -586,12 +622,14 @@ class RepoMenuItemView: NSView {
 
         let installAlpha: CGFloat = (caskName != nil && highlighted) ? 1.0 : 0.0
         let alpha: CGFloat = highlighted ? 1.0 : 0.0
+        // During inline delete confirmation, keep deleteBtn visible and skip its hover reset
+        let deleteAlpha: CGFloat = isConfirmingDelete ? 1.0 : alpha
 
         if !highlighted {
             installBtn.resetHoverState()
             notesBtn.resetHoverState()
             openReleasesBtn.resetHoverState()
-            deleteBtn.resetHoverState()
+            if !isConfirmingDelete { deleteBtn.resetHoverState() }
         }
 
         if animated {
@@ -603,13 +641,13 @@ class RepoMenuItemView: NSView {
                 self.installBtn.animator().alphaValue = installAlpha
                 self.notesBtn.animator().alphaValue = alpha
                 self.openReleasesBtn.animator().alphaValue = alpha
-                self.deleteBtn.animator().alphaValue = alpha
+                self.deleteBtn.animator().alphaValue = deleteAlpha
             }
         } else {
             self.installBtn.alphaValue = installAlpha
             self.notesBtn.alphaValue = alpha
             self.openReleasesBtn.alphaValue = alpha
-            self.deleteBtn.alphaValue = alpha
+            self.deleteBtn.alphaValue = deleteAlpha
         }
         
         // Text colors
@@ -639,8 +677,10 @@ class RepoMenuItemView: NSView {
         notesBtn.hoverColor = btnHover
         openReleasesBtn.baseColor = btnBase
         openReleasesBtn.hoverColor = btnHover
-        deleteBtn.baseColor = btnBase
-        deleteBtn.hoverColor = btnHover
+        if !isConfirmingDelete {
+            deleteBtn.baseColor = btnBase
+            deleteBtn.hoverColor = btnHover
+        }
         
         // In cards mode, collapse the version pill background on highlight
         if layoutMode == "cards" {
@@ -678,7 +718,12 @@ class RepoMenuItemView: NSView {
     }
     
     override func draw(_ dirtyRect: NSRect) {
-        if lastHighlightState {
+        if isConfirmingDelete {
+            // Red wash during inline delete confirmation
+            NSColor.systemRed.withAlphaComponent(0.35).set()
+            let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
+            path.fill()
+        } else if lastHighlightState {
             NSColor.selectedContentBackgroundColor.set()
             let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
             path.fill()

@@ -94,6 +94,7 @@ class HeaderMenuItemView: NSView {
         // Quick Add Label (Clipboard)
         quickAddLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .medium)
         quickAddLabel.textColor = .secondaryLabelColor
+        quickAddLabel.alignment = .center
         quickAddLabel.lineBreakMode = .byTruncatingMiddle
         // CRITICAL for truncation inside NSStackView: 
         // 1. Allow it to be compressed easily
@@ -108,8 +109,7 @@ class HeaderMenuItemView: NSView {
         quickAddStack.orientation = .horizontal
         quickAddStack.spacing = 6
         quickAddStack.alignment = .centerY
-        // Ensure the stack doesn't grow beyond its constraints
-        quickAddStack.setViews([quickAddIcon, quickAddLabel], in: .leading)
+        quickAddStack.distribution = .fill
         quickAddStack.translatesAutoresizingMaskIntoConstraints = false
         quickAddStack.isHidden = true
         
