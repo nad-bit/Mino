@@ -1,17 +1,12 @@
 import Cocoa
 
 @MainActor
-class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindowDelegate {
+class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindowDelegate {
     
     let tokenStatusLabel = NSTextField(labelWithString: "")
     let tokenConnectBtn = NSButton(title: Translations.get("connectGitHub"), target: nil, action: nil)
     let tokenDeleteBtn = NSButton(title: Translations.get("deleteToken"), target: nil, action: nil)
-    let oauthCodeLabel = NSTextField(labelWithString: "")
-    let oauthActionBtn = NSButton(title: Translations.get("openBrowser"), target: nil, action: nil)
-    let oauthCancelBtn = NSButton(title: Translations.get("cancelAuth"), target: nil, action: nil)
-    let oauthSpinner = NSProgressIndicator()
-    let oauthStack = NSStackView()
-    var currentVerificationUri: String?
+    private var oauthWindowController: OAuthWindowController?
     
     let intervalLabel = NSTextField(labelWithString: "")
     let intervalSlider = NSSlider()
@@ -26,6 +21,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     private let textSizePicker = NSSegmentedControl()
     
     var tempToken: String?
+    private var isConfirmingDelete = false
     private var isUpdatingSelf = false
     
     // Debounce properties for saving settings
@@ -34,33 +30,15 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     private var textSizeSaveWorkItem: DispatchWorkItem?
     private var generalSaveWorkItem: DispatchWorkItem?
 
-    
-
-    
-    override init(window: NSWindow?) {
-        super.init(window: window)
-    }
-    
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-    
-    convenience init() {
-        // Adjust window height to accommodate the title and multi-line token
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 680),
-                              styleMask: [.titled, .closable, .fullSizeContentView],
-                              backing: .buffered,
-                              defer: false)
-        window.title = Translations.get("preferences")
-        window.center()
-        self.init(window: window)
-        window.delegate = self
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        
+    override func loadView() {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 100))
+        self.view = view
         setupUI()
+    }
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
         loadCurrentSettings()
-        
         NotificationCenter.default.addObserver(self, selector: #selector(configDidUpdate), name: Notification.Name("ConfigChanged"), object: nil)
     }
     
@@ -76,20 +54,13 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     private func setupUI() {
-        guard let window = self.window else { return }
-        
-        let visualEffectView = NSVisualEffectView(frame: window.contentRect(forFrameRect: window.frame))
-        visualEffectView.material = .popover
-        visualEffectView.blendingMode = .behindWindow
-        visualEffectView.state = .active
-        window.contentView = visualEffectView
-        
-        guard let contentView = window.contentView else { return }
+        let contentView = self.view
         
         let stackView = NSStackView()
         stackView.orientation = .vertical
         stackView.alignment = .centerX
         stackView.spacing = 15
+        stackView.detachesHiddenViews = true
         stackView.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         stackView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(stackView)
@@ -101,49 +72,12 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             stackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
         ])
         
-        // --- 0. Header (Icon + Name) ---
-        let headerStack = NSStackView()
-        headerStack.orientation = .vertical
-        headerStack.alignment = .centerX
-        headerStack.spacing = 5
-        headerStack.translatesAutoresizingMaskIntoConstraints = false
-        
-        let appIconImage = NSImage(named: NSImage.applicationIconName) ?? NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
-        let iconView = NSImageView(image: appIconImage!)
-        iconView.imageScaling = .scaleProportionallyUpOrDown
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.widthAnchor.constraint(equalToConstant: 64).isActive = true
-        iconView.heightAnchor.constraint(equalToConstant: 64).isActive = true
-        headerStack.addArrangedSubview(iconView)
-        
-        let appNameLabel = NSTextField(labelWithString: "Mino")
-        appNameLabel.font = .boldSystemFont(ofSize: 18)
-        headerStack.addArrangedSubview(appNameLabel)
-        
-        stackView.addArrangedSubview(headerStack)
-        
-        // --- Footer (Author + Version) ---
-        let footerStack = NSStackView()
-        footerStack.orientation = .vertical
-        footerStack.alignment = .centerX
-        footerStack.spacing = 5
-        footerStack.translatesAutoresizingMaskIntoConstraints = false
-        
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
-        let aboutText = Translations.get("aboutMsg").format(with: ["version": version, "build": build])
-        
-        let appVersionLabel = NSTextField(labelWithString: aboutText)
-        appVersionLabel.alignment = .center
-        appVersionLabel.textColor = .secondaryLabelColor
-        appVersionLabel.font = .systemFont(ofSize: 12)
-        footerStack.addArrangedSubview(appVersionLabel)
-        
         // Adjust alignment for the rest of the form
         let formStack = NSStackView()
         formStack.orientation = .vertical
         formStack.alignment = .centerX
         formStack.spacing = 18
+        formStack.detachesHiddenViews = true
         formStack.translatesAutoresizingMaskIntoConstraints = false
         stackView.addArrangedSubview(formStack)
         formStack.widthAnchor.constraint(equalTo: stackView.widthAnchor, constant: -40).isActive = true
@@ -158,62 +92,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         tokenDeleteBtn.target = self
         tokenDeleteBtn.action = #selector(deleteToken(_:))
         addSettingsRow(to: tokenStack, label: tokenLabel, controls: [tokenStatusLabel, tokenConnectBtn, tokenDeleteBtn])
-        
-        // Setup oauthCodeLabel
-        oauthCodeLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        oauthCodeLabel.textColor = .labelColor
-        oauthCodeLabel.alignment = .center
-        oauthCodeLabel.isSelectable = true
-        oauthCodeLabel.lineBreakMode = .byWordWrapping
-        if let cell = oauthCodeLabel.cell as? NSTextFieldCell {
-            cell.wraps = true
-        }
-        oauthCodeLabel.maximumNumberOfLines = 0
-        
-        oauthActionBtn.target = self
-        oauthActionBtn.action = #selector(openGitHubAuth(_:))
-        oauthCancelBtn.target = self
-        oauthCancelBtn.action = #selector(cancelOAuth(_:))
-        
-        oauthSpinner.style = .spinning
-        oauthSpinner.controlSize = .small
-        oauthSpinner.isDisplayedWhenStopped = false
-        oauthSpinner.translatesAutoresizingMaskIntoConstraints = false
-        
-        oauthStack.orientation = .vertical
-        oauthStack.alignment = .centerX
-        oauthStack.spacing = 0
-        oauthStack.translatesAutoresizingMaskIntoConstraints = false
-        
-        let oauthBox = NSBox()
-        oauthBox.boxType = .custom
-        oauthBox.cornerRadius = 8
-        oauthBox.borderWidth = 1
-        oauthBox.borderColor = NSColor.separatorColor.withAlphaComponent(0.2)
-        oauthBox.fillColor = NSColor.controlBackgroundColor.withAlphaComponent(0.5)
-        oauthBox.titlePosition = .noTitle
-        oauthBox.translatesAutoresizingMaskIntoConstraints = false
-        
-        let oauthInnerStack = NSStackView()
-        oauthInnerStack.orientation = .vertical
-        oauthInnerStack.alignment = .centerX
-        oauthInnerStack.spacing = 16
-        oauthInnerStack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
-        
-        let oauthButtonStack = NSStackView(views: [oauthCancelBtn, oauthActionBtn, oauthSpinner])
-        oauthButtonStack.orientation = .horizontal
-        oauthButtonStack.spacing = 10
-        oauthButtonStack.alignment = .centerY
-        
-        oauthInnerStack.addArrangedSubview(oauthCodeLabel)
-        oauthInnerStack.addArrangedSubview(oauthButtonStack)
-        
-        oauthBox.contentView = oauthInnerStack
-        oauthStack.addArrangedSubview(oauthBox)
-        
-        oauthStack.isHidden = true
-        
-        tokenStack.addArrangedSubview(oauthStack)
         
         formStack.addArrangedSubview(createGroupBox(for: tokenStack))
         
@@ -335,32 +213,29 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         
         formStack.addArrangedSubview(createGroupBox(for: startupStack))
         
-        // Add a bottom spacer to push content up if needed and provide bottom margin
-        let spacer = NSView()
-        spacer.translatesAutoresizingMaskIntoConstraints = false
-        spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
-        stackView.addArrangedSubview(spacer)
-        
-        stackView.addArrangedSubview(footerStack)
     }
     
     private func setOAuthStack(hidden: Bool) {
-        if oauthStack.isHidden == hidden { return }
-        oauthStack.isHidden = hidden
+        // No longer needed with modal OAuth
+    }
+    
+    func updatePreferredContentSize() {
+        self.view.invalidateIntrinsicContentSize()
+        self.view.layoutSubtreeIfNeeded()
         
-        if let window = self.window, let contentView = window.contentView {
-            contentView.needsLayout = true
-            contentView.layoutSubtreeIfNeeded()
-            let fittingSize = contentView.fittingSize
-            var newFrame = window.frame
-            newFrame.origin.y += newFrame.size.height - fittingSize.height
-            newFrame.size.height = fittingSize.height
-            
-            NSAnimationContext.runAnimationGroup({ context in
-                context.duration = 0.25
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                window.animator().setFrame(newFrame, display: true)
-            }, completionHandler: nil)
+        let targetSize = self.view.fittingSize
+        self.preferredContentSize = targetSize
+        
+        // Notify popover if it's shown and force its window to update
+        if let popover = (NSApp.delegate as? AppDelegate)?.settingsPopover {
+            popover.contentSize = targetSize
+            // Some versions of macOS need an extra kick to resize the popover's window
+            if let window = popover.contentViewController?.view.window {
+                var frame = window.frame
+                frame.size = popover.contentSize
+                // We don't set the frame directly to avoid fighting with popover positioning,
+                // but setting preferredContentSize again can help.
+            }
         }
     }
     
@@ -381,9 +256,11 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             tokenConnectBtn.isEnabled = true
         }
         
-        setOAuthStack(hidden: true)
-        oauthSpinner.stopAnimation(nil)
-        GitHubAuth.shared.cancelPolling()
+        isConfirmingDelete = false
+        tokenDeleteBtn.attributedTitle = NSAttributedString(string: Translations.get("deleteToken"), attributes: [:])
+        tokenDeleteBtn.contentTintColor = nil
+        
+        // Load Interval
         
         // Load Interval
         let mins = ConfigManager.shared.config.refreshMinutes
@@ -417,9 +294,9 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         newIndicatorStepper.integerValue = days
         updateIndicatorDaysLabel()
         updateIndicatorStepperVisibility()
+        
+        updatePreferredContentSize()
     }
-    
-
     
     @objc private func intervalChanged(_ sender: NSSlider) {
         updateIntervalLabel()
@@ -435,14 +312,11 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             ConfigManager.shared.config.refreshMinutes = currentHours * 60
             ConfigManager.shared.saveConfig()
             
-            // The background countdown timer naturally updates the interval next minute
-            // without needing an expensive full-scale menu reconstruction here.
             self.initialIntervalHours = currentHours
             self.isUpdatingSelf = false
         }
         
         intervalSaveWorkItem = pendingSave
-        // Delay ensures we only save once the user settles on a value
         DispatchQueue.main.asyncAfter(deadline: .now() + Constants.interactiveControlDelaySeconds, execute: pendingSave)
     }
     
@@ -452,92 +326,91 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         intervalLabel.stringValue = Translations.get("intervalDynamic").format(with: ["hours": "\(hours)", "unit": unit])
     }
     
-    func windowWillClose(_ notification: Notification) {
-        // Save handled instantly by individual control actions to prevent data loss on forced closures
-        // Return to accessory mode so Dock auto-hide works
-    }
-    
-    @objc private func closeWindow(_ sender: NSButton) {
-        self.window?.close()
-    }
-    
     @objc private func startOAuth(_ sender: NSButton) {
-        tokenConnectBtn.isEnabled = false
-        setOAuthStack(hidden: false)
-        oauthSpinner.startAnimation(nil)
-        oauthCodeLabel.stringValue = Translations.get("loading")
-        oauthActionBtn.isHidden = true
+        // CLOSE POPOVER FIRST to avoid blocking the screen during authentication
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.settingsPopover?.performClose(nil)
+        }
         
         Task {
             do {
                 let response = try await GitHubAuth.shared.requestDeviceCode()
                 DispatchQueue.main.async {
-                    self.oauthCodeLabel.stringValue = Translations.get("oauthInstructions").format(with: ["code": response.userCode])
-                    self.currentVerificationUri = response.verificationUri
-                    self.oauthActionBtn.isHidden = false
-                    
+                    // AUTO-COPY CODE to clipboard for convenience
                     let pasteboard = NSPasteboard.general
                     pasteboard.clearContents()
                     pasteboard.setString(response.userCode, forType: .string)
-                }
-                
-                if let token = try await GitHubAuth.shared.pollForToken(deviceCode: response.deviceCode, interval: response.interval, expiresIn: response.expiresIn) {
-                    DispatchQueue.main.async {
-                        _ = ConfigManager.shared.saveTokenToKeychain(token)
-                        ConfigManager.shared.token = token
-                        self.loadCurrentSettings()
-                        HUDPanel.shared.show(title: Translations.get("configureToken"), subtitle: Translations.get("tokenValidationSuccess"))
-                        if let delegate = NSApp.delegate as? AppDelegate {
-                             delegate.triggerFullRefresh(nil)
-                        }
-                    }
-                } else {
-                    DispatchQueue.main.async {
-                        self.loadCurrentSettings()
-                    }
+                    
+                    self.oauthWindowController = OAuthWindowController(
+                        userCode: response.userCode,
+                        verificationUri: response.verificationUri,
+                        deviceCode: response.deviceCode,
+                        interval: response.interval,
+                        expiresIn: response.expiresIn
+                    )
+                    self.oauthWindowController?.delegate = self
+                    
+                    // Show as standalone window
+                    self.oauthWindowController?.showWindow(nil)
+                    NSApp.activate(ignoringOtherApps: true)
                 }
             } catch {
                 DispatchQueue.main.async {
+                    sender.isEnabled = true
                     if let appDelegate = NSApp.delegate as? AppDelegate {
                         appDelegate.animateStatusIcon(with: .wiggle)
                     }
                     HUDPanel.shared.show(title: Translations.get("error"), subtitle: Translations.get("authError"))
-                    self.loadCurrentSettings()
                 }
             }
         }
     }
     
-    @objc private func openGitHubAuth(_ sender: NSButton) {
-        if let uri = currentVerificationUri, let url = URL(string: uri) {
-            NSWorkspace.shared.open(url)
+    // MARK: - OAuthWindowDelegate
+    func oauthFinished(token: String?) {
+        self.oauthWindowController = nil
+        self.tokenConnectBtn.isEnabled = true
+        
+        if let token = token {
+            _ = ConfigManager.shared.saveTokenToKeychain(token)
+            ConfigManager.shared.token = token
+            self.loadCurrentSettings()
+            HUDPanel.shared.show(title: Translations.get("configureToken"), subtitle: Translations.get("tokenValidationSuccess"))
+            if let delegate = NSApp.delegate as? AppDelegate {
+                 delegate.triggerFullRefresh(nil)
+            }
+        } else {
+            self.loadCurrentSettings()
         }
     }
     
-    @objc private func cancelOAuth(_ sender: NSButton) {
-        GitHubAuth.shared.cancelPolling()
-        loadCurrentSettings()
-    }
-    
     @objc private func deleteToken(_ sender: NSButton) {
-        // Confirmation dialog
-        let confirm = NSAlert()
-        confirm.messageText = Translations.get("confirmDeleteToken")
-        confirm.alertStyle = .warning
-        confirm.addButton(withTitle: Translations.get("deleteToken"))
-        confirm.addButton(withTitle: Translations.get("cancel"))
-        
-        confirm.beginSheetModal(for: self.window!) { response in
-            guard response == .alertFirstButtonReturn else { return }
+        if !isConfirmingDelete {
+            isConfirmingDelete = true
             
+            let title = Translations.get("confirmAction")
+            let attributes: [NSAttributedString.Key: Any] = [
+                .foregroundColor: NSColor.systemRed,
+                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            ]
+            sender.attributedTitle = NSAttributedString(string: title, attributes: attributes)
+            
+            // Auto-reset after 5 seconds if no action is taken
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+                guard let self = self, self.isConfirmingDelete else { return }
+                self.isConfirmingDelete = false
+                self.loadCurrentSettings() 
+            }
+        } else {
+            isConfirmingDelete = false
             _ = ConfigManager.shared.deleteTokenFromKeychain()
             ConfigManager.shared.token = nil
             self.loadCurrentSettings()
+            HUDPanel.shared.show(title: Translations.get("configureToken"), subtitle: Translations.get("tokenValidationEmpty"))
             
-            // Notify user of reverted limits
-            HUDPanel.shared.show(title: Translations.get("deleteToken"), subtitle: Translations.get("tokenValidationEmpty"))
-            
-            self.window?.makeFirstResponder(nil)
+            if let delegate = NSApp.delegate as? AppDelegate {
+                delegate.triggerFullRefresh(nil)
+            }
         }
     }
     
@@ -554,7 +427,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let pending = DispatchWorkItem { [weak self] in
             ConfigManager.shared.saveConfig()
             if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.setupMenu()
+                delegate.rebuildMenu()
             }
             self?.isUpdatingSelf = false
         }
@@ -571,7 +444,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let pending = DispatchWorkItem { [weak self] in
             ConfigManager.shared.saveConfig()
             if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.setupMenu()
+                delegate.rebuildMenu()
             }
             self?.isUpdatingSelf = false
         }
@@ -588,7 +461,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let pending = DispatchWorkItem { [weak self] in
             ConfigManager.shared.saveConfig()
             if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.setupMenu()
+                delegate.rebuildMenu()
             }
             self?.isUpdatingSelf = false
         }
@@ -599,7 +472,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     @objc private func indicatorDaysChanged(_ sender: NSStepper) {
         updateIndicatorDaysLabel()
         
-        // Cancel any pending save
         indicatorSaveWorkItem?.cancel()
         
         let pendingSave = DispatchWorkItem { [weak self] in
@@ -608,13 +480,12 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             ConfigManager.shared.config.newIndicatorDays = self.newIndicatorStepper.integerValue
             ConfigManager.shared.saveConfig()
             if let delegate = NSApp.delegate as? AppDelegate {
-                 delegate.setupMenu()
+                 delegate.rebuildMenu()
             }
             self.isUpdatingSelf = false
         }
         
         indicatorSaveWorkItem = pendingSave
-        // Delay ensures holding the button is fast while only the final value is saved
         DispatchQueue.main.asyncAfter(deadline: .now() + Constants.interactiveControlDelaySeconds, execute: pendingSave)
     }
     
@@ -628,7 +499,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         let pending = DispatchWorkItem { [weak self] in
             ConfigManager.shared.saveConfig()
             if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.setupMenu()
+                delegate.rebuildMenu()
             }
             self?.isUpdatingSelf = false
         }
@@ -642,7 +513,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         switch sender.selectedSegment {
         case 0: newValue = max(Int(Constants.menuFontSizeMin), current - 1)
         case 2: newValue = min(Int(Constants.menuFontSizeMax), current + 1)
-        default: return  // middle segment — display only, no action
+        default: return
         }
         textSizePicker.setLabel("\(newValue)", forSegment: 1)
         updateTextSizePicker()
@@ -663,7 +534,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
             ConfigManager.shared.config.menuFontSize = size
             ConfigManager.shared.saveConfig()
             if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.setupMenu()
+                delegate.rebuildMenu()
             }
             self.isUpdatingSelf = false
         }
@@ -677,14 +548,12 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
     }
     
     private func updateIndicatorStepperVisibility() {
-        // All three layouts (columns, cards, tags) now support showNewIndicator freely.
         let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
         newIndicatorCheckbox.isEnabled = true
         newIndicatorCheckbox.state = showNewIndicator ? .on : .off
         newIndicatorStepper.isEnabled = showNewIndicator
     }
     
-
     private func addSettingsRow(to stack: NSStackView, label: NSView, controls: [NSView]) {
         let row = NSStackView()
         row.orientation = .horizontal
@@ -692,7 +561,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         row.spacing = 10
         row.translatesAutoresizingMaskIntoConstraints = false
         
-        // Allow the label to truncate if the row is tight
         if let textField = label as? NSTextField {
             textField.lineBreakMode = .byTruncatingTail
             textField.setContentCompressionResistancePriority(NSLayoutConstraint.Priority.defaultLow, for: NSLayoutConstraint.Orientation.horizontal)
@@ -718,6 +586,7 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 15
+        stack.detachesHiddenViews = true
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
     }
@@ -738,8 +607,8 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         cv.addSubview(innerStack)
         
         NSLayoutConstraint.activate([
-            innerStack.topAnchor.constraint(equalTo: cv.topAnchor, constant: 14),
-            innerStack.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -14),
+            innerStack.topAnchor.constraint(equalTo: cv.topAnchor, constant: 12),
+            innerStack.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -12),
             innerStack.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 16),
             innerStack.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -16),
             box.widthAnchor.constraint(equalToConstant: 440)
@@ -748,7 +617,6 @@ class SettingsWindowController: NSWindowController, NSTextFieldDelegate, NSWindo
         return box
     }
     
-    // Extracted Login Item Logic for reuse
     private func isLoginItem() -> Bool {
         let launchAgentPath = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/\(Constants.launchAgentLabel).plist")
         return FileManager.default.fileExists(atPath: launchAgentPath.path)

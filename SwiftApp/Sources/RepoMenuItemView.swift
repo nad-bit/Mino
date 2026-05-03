@@ -40,7 +40,8 @@ class MenuActionButton: NSButton {
     }
     
     override var intrinsicContentSize: NSSize {
-        return NSSize(width: 28, height: NSView.noIntrinsicMetric)
+        // Buttons should be slightly smaller than the row height (approx 22pt) to avoid 'sticking out'
+        return NSSize(width: 26, height: 18)
     }
     
     override func updateTrackingAreas() {
@@ -81,7 +82,7 @@ class RepoMenuItemView: NSView {
     // UI Elements (common)
     private let titleLabel = NSTextField(labelWithString: "")
     private let installBtn = MenuActionButton()
-    private let openReleasesBtn = MenuActionButton()
+    private let openRepoBtn = MenuActionButton()
     private let notesBtn = MenuActionButton()
     private let deleteBtn = MenuActionButton()
     private let buttonStack = NSStackView()
@@ -141,6 +142,7 @@ class RepoMenuItemView: NSView {
         self.baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
         self.displayData = displayData
         self.originalDate = displayData.originalDate
+        self.wasEverHovered = appDelegate.isRepoRead(repoName)
         
         let rowHeight: CGFloat = (layout == "cards") ? baseFontSize + 27 : baseFontSize + 9
         
@@ -161,6 +163,65 @@ class RepoMenuItemView: NSView {
         }
         
         applyHighlightState(false, animated: false)
+        
+        self.wantsLayer = true
+        self.layerContentsRedrawPolicy = .onSetNeedsDisplay
+        self.layer?.cornerRadius = 5
+        self.layer?.masksToBounds = true
+    }
+    
+    /// Calculates the ideal width this row needs to show its content without truncation.
+    func calculateDesiredWidth() -> CGFloat {
+        let nameWidth = titleLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
+        let buttonCount = buttonStack.arrangedSubviews.count
+        let btnHeight = (layoutMode == "cards") ? baseFontSize + 22 : baseFontSize + 8
+        let buttonsWidth = CGFloat(buttonCount) * (btnHeight + 4)
+        
+        switch layoutMode {
+        case "cards":
+            // Cards have two lines, name is on top.
+            // Width = margins (18+12) + icon/dot (12) + spacing (6) + max(name, subtitle) + spacing (8) + buttons
+            let subWidth = subtitleLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
+            let versionWidth = versionLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
+            let contentWidth = max(nameWidth + 6 + versionWidth, subWidth + 20) // 20 for star
+            return 18 + 12 + 6 + contentWidth + 8 + buttonsWidth + 12
+            
+        case "tags":
+            // Single line: margin(12) + [warning?] + name + spacing(8) + version + spacing(8) + star(16) + spacing(6) + buttons + margin(12)
+            let versionWidth = versionLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
+            return 12 + (displayData.errorMessage != nil ? 18 : 0) + nameWidth + 8 + versionWidth + 8 + 16 + 6 + buttonsWidth + 12
+            
+        case "columns":
+            // Fixed columns + margins + buttons
+            // If nameColumnWidth or versionColumnWidth are set, use them as minimums
+            let totalColumns = (nameColumnWidth > 0 ? nameColumnWidth : nameWidth) + (versionColumnWidth > 0 ? versionColumnWidth : 60) + 60 + 20 // 60 for age, 20 for star
+            return 18 + totalColumns + 8 + buttonsWidth + 12
+            
+        default:
+            return 400
+        }
+    }
+    
+    override func viewWillMove(toSuperview newSuperview: NSView?) {
+        super.viewWillMove(toSuperview: newSuperview)
+    }
+    
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+    }
+    
+    func setHighlighted(_ highlighted: Bool) {
+        if highlighted != lastHighlightState {
+            lastHighlightState = highlighted
+            
+            if highlighted {
+                wasEverHovered = true
+                appDelegate.markRepoAsRead(repoName)
+            }
+            
+            applyHighlightState(highlighted)
+            needsDisplay = true
+        }
     }
     
     required init?(coder: NSCoder) {
@@ -174,10 +235,10 @@ class RepoMenuItemView: NSView {
             setupButton(installBtn, icon: "shippingbox", action: #selector(installClicked), tooltip: Translations.get("installUpdate"))
         }
         setupButton(notesBtn, icon: "doc.text", action: #selector(notesClicked), tooltip: Translations.get("releaseNotes"))
-        setupButton(openReleasesBtn, icon: "arrow.up.right.square", action: #selector(openReleasesClicked), tooltip: Translations.get("openReleases"))
+        setupButton(openRepoBtn, icon: "safari", action: #selector(openRepoClicked), tooltip: Translations.get("openRepo"))
         setupButton(deleteBtn, icon: "trash", action: #selector(deleteClicked), tooltip: Translations.get("deleteRepo"))
         
-        let buttons = [installBtn, notesBtn, openReleasesBtn, deleteBtn].filter { $0.action != nil }
+        let buttons = [installBtn, notesBtn, openRepoBtn, deleteBtn].filter { $0.action != nil }
         buttonStack.setViews(buttons, in: .leading)
         buttonStack.orientation = .horizontal
         buttonStack.spacing = 0
@@ -197,6 +258,12 @@ class RepoMenuItemView: NSView {
         btn.baseColor = .secondaryLabelColor
         btn.hoverColor = .labelColor
         btn.wantsLayer = true
+        
+        // Ensure buttons don't exceed row height
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        let btnHeight = (layoutMode == "cards") ? baseFontSize + 22 : baseFontSize + 8
+        btn.widthAnchor.constraint(equalToConstant: btnHeight + 4).isActive = true
+        btn.heightAnchor.constraint(equalToConstant: btnHeight).isActive = true
     }
     
     // MARK: - Star Label (shared by all modes)
@@ -243,22 +310,26 @@ class RepoMenuItemView: NSView {
         let contentStack = NSStackView(views: contentViews)
         contentStack.orientation = .horizontal
         contentStack.spacing = 8
-        contentStack.alignment = .firstBaseline
+        contentStack.alignment = .centerY
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         
         addSubview(contentStack)
         addSubview(buttonStack)
         
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        titleLabel.setContentHuggingPriority(.required, for: .horizontal)
+        versionLabel.setContentHuggingPriority(.required, for: .horizontal)
+        starLabel.setContentHuggingPriority(.required, for: .horizontal)
+        
         buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
+        buttonStack.setContentHuggingPriority(.required, for: .horizontal)
         
         NSLayoutConstraint.activate([
-            contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            buttonStack.topAnchor.constraint(equalTo: topAnchor),
-            buttonStack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: contentStack.trailingAnchor, constant: 8)
+            buttonStack.leadingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: 6),
+            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            self.trailingAnchor.constraint(equalTo: buttonStack.trailingAnchor, constant: 12)
         ])
     }
     
@@ -342,10 +413,9 @@ class RepoMenuItemView: NSView {
         NSLayoutConstraint.activate([
             vStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             vStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            buttonStack.topAnchor.constraint(equalTo: topAnchor),
-            buttonStack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: vStack.trailingAnchor, constant: 8)
+            buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: vStack.trailingAnchor, constant: 8),
+            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            self.trailingAnchor.constraint(equalTo: buttonStack.trailingAnchor, constant: 12)
         ])
     }
     
@@ -356,10 +426,9 @@ class RepoMenuItemView: NSView {
         let isCards = layout == "cards"
         let padding = isCards ? "" : " "
         let cornerRadius: CGFloat = isCards ? 4 : 6
-        let fontWeight: NSFont.Weight = isCards ? .medium : .bold
         let errorWeight: NSFont.Weight = isCards ? .medium : .regular
         let errorColor: NSColor = isCards ? .tertiaryLabelColor : .secondaryLabelColor
-        let pillColor: NSColor = isCards ? NSColor.systemBlue.withAlphaComponent(0.7) : (showNewIndicator ? data.freshnessColor : NSColor.systemBlue).withAlphaComponent(0.85)
+        let pillColor: NSColor = isCards ? NSColor.systemBlue.withAlphaComponent(0.8) : (showNewIndicator ? data.freshnessColor : NSColor.systemBlue)
 
         versionLabel.translatesAutoresizingMaskIntoConstraints = false
         versionLabel.toolTip = nil
@@ -384,12 +453,14 @@ class RepoMenuItemView: NSView {
             }
         } else if let ver = data.version {
             versionLabel.stringValue = "\(padding)\(ver)\(padding)"
-            versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 3, weight: fontWeight)
-            versionLabel.textColor = .white
-            versionLabel.backgroundColor = pillColor
-            versionLabel.drawsBackground = true
+            versionLabel.font = .systemFont(ofSize: baseFontSize - 2, weight: .bold)
+            versionLabel.textColor = NSColor.white
+            versionLabel.drawsBackground = false
             versionLabel.alignment = .center
             versionLabel.wantsLayer = true
+            versionLabel.appearance = NSAppearance(named: .aqua) // Forces solid white text, bypassing Dark Mode vibrancy dimming
+            versionLabel.layer?.backgroundColor = pillColor.cgColor
+            versionLabel.layer?.opacity = 1.0
             versionLabel.layer?.cornerRadius = cornerRadius
             versionLabel.layer?.masksToBounds = true
             versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -488,41 +559,31 @@ class RepoMenuItemView: NSView {
         NSLayoutConstraint.activate([
             contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            buttonStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            buttonStack.topAnchor.constraint(equalTo: topAnchor),
-            buttonStack.bottomAnchor.constraint(equalTo: bottomAnchor),
-            buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: contentStack.trailingAnchor, constant: 8)
+            buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: contentStack.trailingAnchor, constant: 8),
+            buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            self.trailingAnchor.constraint(equalTo: buttonStack.trailingAnchor, constant: 12)
         ])
     }
     
     // MARK: - Actions
     @objc private func installClicked() {
-        if let menuItem = enclosingMenuItem {
+        if let caskName = caskName {
             appDelegate.animateStatusIcon(with: .scale)
-            menuItem.representedObject = caskName
             appDelegate.performAfterMenuClose {
-                self.appDelegate.handleInstallBrewCask(menuItem)
+                self.appDelegate.handleInstallBrewCask(for: caskName)
             }
         }
     }
     
     @objc private func notesClicked() {
-        if let menuItem = enclosingMenuItem {
-            appDelegate.animateStatusIcon(with: .scale)
-            menuItem.representedObject = repoName
-            appDelegate.performAfterMenuClose {
-                self.appDelegate.handleShowNotes(menuItem)
-            }
-        }
+        appDelegate.animateStatusIcon(with: .scale)
+        appDelegate.handleShowNotes(for: repoName, relativeTo: self)
     }
     
-    @objc private func openReleasesClicked() {
-        if let menuItem = enclosingMenuItem {
-            appDelegate.animateStatusIcon(with: .scale)
-            menuItem.representedObject = repoName
-            appDelegate.performAfterMenuClose {
-                self.appDelegate.handleOpenReleases(menuItem)
-            }
+    @objc private func openRepoClicked() {
+        appDelegate.animateStatusIcon(with: .scale)
+        appDelegate.performAfterMenuClose {
+            self.appDelegate.handleOpenRepo(for: self.repoName)
         }
     }
     
@@ -564,7 +625,7 @@ class RepoMenuItemView: NSView {
                 ctx.duration = 0.15
                 self.installBtn.animator().alphaValue = 0
                 self.notesBtn.animator().alphaValue = 0
-                self.openReleasesBtn.animator().alphaValue = 0
+                self.openRepoBtn.animator().alphaValue = 0
             }
             
             needsDisplay = true
@@ -598,8 +659,8 @@ class RepoMenuItemView: NSView {
     
     // MARK: - Highlight Drawing
     
-    func menuDidChangeHighlight(highlightedItem: NSMenuItem?) {
-        let highlighted = (highlightedItem === enclosingMenuItem)
+    func menuDidChangeHighlight(highlightedItem: Any?) {
+        let highlighted = (highlightedItem as? RepoMenuItemView) === self
         if highlighted != lastHighlightState {
             lastHighlightState = highlighted
             
@@ -609,7 +670,7 @@ class RepoMenuItemView: NSView {
             }
             
             applyHighlightState(highlighted)
-            needsDisplay = true
+            needsDisplay = true // Triggers updateLayer()
         }
     }
     
@@ -617,7 +678,7 @@ class RepoMenuItemView: NSView {
         // Ensure buttons are always part of the layout
         if installBtn.isHidden { installBtn.isHidden = false }
         if notesBtn.isHidden { notesBtn.isHidden = false }
-        if openReleasesBtn.isHidden { openReleasesBtn.isHidden = false }
+        if openRepoBtn.isHidden { openRepoBtn.isHidden = false }
         if deleteBtn.isHidden { deleteBtn.isHidden = false }
 
         let installAlpha: CGFloat = (caskName != nil && highlighted) ? 1.0 : 0.0
@@ -628,7 +689,7 @@ class RepoMenuItemView: NSView {
         if !highlighted {
             installBtn.resetHoverState()
             notesBtn.resetHoverState()
-            openReleasesBtn.resetHoverState()
+            openRepoBtn.resetHoverState()
             if !isConfirmingDelete { deleteBtn.resetHoverState() }
         }
 
@@ -640,13 +701,13 @@ class RepoMenuItemView: NSView {
                 
                 self.installBtn.animator().alphaValue = installAlpha
                 self.notesBtn.animator().alphaValue = alpha
-                self.openReleasesBtn.animator().alphaValue = alpha
+                self.openRepoBtn.animator().alphaValue = alpha
                 self.deleteBtn.animator().alphaValue = deleteAlpha
             }
         } else {
             self.installBtn.alphaValue = installAlpha
             self.notesBtn.alphaValue = alpha
-            self.openReleasesBtn.alphaValue = alpha
+            self.openRepoBtn.alphaValue = alpha
             self.deleteBtn.alphaValue = deleteAlpha
         }
         
@@ -675,8 +736,8 @@ class RepoMenuItemView: NSView {
         installBtn.hoverColor = btnHover
         notesBtn.baseColor = btnBase
         notesBtn.hoverColor = btnHover
-        openReleasesBtn.baseColor = btnBase
-        openReleasesBtn.hoverColor = btnHover
+        openRepoBtn.baseColor = btnBase
+        openRepoBtn.hoverColor = btnHover
         if !isConfirmingDelete {
             deleteBtn.baseColor = btnBase
             deleteBtn.hoverColor = btnHover
@@ -717,24 +778,18 @@ class RepoMenuItemView: NSView {
         label.attributedStringValue = attrStr
     }
     
-    override func draw(_ dirtyRect: NSRect) {
+    override var wantsUpdateLayer: Bool { return true }
+    
+    override func updateLayer() {
         if isConfirmingDelete {
-            // Red wash during inline delete confirmation
-            NSColor.systemRed.withAlphaComponent(0.35).set()
-            let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
-            path.fill()
+            layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.25).cgColor
         } else if lastHighlightState {
-            NSColor.selectedContentBackgroundColor.set()
-            let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
-            path.fill()
+            layer?.backgroundColor = NSColor.selectedContentBackgroundColor.cgColor
         } else if !wasEverHovered && displayData.isNew {
-            // Subtle highlight for unread/new notification
-            NSColor.controlAccentColor.withAlphaComponent(0.2).set()
-            let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 0), xRadius: 4, yRadius: 4)
-            path.fill()
+            layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
+        } else {
+            layer?.backgroundColor = nil
         }
-        
-        super.draw(dirtyRect)
     }
     
     override func layout() {
@@ -763,18 +818,15 @@ class RepoMenuItemView: NSView {
         }
     }
     
-    // MARK: - Mouse Events
+    // MARK: - Mouse Events (Selection handled by Parent Controller)
     
-    // Left click: open GitHub repo page
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+    }
+    
+    // Left click: Selection handled by MainPopoverViewController (mouse events)
     override func mouseUp(with event: NSEvent) {
-        if enclosingMenuItem != nil {
-            appDelegate.animateStatusIcon(with: .scale)
-            appDelegate.mainMenu.cancelTracking()
-            if let url = URL(string: "https://github.com/\(repoName)") {
-                NSWorkspace.shared.open(url)
-                appDelegate.hideInformationalWindows()
-            }
-        }
+        // No action on background click anymore, use explicit buttons
     }
     
     // Right click: toggle favorite (in-place, no menu rebuild)

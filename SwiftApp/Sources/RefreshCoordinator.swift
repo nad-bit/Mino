@@ -59,12 +59,12 @@ class RefreshCoordinator {
         let nextRefreshSeconds = nextRefreshDate.timeIntervalSince(Date())
         
         // Lightweight update of repository age labels and header title
-        delegate.headerView?.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
+        if let headerView = delegate.mainPopoverVC.view.subviews.first?.subviews.first(where: { $0 is HeaderMenuItemView }) as? HeaderMenuItemView {
+            headerView.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
+        }
         
-        for menuItem in delegate.mainMenu.items {
-            if let repoView = menuItem.view as? RepoMenuItemView {
-                repoView.updateAgeDisplay()
-            }
+        for repoView in delegate.mainPopoverVC.repoViews {
+            repoView.updateAgeDisplay()
         }
         
         if nextRefreshSeconds <= 0 {
@@ -79,7 +79,9 @@ class RefreshCoordinator {
         if isRefreshing { return }
         isRefreshing = true
         
-        delegate.headerView?.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
+        if let headerView = delegate.mainPopoverVC.view.subviews.first?.subviews.first(where: { $0 is HeaderMenuItemView }) as? HeaderMenuItemView {
+            headerView.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
+        }
         delegate.animateStatusIcon(with: .rotate)
         
         // 1. Optimized prioritized sorting (O(N) lookup preparation)
@@ -179,6 +181,7 @@ class RefreshCoordinator {
             if hasFreshUpdates {
                 UserDefaults.standard.set(updatedNotifiedVersions, forKey: "LastNotifiedVersions")
                 UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
+                delegate.updateStatusIcon(hasUpdates: true)
             }
 
             if newCaskVersionsDetected {
@@ -206,7 +209,7 @@ class RefreshCoordinator {
                     if didDiscover {
                         await MainActor.run {
                             ConfigManager.shared.saveConfig()
-                            delegate.setupMenu()
+                            delegate.rebuildMenu()
                         }
                     }
                 }
@@ -217,7 +220,7 @@ class RefreshCoordinator {
             self.lastRefreshTime = Date()
             self.startTimers()
             delegate.updatePopularTagsCache()
-            delegate.setupMenu()
+            delegate.rebuildMenu()
         }
     }
     
@@ -234,23 +237,28 @@ class RefreshCoordinator {
             
             guard !reposToUpdate.isEmpty else { return }
             
+            var didUpdateAny = false
             for repoName in reposToUpdate {
                 let fetchedTags = await GitHubAPI.shared.fetchRepoTags(repo: repoName)
                 
                 await MainActor.run {
                     if let currentIndex = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
                         ConfigManager.shared.config.repos[currentIndex].tags = fetchedTags ?? []
-                        ConfigManager.shared.saveConfig()
+                        didUpdateAny = true
                     }
                 }
                 
                 // Throttle to 1 request/second to avoid triggering GitHub API secondary rate limits
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
-            // Once all 200+ repos are processed, we update the cache exactly once for stability.
-            await MainActor.run {
-                delegate.updatePopularTagsCache()
-                delegate.setupMenu() // Re-render tag cloud if it's currently relevant
+            
+            // Once all 200+ repos are processed, we save and update the cache exactly once for stability.
+            if didUpdateAny {
+                await MainActor.run {
+                    ConfigManager.shared.saveConfig()
+                    delegate.updatePopularTagsCache()
+                    delegate.rebuildMenu() // Re-render tag cloud if it's currently relevant
+                }
             }
         }
     }

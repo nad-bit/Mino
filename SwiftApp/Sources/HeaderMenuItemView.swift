@@ -258,8 +258,8 @@ class HeaderMenuItemView: NSView {
         applyHighlightState(shouldHighlightStyle)
     }
     
-    func menuDidChangeHighlight(highlightedItem: NSMenuItem?) {
-        let highlighted = (highlightedItem === enclosingMenuItem)
+    func menuDidChangeHighlight(highlightedItem: Any?) {
+        let highlighted = (highlightedItem as? HeaderMenuItemView) === self
         if highlighted != lastHighlightState {
             lastHighlightState = highlighted
             
@@ -299,31 +299,26 @@ class HeaderMenuItemView: NSView {
     }
     
     @objc private func refreshClicked() {
-        if let menuItem = enclosingMenuItem {
-            appDelegate.animateStatusIcon(with: .scale)
-            // Note: We intentionally don't close the menu for refresh
-            DispatchQueue.main.async {
-                self.appDelegate.triggerFullRefresh(menuItem)
-            }
+        appDelegate.animateStatusIcon(with: .scale)
+        // Note: We intentionally don't close the menu for refresh
+        DispatchQueue.main.async {
+            self.appDelegate.triggerFullRefresh(nil)
         }
     }
     
     @objc private func addClicked() {
-        if let menuItem = enclosingMenuItem {
-            appDelegate.animateStatusIcon(with: .scale)
-            appDelegate.performAfterMenuClose {
-                if let repo = self.quickAddRepoStr {
-                    self.appDelegate.quickAddingRepo = repo
-                    Task {
-                        let _ = await self.appDelegate.addRepoSmart(repoName: repo)
-                        await MainActor.run {
-                            self.appDelegate.quickAddingRepo = nil
-                        }
-                    }
-                } else {
-                    self.appDelegate.unifiedAddRepoDialog(menuItem)
+        appDelegate.animateStatusIcon(with: .scale)
+        appDelegate.mainPopover?.performClose(nil)
+        if let repo = self.quickAddRepoStr {
+            self.appDelegate.quickAddingRepo = repo
+            Task {
+                let _ = await self.appDelegate.addRepoSmart(repoName: repo)
+                await MainActor.run {
+                    self.appDelegate.quickAddingRepo = nil
                 }
             }
+        } else {
+            self.appDelegate.unifiedAddRepoDialog(self)
         }
     }
     
@@ -335,5 +330,27 @@ class HeaderMenuItemView: NSView {
             path.fill()
         }
         super.draw(dirtyRect)
+    }
+    
+    private var viewTrackingArea: NSTrackingArea?
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea = viewTrackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways]
+        viewTrackingArea = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
+        addTrackingArea(viewTrackingArea!)
+    }
+    
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        menuDidChangeHighlight(highlightedItem: self)
+    }
+    
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        menuDidChangeHighlight(highlightedItem: nil)
     }
 }

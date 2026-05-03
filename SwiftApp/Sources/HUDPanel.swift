@@ -4,12 +4,20 @@ import Cocoa
 class HUDPanel: NSPanel {
     static let shared = HUDPanel()
     
+    private let iconView: NSImageView
     private let textLabel: NSTextField
     private let subtitleLabel: NSTextField
     private var hideTimer: Timer?
     private var presentationToken = UUID()
     
     private init() {
+        iconView = NSImageView()
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.widthAnchor.constraint(equalToConstant: 64).isActive = true
+        iconView.heightAnchor.constraint(equalToConstant: 64).isActive = true
+        iconView.isHidden = true
+        
         textLabel = NSTextField(labelWithString: "")
         textLabel.font = .boldSystemFont(ofSize: 15)
         textLabel.textColor = .white
@@ -26,7 +34,7 @@ class HUDPanel: NSPanel {
                    backing: .buffered,
                    defer: false)
         
-        self.level = .floating
+        self.level = .statusBar
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = true
@@ -43,7 +51,7 @@ class HUDPanel: NSPanel {
         
         self.contentView = visualEffect
         
-        let stackView = NSStackView(views: [textLabel, subtitleLabel])
+        let stackView = NSStackView(views: [iconView, textLabel, subtitleLabel])
         stackView.orientation = .vertical
         stackView.alignment = .centerX
         stackView.spacing = 8
@@ -62,7 +70,10 @@ class HUDPanel: NSPanel {
         ])
     }
     
-    func show(title: String, subtitle: String = "", duration: TimeInterval? = 3.0) {
+    func show(title: String, subtitle: String = "", image: NSImage? = nil, duration: TimeInterval? = 3.0) {
+        iconView.image = image
+        iconView.isHidden = image == nil
+        
         textLabel.stringValue = title
         subtitleLabel.stringValue = subtitle
         subtitleLabel.isHidden = subtitle.isEmpty
@@ -71,7 +82,7 @@ class HUDPanel: NSPanel {
         
         // Show panel with animation
         self.alphaValue = 0.0
-        self.orderFront(nil)
+        self.orderFrontRegardless()
         
         presentationToken = UUID()
         

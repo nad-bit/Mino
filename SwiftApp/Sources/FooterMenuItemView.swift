@@ -89,24 +89,17 @@ class FooterMenuItemView: NSView {
     }
     
     @objc private func settingsClicked() {
-        if let menuItem = enclosingMenuItem {
-            appDelegate.animateStatusIcon(with: .scale)
-            appDelegate.performAfterMenuClose {
-                self.appDelegate.openSettingsWindow(menuItem)
-            }
-        }
+        appDelegate.animateStatusIcon(with: .scale)
+        self.appDelegate.openSettingsWindow(self)
     }
     
     @objc private func quitClicked() {
-        if let menuItem = enclosingMenuItem {
-            appDelegate.animateStatusIcon(with: .scale)
-            appDelegate.performAfterMenuClose {
-                self.appDelegate.quitApp(menuItem)
-            }
-        }
+        appDelegate.animateStatusIcon(with: .scale)
+        appDelegate.mainPopover?.performClose(nil)
+        self.appDelegate.quitApp(self)
     }
     
-    func menuDidChangeHighlight(highlightedItem: NSMenuItem?) {
+    func menuDidChangeHighlight(highlightedItem: Any?) {
         // No full-row highlight for footer, buttons handle their own hover.
         // But reset hover state on all buttons to avoid stale highlights
         // when the menu is closed mid-hover via a click.

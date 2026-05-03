@@ -5,6 +5,18 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-05-02
+
+### Changed
+- **NSPopover Architecture:** The entire menu interface and all secondary windows (Settings, About, Add Repository, and Release Notes) have been rebuilt using a modern, crystalline `NSPopover` architecture. This provides a fluid, unified macOS experience without external floating windows.
+- **Dynamic & Responsive UI:** Windows now auto-calculate their dimensions using `fittingSize`. Both the "Add Repository" and "About" panels have been compacted to eliminate wasted space, ensuring a "pill-like" and non-intrusive appearance.
+- **Interactive Visual Feedback:** Added a new "Watchful Eye" interaction for the Add Repo panel, featuring a peaceful breathing animation and a reactive "ouch" state (symbol change + shake) upon dismissal.
+- **Pill-Style Visual Language:** Introduced a new design system based on colored "pills" for metadata (versions, tags, and app info), providing a cleaner and more professional aesthetic.
+- **Modernized Settings:** Replaced system alert sheets with non-blocking, inline confirmation states and auto-reset timers.
+- **Enhanced Focus Management:** Re-engineered the window focus logic to ensure the menu always dismisses correctly when clicking outside, even after displaying high-level HUD alerts.
+- **Maintenance & Stability:** Consolidated logic into specialized ViewControllers and removed legacy window controllers, reducing codebase complexity and improving build cleanliness.
+- **Granular Error Feedback:** Added specific handling for GitHub API rate limits (429) and permission errors (403).
+
 ## [1.5.7] - 2026-04-28
 
 ### Added

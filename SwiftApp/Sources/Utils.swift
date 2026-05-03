@@ -72,3 +72,34 @@ class Utils {
     static let appIconColor: NSColor = AppPersonality.color
 }
 
+extension NSWindow {
+    func suckAndClose() {
+        guard let appDelegate = NSApp.delegate as? AppDelegate,
+              let statusItem = appDelegate.statusItem,
+              let buttonWindow = statusItem.button?.window else {
+            self.close()
+            return
+        }
+        
+        let targetFrame = buttonWindow.frame
+        let originalFrame = self.frame
+        
+        // Ensure alpha is fully opaque initially
+        self.alphaValue = 1.0
+        
+        // Fast, fluid animation
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.15 // Fast but visible (user asked for fast)
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn) // Accelerate towards the icon
+            
+            // Animate frame and alpha
+            self.animator().setFrame(targetFrame, display: true)
+            self.animator().alphaValue = 0.0
+        }, completionHandler: {
+            self.close()
+            // Reset state in case the window is reused
+            self.setFrame(originalFrame, display: false)
+            self.alphaValue = 1.0
+        })
+    }
+}

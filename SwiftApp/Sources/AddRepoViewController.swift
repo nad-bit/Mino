@@ -1,6 +1,7 @@
 import Cocoa
+import QuartzCore
 
-class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
+class AddRepoViewController: NSViewController, NSTextFieldDelegate {
     private var inputField: NSTextField!
     private var brewPopup: NSPopUpButton!
     private var segmentedControl: NSSegmentedControl!
@@ -11,120 +12,142 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
     // Callback to pass data back to AppDelegate
     var completionHandler: ((String?, String?, String?, @escaping (Bool) -> Void) -> Void)?
     
-    init() {
-        let windowRect = NSRect(x: 0, y: 0, width: 380, height: 210)
-        let window = NSWindow(contentRect: windowRect,
-                            styleMask: [.titled, .closable, .fullSizeContentView],
-                            backing: .buffered,
-                            defer: false)
-        window.title = Translations.get("addRepoUnified")
-        window.center()
-        
-        super.init(window: window)
-        window.delegate = self
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.level = .floating
-        
-        // Setup UI with Vibrancy
-        let container = NSVisualEffectView(frame: windowRect)
+    override func loadView() {
+        let container = NSVisualEffectView()
         container.material = .popover
         container.blendingMode = .behindWindow
         container.state = .active
+        container.wantsLayer = true
+        container.layer?.cornerRadius = 12
+        
+        // Increased transparency as requested by user
+        container.alphaValue = 0.75
+        
+        self.view = container
+        
+        let mainStack = NSStackView()
+        mainStack.orientation = .vertical
+        mainStack.alignment = .centerX
+        mainStack.spacing = 8
+        mainStack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
+        mainStack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(mainStack)
         
         // Animated Eye Icon
         eyeImageView = NSImageView()
         eyeImageView.translatesAutoresizingMaskIntoConstraints = false
         if let eyeImage = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
-            // Apply a tint color to match the dynamically generated app icon color
-            let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
+            let config = NSImage.SymbolConfiguration(pointSize: 24, weight: .light)
             eyeImageView.image = eyeImage.withSymbolConfiguration(config)
             eyeImageView.contentTintColor = Utils.appIconColor
         }
         eyeImageView.imageScaling = .scaleProportionallyUpOrDown
-        // We will animate the layer
         eyeImageView.wantsLayer = true
-        container.addSubview(eyeImageView)
+        mainStack.addArrangedSubview(eyeImageView)
         
         let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(eyeClicked))
         eyeImageView.addGestureRecognizer(clickGesture)
+        eyeImageView.toolTip = Translations.get("close")
         
         segmentedControl = NSSegmentedControl(labels: ["GitHub", "Homebrew"], trackingMode: .selectOne, target: self, action: #selector(segmentedChanged(_:)))
         segmentedControl.selectedSegment = 0
         segmentedControl.translatesAutoresizingMaskIntoConstraints = false
+        segmentedControl.controlSize = .small
         if HomebrewManager.shared.brewPath == nil {
             segmentedControl.setEnabled(false, forSegment: 1)
         }
-        container.addSubview(segmentedControl)
+        mainStack.addArrangedSubview(segmentedControl)
+        
+        // Input Container
+        let inputContainer = NSView()
+        inputContainer.translatesAutoresizingMaskIntoConstraints = false
+        mainStack.addArrangedSubview(inputContainer)
         
         inputField = NSTextField()
-        inputField.placeholderString = "owner/repo-name"
+        inputField.placeholderString = Translations.get("repoPlaceholder")
+        inputField.font = .systemFont(ofSize: 11)
+        inputField.isBezeled = true
+        inputField.bezelStyle = .roundedBezel
         inputField.translatesAutoresizingMaskIntoConstraints = false
         inputField.delegate = self
-        container.addSubview(inputField)
+        inputContainer.addSubview(inputField)
         
         brewPopup = NSPopUpButton(frame: .zero, pullsDown: false)
         brewPopup.addItem(withTitle: Translations.get("loadingBrew"))
+        brewPopup.font = .systemFont(ofSize: 11)
         brewPopup.isEnabled = false
         brewPopup.isHidden = true
         brewPopup.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(brewPopup)
+        brewPopup.controlSize = .small
+        inputContainer.addSubview(brewPopup)
         
-        let okButton = NSButton(title: Translations.get("add"), target: self, action: #selector(okClicked))
-        okButton.keyEquivalent = "\r" // Enter key
+        okButton = NSButton(title: Translations.get("add"), target: self, action: #selector(okClicked))
+        okButton.keyEquivalent = "\r"
+        okButton.bezelStyle = .rounded
         okButton.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(okButton)
-        self.okButton = okButton
+        okButton.controlSize = .small
+        mainStack.addArrangedSubview(okButton)
         
         NSLayoutConstraint.activate([
-            eyeImageView.topAnchor.constraint(equalTo: container.topAnchor, constant: 15),
-            eyeImageView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            eyeImageView.widthAnchor.constraint(equalToConstant: 60),
-            eyeImageView.heightAnchor.constraint(equalToConstant: 45),
+            mainStack.topAnchor.constraint(equalTo: container.topAnchor),
+            mainStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            mainStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            mainStack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             
-            segmentedControl.topAnchor.constraint(equalTo: eyeImageView.bottomAnchor, constant: 10),
-            segmentedControl.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            eyeImageView.widthAnchor.constraint(equalToConstant: 48),
+            eyeImageView.heightAnchor.constraint(equalToConstant: 32),
             
-            inputField.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 15),
-            inputField.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 40),
-            inputField.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -40),
-            inputField.heightAnchor.constraint(equalToConstant: 24),
+            inputContainer.widthAnchor.constraint(equalTo: mainStack.widthAnchor),
+            inputContainer.heightAnchor.constraint(equalToConstant: 20),
             
-            brewPopup.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 15),
-            brewPopup.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 40),
-            brewPopup.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -40),
-            brewPopup.heightAnchor.constraint(equalToConstant: 24),
+            inputField.centerXAnchor.constraint(equalTo: inputContainer.centerXAnchor),
+            inputField.widthAnchor.constraint(equalTo: inputContainer.widthAnchor),
+            inputField.centerYAnchor.constraint(equalTo: inputContainer.centerYAnchor),
             
-            okButton.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -20),
-            okButton.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            okButton.widthAnchor.constraint(equalToConstant: 80)
+            brewPopup.centerXAnchor.constraint(equalTo: inputContainer.centerXAnchor),
+            brewPopup.widthAnchor.constraint(equalTo: inputContainer.widthAnchor),
+            brewPopup.centerYAnchor.constraint(equalTo: inputContainer.centerYAnchor),
+            
+            okButton.widthAnchor.constraint(equalToConstant: 70),
+            okButton.heightAnchor.constraint(equalToConstant: 22)
         ])
+    }
+    
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        resetAndPrepare()
         
-        window.contentView = container
+        // Dynamic resize based on content
+        self.preferredContentSize = self.view.fittingSize
     }
     
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    override func viewWillDisappear() {
+        super.viewWillDisappear()
+        clipboardTimer?.invalidate()
+        clipboardTimer = nil
+        eyeImageView.layer?.removeAllAnimations()
     }
     
-    func resetAndShow() {
+    func resetAndPrepare() {
+        // Reset eye icon to normal state
+        if let normalEye = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
+            let config = NSImage.SymbolConfiguration(pointSize: 32, weight: .light)
+            eyeImageView.image = normalEye.withSymbolConfiguration(config)
+            eyeImageView.contentTintColor = Utils.appIconColor
+        }
+        
         checkClipboardForRepo()
         
-        // Start live polling while floating
         clipboardTimer?.invalidate()
         clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            if self?.window?.isVisible == true {
+            if self?.view.window?.isVisible == true {
                 self?.checkClipboardForRepo()
             }
         }
         
-        // Ensure manual is selected by default every time it opens
         segmentedControl.selectedSegment = 0
         segmentedChanged(segmentedControl)
-        
         startEyeAnimation()
-        
-        self.showWindow(nil)
     }
     
     private func startEyeAnimation() {
@@ -134,7 +157,6 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
             return
         }
         
-        // Ensure any previous animation is removed before starting
         eyeImageView.layer?.removeAllAnimations()
         
         let breatheAnimation = CABasicAnimation(keyPath: "opacity")
@@ -155,7 +177,7 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         
         // Change icon to a slashed/hurt eye in red
         if let strikeEye = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Ouch") {
-            let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
+            let config = NSImage.SymbolConfiguration(pointSize: 32, weight: .light)
             eyeImageView.image = strikeEye.withSymbolConfiguration(config)
             eyeImageView.contentTintColor = .systemRed
         }
@@ -169,22 +191,18 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
             eyeImageView.layer?.add(shake, forKey: "shakeNode")
         }
         
-        // Recover after 1.5 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            guard let self = self else { return }
-            if let normalEye = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
-                let config = NSImage.SymbolConfiguration(pointSize: 42, weight: .light)
-                self.eyeImageView.image = normalEye.withSymbolConfiguration(config)
-                self.eyeImageView.contentTintColor = Utils.appIconColor
+        // Close after the animation (allow seeing the "ouch" state)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard self != nil else { return }
+            // Tell AppDelegate to close this popover
+            if let delegate = NSApp.delegate as? AppDelegate {
+                delegate.addRepoPopover?.performClose(nil)
             }
-            // Restart breathing
-            self.startEyeAnimation()
         }
     }
     
     private func checkClipboardForRepo() {
         if let clipboardRepo = Utils.getGitHubRepoFromClipboard(), clipboardRepo != inputField.stringValue {
-            // Only auto-fill if we aren't already tracking it
             if !ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == clipboardRepo.lowercased() }) {
                 inputField.stringValue = clipboardRepo
             }
@@ -195,12 +213,13 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
         if sender.selectedSegment == 0 {
             inputField.isHidden = false
             brewPopup.isHidden = true
+            // Auto-focus input when switching to GitHub
+            self.view.window?.makeFirstResponder(inputField)
         } else if sender.selectedSegment == 1 {
             inputField.isHidden = true
             brewPopup.isHidden = false
             
             if brewPopup.numberOfItems <= 1 {
-                // Fetch brews asynchronously
                 Task {
                     let casks = await HomebrewManager.shared.listCasks()
                     await MainActor.run {
@@ -255,21 +274,8 @@ class AddRepoWindowController: NSWindowController, NSWindowDelegate, NSTextField
     
     private func playSuccessAnimation() {
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
-        
-        // Bounce the window eye (same family as status bar icon animation)
         if #available(macOS 14.0, *) {
             eyeImageView.addSymbolEffect(.bounce, options: .nonRepeating)
         }
-    }
-    
-    @objc func cancelClicked() {
-        self.window?.orderOut(nil)
-    }
-    
-    func windowWillClose(_ notification: Notification) {
-        // Stop background activities
-        clipboardTimer?.invalidate()
-        clipboardTimer = nil
-        eyeImageView.layer?.removeAllAnimations()
     }
 }

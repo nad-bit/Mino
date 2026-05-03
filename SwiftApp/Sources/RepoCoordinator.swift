@@ -26,8 +26,8 @@ class RepoCoordinator {
         notifiedVersions.removeValue(forKey: repoName)
         UserDefaults.standard.set(notifiedVersions, forKey: "LastNotifiedVersions")
         
-        if delegate.releaseNotesWindowController?.currentRepoName == repoName {
-            delegate.releaseNotesWindowController?.window?.orderOut(nil)
+        if let vc = delegate.releaseNotesPopover?.contentViewController as? ReleaseNotesViewController, vc.currentRepoName == repoName {
+            delegate.releaseNotesPopover?.performClose(nil)
         }
         
         ConfigManager.shared.saveConfig()
@@ -41,47 +41,26 @@ class RepoCoordinator {
         
         cleanupRepoData(repoName: repoName)
         
-        // Remove the specific menu item without rebuilding the entire menu.
-        // Hide first to collapse the space, then remove to clean up.
-        if let idx = delegate.repoMenuItems.firstIndex(where: { $0.data.repoName == repoName }) {
-            let menuItem = delegate.repoMenuItems[idx].item
-            menuItem.isHidden = true
-            delegate.mainMenu.removeItem(menuItem)
-            delegate.repoMenuItems.remove(at: idx)
-        }
-        
-        // Update the footer's repo count label
-        for item in delegate.mainMenu.items {
-            if let footerView = item.view as? FooterMenuItemView {
-                footerView.updateRepoCount()
-                break
-            }
-        }
-        
-        // Show empty-state placeholder when all repos have been deleted
-        if delegate.repoMenuItems.isEmpty {
-            if delegate.emptyMenuPlaceholderItem == nil {
-                let noRepos = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-                noRepos.view = EmptyMenuPlaceholderView()
-                // Insert before the separator that precedes the footer
-                let insertIndex = max(delegate.mainMenu.items.count - 3, 0)
-                delegate.mainMenu.insertItem(noRepos, at: insertIndex)
-                delegate.emptyMenuPlaceholderItem = noRepos
-            }
-            delegate.emptyMenuPlaceholderItem?.isHidden = false
-        }
-        
-        // Force NSMenu to recalculate its window size during active tracking
-        delegate.mainMenu.update()
+        // Full rebuild is safer to ensure all layout constraints and scroll heights are updated.
+        delegate.rebuildMenu()
         
         delegate.animateStatusIcon(with: .replaceWithSlash)
     }
     
     // MARK: - Navigation
     
-    @objc func handleOpenReleases(_ sender: NSMenuItem) {
+    @objc func handleOpenRepo(for repoName: String) {
         guard let delegate = delegate else { return }
-        guard let repoName = sender.representedObject as? String else { return }
+        
+        delegate.hideInformationalWindows()
+        
+        if let url = URL(string: "https://github.com/\(repoName)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+    
+    @objc func handleOpenReleases(for repoName: String) {
+        guard let delegate = delegate else { return }
         
         delegate.hideInformationalWindows()
         
@@ -90,26 +69,37 @@ class RepoCoordinator {
         }
     }
     
-    @objc func handleShowNotes(_ sender: NSMenuItem) {
+    @objc func handleShowNotes(for repoName: String, relativeTo view: NSView) {
         guard let delegate = delegate else { return }
-        guard let repoName = sender.representedObject as? String else { return }
         let info = delegate.repoCache[repoName] ?? RepoInfo(name: repoName, error: nil)
         
-        if delegate.releaseNotesWindowController == nil {
-            delegate.releaseNotesWindowController = ReleaseNotesWindowController()
+        if delegate.releaseNotesPopover == nil {
+            let popover = NSPopover()
+            popover.contentViewController = ReleaseNotesViewController()
+            popover.behavior = .transient
+            popover.animates = true
+            delegate.releaseNotesPopover = popover
         }
         
-        delegate.hideAllWindowsExcept(keep: delegate.releaseNotesWindowController)
-        delegate.bringToFront()
-        delegate.releaseNotesWindowController?.loadNotes(for: info)
-        delegate.releaseNotesWindowController?.showWindow(nil)
+        delegate.settingsPopover?.performClose(nil)
+        delegate.addRepoPopover?.performClose(nil)
+        
+        guard let popover = delegate.releaseNotesPopover,
+              let vc = popover.contentViewController as? ReleaseNotesViewController else { return }
+        
+        // Forzar la carga de la vista antes de acceder a los outlets
+        _ = vc.view
+        
+        vc.loadNotes(for: info)
+        popover.contentSize = vc.preferredContentSize
+        
+        popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minX)
     }
     
     // MARK: - Install
     
-    @objc func handleInstallBrewCask(_ sender: NSMenuItem) {
+    @objc func handleInstallBrewCask(for caskName: String) {
         guard let delegate = delegate else { return }
-        guard let caskName = sender.representedObject as? String else { return }
         
         // Show indefinite persistent installing notification while Brew works
         HUDPanel.shared.show(title: Translations.get("installingTitle"), subtitle: Translations.get("installingMsg").format(with: ["cask_name": caskName]), duration: nil)
@@ -172,13 +162,22 @@ class RepoCoordinator {
     @objc func openAddRepoDialog(_ sender: Any) {
         guard let delegate = delegate else { return }
         
-        if delegate.addRepoWindowController == nil {
-            delegate.addRepoWindowController = AddRepoWindowController()
-            delegate.addRepoWindowController?.completionHandler = { [weak delegate] repoName, source, cask, completion in
+        if delegate.addRepoPopover == nil {
+            let popover = NSPopover()
+            let vc = AddRepoViewController()
+            popover.contentViewController = vc
+            // Using applicationDefined to stay open until manually closed or eye-clicked
+            popover.behavior = .applicationDefined 
+            popover.animates = true
+            delegate.addRepoPopover = popover
+            
+            vc.completionHandler = { [weak delegate] repoName, source, cask, completion in
                 guard let delegate = delegate else { return }
+                
                 if let repo = repoName {
                     delegate.quickAddingRepo = repo
                 }
+                
                 Task {
                     var success = false
                     if let repo = repoName, source == "manual" {
@@ -186,6 +185,7 @@ class RepoCoordinator {
                     } else if source == "brew", let caskName = cask {
                         success = await delegate.repoCoordinator.processBrewSelection(caskName: caskName)
                     }
+                    
                     await MainActor.run {
                         delegate.quickAddingRepo = nil
                         completion(success)
@@ -194,9 +194,21 @@ class RepoCoordinator {
             }
         }
         
-        delegate.hideAllWindowsExcept(keep: delegate.addRepoWindowController)
+        delegate.hideInformationalWindows()
         delegate.bringToFront()
-        delegate.addRepoWindowController?.resetAndShow()
+        
+        if let popover = delegate.addRepoPopover, let vc = popover.contentViewController as? AddRepoViewController {
+            if popover.isShown {
+                popover.performClose(nil)
+            } else if let btn = delegate.statusItem.button {
+                popover.show(relativeTo: btn.bounds, of: btn, preferredEdge: .minY)
+                // Focus slightly delayed for NSPopover reliability
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    vc.resetAndPrepare()
+                    popover.contentViewController?.view.window?.makeKeyAndOrderFront(nil)
+                }
+            }
+        }
     }
     
     func addRepoSmart(repoName: String) async -> Bool {
@@ -230,7 +242,7 @@ class RepoCoordinator {
                     ConfigManager.shared.config.repos[index].cask = cask
                     ConfigManager.shared.saveConfig()
                     await MainActor.run {
-                        delegate.setupMenu()
+                        delegate.rebuildMenu()
                         delegate.animateStatusIcon(with: .bounce)
                     }
                     return true
@@ -245,9 +257,9 @@ class RepoCoordinator {
         }
         
         let info = await GitHubAPI.shared.fetchRepoInfo(repo: repoName)
-        if info.error != nil {
+        if let errorMsg = info.error {
             await MainActor.run {
-                delegate.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoNotFound"))
+                delegate.sendNotification(title: Translations.get("error"), subtitle: errorMsg)
             }
             return false
         } else {
@@ -259,8 +271,9 @@ class RepoCoordinator {
             await MainActor.run {
                 delegate.repoCache[repoName] = info
                 UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
+                delegate.updateStatusIcon(hasUpdates: true)
                 delegate.updatePopularTagsCache()
-                delegate.setupMenu()
+                delegate.rebuildMenu()
                 delegate.animateStatusIcon(with: .bounce)
             }
             return true
@@ -285,7 +298,15 @@ class RepoCoordinator {
             // TAP casks (e.g. from custom taps) are not in the public API and return 404
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
                 await MainActor.run {
-                    delegate.sendNotification(title: Translations.get("brewErrorTitle"), subtitle: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
+                    let msg: String
+                    if httpResponse.statusCode == 429 {
+                        msg = Translations.get("apiTooManyRequests")
+                    } else if httpResponse.statusCode == 403 {
+                        msg = Translations.get("apiRateLimit")
+                    } else {
+                        msg = Translations.get("brewRepoNotFound").format(with: ["app_name": caskName])
+                    }
+                    delegate.sendNotification(title: Translations.get("brewErrorTitle"), subtitle: msg)
                 }
                 return false
             }

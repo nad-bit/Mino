@@ -31,43 +31,51 @@ class ClickableTextField: NSTextField {
     }
 }
 
-class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
+class ReleaseNotesViewController: NSViewController {
     private var textView: NSTextView!
     private var titleLabel: NSTextField!
     private var versionLabel: NSTextField!
     private var tagsFooterView: WrappingTagsView!
-    private var scrollContainer: NSVisualEffectView!
     private(set) var currentRepoName: String?
     private var repoReleasesURL: URL?
     
     init() {
-        let windowRect = NSRect(x: 0, y: 0, width: 640, height: 480)
-        let window = NSWindow(contentRect: windowRect,
-                            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
-                            backing: .buffered,
-                            defer: false)
-        window.title = Translations.get("releaseNotes")
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.center()
+        super.init(nibName: nil, bundle: nil)
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    override func loadView() {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: 500))
+        self.view = view
         
-        super.init(window: window)
-        window.delegate = self
+        let mainStack = NSStackView()
+        mainStack.orientation = .vertical
+        mainStack.alignment = .centerX
+        mainStack.spacing = 16
+        mainStack.edgeInsets = NSEdgeInsets(top: 36, left: 0, bottom: 20, right: 0)
+        mainStack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(mainStack)
         
-        // 1. Vibrancy Background
-        let visualEffectView = NSVisualEffectView(frame: windowRect)
-        visualEffectView.material = .popover
-        visualEffectView.blendingMode = .behindWindow
-        visualEffectView.state = .active
+        NSLayoutConstraint.activate([
+            mainStack.topAnchor.constraint(equalTo: view.topAnchor),
+            mainStack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            mainStack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            mainStack.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            view.widthAnchor.constraint(equalToConstant: 600)
+        ])
         
-        // Setup UI
+        // --- 1. Header (Title + Version) ---
         titleLabel = NSTextField(labelWithString: "")
         titleLabel.font = .systemFont(ofSize: 24, weight: .bold)
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.alignment = .center
-        visualEffectView.addSubview(titleLabel)
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        mainStack.addArrangedSubview(titleLabel)
+        titleLabel.widthAnchor.constraint(equalTo: mainStack.widthAnchor, constant: -48).isActive = true
         
-        // 3. Metadata Pill (Version & Date) — clickable, opens releases page
         versionLabel = ClickableTextField(labelWithString: "")
         versionLabel.font = .systemFont(ofSize: 12, weight: .medium)
         versionLabel.textColor = .white
@@ -79,74 +87,58 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         versionLabel.layer?.cornerRadius = 10
         versionLabel.layer?.masksToBounds = true
         versionLabel.translatesAutoresizingMaskIntoConstraints = false
-        visualEffectView.addSubview(versionLabel)
+        mainStack.addArrangedSubview(versionLabel)
         
-        // Make the version pill clickable — opens the releases page and closes the window
         let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(versionPillClicked))
         versionLabel.addGestureRecognizer(clickGesture)
         versionLabel.toolTip = Translations.get("openReleases")
         
-        // Inner padding for the pill (achieved via constraints on an invisible wrapper or just wide text)
-        // We'll just pad the string with spaces, or rely on intrinsic size.
-        
-        // ScrollView for notes
+        // --- 2. Body (ScrollView + TextView) ---
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
+        mainStack.addArrangedSubview(scrollView)
+        scrollView.widthAnchor.constraint(equalTo: mainStack.widthAnchor).isActive = true
+        
+        // Dynamic height: give the scrollview a flexible height that pushes the tags to the bottom
+        let scrollHeight = scrollView.heightAnchor.constraint(equalToConstant: 340)
+        scrollHeight.priority = .defaultHigh
+        scrollHeight.isActive = true
         
         textView = NSTextView()
         textView.isEditable = false
-        textView.drawsBackground = false // Transparent to show vibrancy
-        textView.textColor = .labelColor // Fallback safety layer
-        // 4. Editorial Typography
-        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
-        let offset = baseFontSize - 13.0
-        textView.font = .systemFont(ofSize: 14 + offset, weight: .regular)
-        textView.textContainerInset = NSSize(width: 24, height: 24)
+        textView.drawsBackground = false
+        textView.textColor = .labelColor
+        textView.textContainerInset = NSSize(width: 24, height: 10)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
-        
         scrollView.documentView = textView
-        visualEffectView.addSubview(scrollView)
         
-        // 5. Footer Tags Container (Flow Layout Wrapping)
+        // --- 3. Footer (Tags) ---
         tagsFooterView = WrappingTagsView()
         tagsFooterView.translatesAutoresizingMaskIntoConstraints = false
-        visualEffectView.addSubview(tagsFooterView)
+        mainStack.addArrangedSubview(tagsFooterView)
+        tagsFooterView.widthAnchor.constraint(equalTo: mainStack.widthAnchor, constant: -48).isActive = true
         
-        NSLayoutConstraint.activate([
-            titleLabel.topAnchor.constraint(equalTo: visualEffectView.topAnchor, constant: 36),
-            titleLabel.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor, constant: 20),
-            titleLabel.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor, constant: -20),
-            
-            versionLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            versionLabel.centerXAnchor.constraint(equalTo: visualEffectView.centerXAnchor),
-            versionLabel.heightAnchor.constraint(equalToConstant: 20),
-            
-            tagsFooterView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor, constant: 24),
-            tagsFooterView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor, constant: -24),
-            tagsFooterView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor, constant: -16),
-            
-            scrollView.topAnchor.constraint(equalTo: versionLabel.bottomAnchor, constant: 20),
-            scrollView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor, constant: 0),
-            scrollView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor, constant: 0),
-            scrollView.bottomAnchor.constraint(equalTo: tagsFooterView.topAnchor, constant: -12)
-        ])
-        
-        window.contentView = visualEffectView
+        self.preferredContentSize = NSSize(width: 600, height: 500)
     }
     
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    @objc func openReleases() {
+        guard let url = repoReleasesURL else { return }
+        self.view.window?.close()
+        NSWorkspace.shared.open(url)
     }
     
     @objc private func versionPillClicked() {
-        guard let url = repoReleasesURL else { return }
-        self.close()
-        NSWorkspace.shared.open(url)
+        openReleases()
+    }
+    
+    func isPointInVersionPill(_ pointInWindow: NSPoint) -> Bool {
+        let pointInView = self.view.convert(pointInWindow, from: nil)
+        return versionLabel.frame.contains(pointInView)
     }
     
     func loadNotes(for info: RepoInfo) {
@@ -357,12 +349,6 @@ class ReleaseNotesWindowController: NSWindowController, NSWindowDelegate {
         }
         
         textView.scrollToBeginningOfDocument(nil)
-    }
-    
-    func windowWillClose(_ notification: Notification) {
-        self.window?.orderOut(nil)
-        
-        // Return to accessory mode so Dock auto-hide works
     }
 }
 
