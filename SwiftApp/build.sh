@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="Mino"
-VERSION="2.0.0"
+VERSION="2.1.0"
 BUILD_NUMBER="300"
 BUILD_DIR="build"
 
