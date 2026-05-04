@@ -566,7 +566,7 @@ class RepoMenuItemView: NSView {
     }
     
     // MARK: - Actions
-    @objc private func installClicked() {
+    @objc func installClicked() {
         if let caskName = caskName {
             appDelegate.animateStatusIcon(with: .scale)
             appDelegate.performAfterMenuClose {
@@ -575,19 +575,19 @@ class RepoMenuItemView: NSView {
         }
     }
     
-    @objc private func notesClicked() {
+    @objc func notesClicked() {
         appDelegate.animateStatusIcon(with: .scale)
         appDelegate.handleShowNotes(for: repoName, relativeTo: self)
     }
     
-    @objc private func openRepoClicked() {
+    @objc func openRepoClicked() {
         appDelegate.animateStatusIcon(with: .scale)
         appDelegate.performAfterMenuClose {
             self.appDelegate.handleOpenRepo(for: self.repoName)
         }
     }
     
-    @objc private func deleteClicked() {
+    @objc func deleteClicked() {
         if isConfirmingDelete {
             // Second click — confirmed, execute inline delete
             deleteConfirmTimer?.invalidate()

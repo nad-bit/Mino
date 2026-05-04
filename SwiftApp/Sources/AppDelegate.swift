@@ -22,11 +22,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var repoCache: [String: RepoInfo] = [:]
     
     var headerView: HeaderMenuItemView!
+    var footerView: FooterMenuItemView?
     
     // Search properties
     var searchField: NSSearchField?
     var currentSearchQuery: String = ""
-    private var readReposThisSession: Set<String> = []
+    var readReposThisSession: Set<String> = []
     
     var menuIsOpen = false
     
@@ -412,10 +413,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     func refreshQuickAddState() {
         // Hybrid Quick Add interceptor
         if let header = headerView {
-            if let adding = quickAddingRepo {
-                // A repo is currently being fetched — show "Adding..." status
-                header.updateClipboardState(repo: nil)
-                header.updateTimeText(Translations.get("addingRepo").format(with: ["repo": adding]), isRefreshing: true)
+            if quickAddingRepo != nil {
+                // A repo is currently being fetched — show "Adding..." status centered
+                header.updateClipboardState(repo: nil, isProcessing: true)
             } else {
                 let currentChangeCount = NSPasteboard.general.changeCount
                 let clipboardRepo: String?
@@ -488,5 +488,57 @@ class MenuSearchField: NSSearchField {
     convenience init(appDelegate: AppDelegate) {
         self.init(frame: .zero)
         self.appDelegate = appDelegate
+    }
+    
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // 1. Navigation (Arrows) - Intercepted even without modifiers
+        // Using keyCode for reliability across layouts
+        if event.keyCode == 125 { // Down Arrow
+            appDelegate?.mainPopoverVC.moveHighlight(direction: 1)
+            return true
+        } else if event.keyCode == 126 { // Up Arrow
+            appDelegate?.mainPopoverVC.moveHighlight(direction: -1)
+            return true
+        }
+        
+        // 2. Global App Shortcuts (CMD + ...)
+        if event.modifierFlags.contains(.command) {
+            switch event.charactersIgnoringModifiers {
+            case ",":
+                appDelegate?.openSettingsWindow(appDelegate?.footerView)
+                return true
+            case "i":
+                appDelegate?.showAboutPanel()
+                return true
+            case "n":
+                appDelegate?.unifiedAddRepoDialog(self)
+                return true
+            case "q":
+                appDelegate?.quitApp(nil)
+                return true
+            case "o": // CMD+O (Open)
+                appDelegate?.mainPopoverVC.triggerActionOnHighlighted(.open)
+                return true
+            case "b": // CMD+B (Install/Brew)
+                appDelegate?.mainPopoverVC.triggerActionOnHighlighted(.install)
+                return true
+            case "l": // CMD+L (Notes)
+                appDelegate?.mainPopoverVC.triggerActionOnHighlighted(.notes)
+                return true
+            case "\u{7F}": // CMD+Backspace (Delete)
+                appDelegate?.mainPopoverVC.triggerActionOnHighlighted(.delete)
+                return true
+            default:
+                break
+            }
+        }
+        
+        // 3. Contextual Row Actions (Return / Enter)
+        if event.keyCode == 36 { // Return
+            appDelegate?.mainPopoverVC.triggerActionOnHighlighted(.open)
+            return true
+        }
+        
+        return super.performKeyEquivalent(with: event)
     }
 }

@@ -17,6 +17,7 @@ class RepoCoordinator {
         guard let delegate = delegate else { return }
         ConfigManager.shared.config.repos.removeAll { $0.name == repoName }
         delegate.repoCache.removeValue(forKey: repoName)
+        delegate.readReposThisSession.remove(repoName)
         
         var seenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
         seenVersions.removeValue(forKey: repoName)
@@ -188,6 +189,7 @@ class RepoCoordinator {
                     
                     await MainActor.run {
                         delegate.quickAddingRepo = nil
+                        delegate.refreshQuickAddState()
                         completion(success)
                     }
                 }
@@ -212,23 +214,40 @@ class RepoCoordinator {
     }
     
     func addRepoSmart(repoName: String) async -> Bool {
-        if HomebrewManager.shared.brewPath == nil {
-            return await addRepo(repoName: repoName, source: "manual")
+        // 1. Handle explicit brew: prefix if user still uses it
+        if repoName.lowercased().hasPrefix("brew:") {
+            let caskName = repoName.replacingOccurrences(of: "brew:", with: "", options: [.caseInsensitive])
+            return await processBrewSelection(caskName: caskName)
         }
         
-        if ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == repoName.lowercased() }) {
-            return await addRepo(repoName: repoName, source: "manual")
-        }
-        
+        // 2. Distinguish between GitHub (owner/repo) and potential Cask (name)
         let parts = repoName.split(separator: "/")
-        if parts.count != 2 {
-            return await addRepo(repoName: repoName, source: "manual")
-        }
-        
-        if let cask = await HomebrewManager.shared.findCaskForRepo(repoName: repoName) {
-            return await addRepo(repoName: repoName, source: "brew", cask: cask)
+        if parts.count == 2 {
+            // Standard GitHub pattern
+            if HomebrewManager.shared.brewPath == nil {
+                return await addRepo(repoName: repoName, source: "manual")
+            }
+            
+            if ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == repoName.lowercased() }) {
+                return await addRepo(repoName: repoName, source: "manual")
+            }
+            
+            if let cask = await HomebrewManager.shared.findCaskForRepo(repoName: repoName) {
+                return await addRepo(repoName: repoName, source: "brew", cask: cask)
+            } else {
+                return await addRepo(repoName: repoName, source: "manual")
+            }
         } else {
-            return await addRepo(repoName: repoName, source: "manual")
+            // No slash? Treat as a potential Homebrew Cask name
+            if HomebrewManager.shared.brewPath != nil {
+                return await processBrewSelection(caskName: repoName)
+            } else {
+                // If no brew, we can't do anything with a single name
+                await MainActor.run {
+                    delegate?.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoNotFound"))
+                }
+                return false
+            }
         }
     }
     
@@ -270,11 +289,16 @@ class RepoCoordinator {
             
             await MainActor.run {
                 delegate.repoCache[repoName] = info
-                UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
-                delegate.updateStatusIcon(hasUpdates: true)
                 delegate.updatePopularTagsCache()
                 delegate.rebuildMenu()
                 delegate.animateStatusIcon(with: .bounce)
+                
+                if delegate.menuIsOpen {
+                    delegate.clearUnreadPulse()
+                } else {
+                    UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
+                    delegate.updateStatusIcon(hasUpdates: true)
+                }
             }
             return true
         }

@@ -5,6 +5,26 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-05-04
+
+### Added
+- **"Action Pill" Redesign**: Introduced a minimalist, stable, fixed-size UI for adding repositories, featuring the "Watchful Eye" with interactive breathing and error animations.
+- **Zero-Prefix Smart Detection**: Mino now intelligently distinguishes between GitHub repositories (owner/repo) and Homebrew casks (standalone name) automatically. No more `brew:` prefix required.
+- **Global Keyboard Shortcuts**: Restored standard macOS shortcuts (`CMD+,` for Settings, `CMD+I` for About, `CMD+N` for Add Repo) and implemented a robust list navigation system (`Arrows`, `Return`, `CMD+B`, `CMD+L`, `CMD+Backspace`).
+
+### Changed
+- **Unified Settings UI**: Re-engineered the Preferences window with a master design system featuring minimalist section titles, pill-style status badges, and a dense vertical hierarchy for a more professional "Control Center" feel.
+- **Respectful Clipboard Automation**: The clipboard auto-fill now only triggers if the input field is empty, prioritizing user intent over automation.
+- **Premium About Experience**: Redesigned the "About" window with a glassmorphism background, improved hierarchical equilibrium, and consolidated version info.
+- **Localized Placeholders**: The repository input now features a localized placeholder ("owner/repo or cask") across 11 supported languages.
+- **Simplified Controls**: Removed the redundant "New Indicator" checkbox in favor of a zero-value disable logic on the stepper.
+- **Refined GitHub Status**: Improved account connection feedback with an integrated status pill and a more intuitive "Disconnect" flow.
+
+### Fixed
+- **Typography Rhythm**: Resolved excessive line breaks after lists in the Release Notes window by transitioning from manual HTML injection to native `NSParagraphStyle` spacing.
+- **Quick Add Feedback Loop**: Fixed a race condition ensuring the "Adding..." message remains visible and centered until the operation completes.
+- **UI Stability**: Fixed a bug where changing the menu layout would accidentally disable the update indicator controls.
+
 ## [2.1.0] - 2026-05-03
 
 ### Added

@@ -194,6 +194,7 @@ class MainPopoverViewController: NSViewController {
                 footerContainer.heightAnchor.constraint(equalToConstant: Constants.menuHeaderFooterHeight)
             ])
             self.footerView = fv
+            appDelegate.footerView = fv
         }
         footerView?.updateRepoCount()
         
@@ -376,6 +377,56 @@ class MainPopoverViewController: NSViewController {
             }
         }
         return views
+    }
+
+    // MARK: - Keyboard Navigation
+    
+    func moveHighlight(direction: Int) {
+        let total = tableRepos.count
+        guard total > 0 else { return }
+        
+        let currentIndex: Int
+        if let current = currentlyHighlightedRow {
+            currentIndex = tableView.row(for: current)
+        } else {
+            currentIndex = direction > 0 ? -1 : total
+        }
+        
+        var nextIndex = currentIndex + direction
+        if nextIndex < 0 { nextIndex = 0 }
+        if nextIndex >= total { nextIndex = total - 1 }
+        
+        if nextIndex != currentIndex {
+            tableView.scrollRowToVisible(nextIndex)
+            
+            // Give layout a tiny moment to ensure the view at nextIndex is instantiated if it was off-screen
+            DispatchQueue.main.async {
+                if let nextView = self.tableView.view(atColumn: 0, row: nextIndex, makeIfNecessary: true) as? RepoMenuItemView {
+                    self.currentlyHighlightedRow?.setHighlighted(false)
+                    self.currentlyHighlightedRow = nextView
+                    self.currentlyHighlightedRow?.setHighlighted(true)
+                }
+            }
+        }
+    }
+    
+    enum RepoAction {
+        case open, install, notes, delete
+    }
+    
+    func triggerActionOnHighlighted(_ action: RepoAction) {
+        guard let row = currentlyHighlightedRow else { return }
+        
+        switch action {
+        case .open:
+            row.openRepoClicked()
+        case .install:
+            row.installClicked()
+        case .notes:
+            row.notesClicked()
+        case .delete:
+            row.deleteClicked()
+        }
     }
 }
 

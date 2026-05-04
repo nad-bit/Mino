@@ -3,7 +3,7 @@ import Cocoa
 @MainActor
 class FooterMenuItemView: NSView {
     
-    private let settingsBtn = MenuActionButton()
+    let settingsBtn = MenuActionButton()
     private let quitBtn = MenuActionButton()
     private let repoCountLabel = NSTextField(labelWithString: "")
     private let appDelegate: AppDelegate

@@ -103,11 +103,10 @@ class HeaderMenuItemView: NSView {
         quickAddLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
         quickAddLabel.translatesAutoresizingMaskIntoConstraints = false
         
-        // Quick Add Stack
-        quickAddStack.addArrangedSubview(quickAddIcon)
+        // Quick Add Stack - Truly centered and minimalist
         quickAddStack.addArrangedSubview(quickAddLabel)
         quickAddStack.orientation = .horizontal
-        quickAddStack.spacing = 6
+        quickAddStack.spacing = 0
         quickAddStack.alignment = .centerY
         quickAddStack.distribution = .fill
         quickAddStack.translatesAutoresizingMaskIntoConstraints = false
@@ -140,13 +139,12 @@ class HeaderMenuItemView: NSView {
             searchField.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.40),
             searchField.centerYAnchor.constraint(equalTo: centerYAnchor),
             
-            quickAddStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            quickAddStack.centerXAnchor.constraint(equalTo: centerXAnchor),
             quickAddStack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            
-            quickAddIcon.widthAnchor.constraint(equalToConstant: 24),
-            quickAddIcon.heightAnchor.constraint(equalToConstant: 24),
+            quickAddStack.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -40),
             
             quickAddHitArea.leadingAnchor.constraint(equalTo: leadingAnchor),
+            quickAddHitArea.trailingAnchor.constraint(equalTo: trailingAnchor),
             quickAddHitArea.topAnchor.constraint(equalTo: topAnchor),
             quickAddHitArea.bottomAnchor.constraint(equalTo: bottomAnchor),
             
@@ -159,68 +157,52 @@ class HeaderMenuItemView: NSView {
             refreshBtn.heightAnchor.constraint(equalToConstant: 24)
         ])
         
-        // Define swappable constraints
-        quickAddTrailingToSearch = quickAddStack.trailingAnchor.constraint(equalTo: searchField.leadingAnchor, constant: -10)
-        quickAddTrailingToAddBtn = quickAddStack.trailingAnchor.constraint(equalTo: addBtn.leadingAnchor, constant: -10)
-        
-        quickAddHitAreaTrailingToSearch = quickAddHitArea.trailingAnchor.constraint(equalTo: searchField.leadingAnchor)
-        quickAddHitAreaTrailingToAddBtn = quickAddHitArea.trailingAnchor.constraint(equalTo: addBtn.leadingAnchor, constant: -10)
+        // swappable constraints no longer needed for centered layout
         
         // Initial state: Search is dominant
-        quickAddTrailingToSearch?.isActive = true
-        quickAddHitAreaTrailingToSearch?.isActive = true
+        updateClipboardState(repo: nil)
         
         // Define width constraint (initially inactive until targetWidth is set)
         widthConstraint = widthAnchor.constraint(equalToConstant: Constants.menuMinWidth)
     }
     
-    func updateClipboardState(repo: String?) {
+    func updateClipboardState(repo: String?, isProcessing: Bool = false) {
         self.quickAddRepoStr = repo
-        if let r = repo {
-            // Hide Refresh
+        
+        let showQuickAdd = (repo != nil) || isProcessing
+        
+        if showQuickAdd {
+            // Hide everything else for maximum focus
             leftStack.isHidden = true
+            searchField.isHidden = true
+            addBtn.isHidden = true
             
-            // Show Quick Add
-            quickAddLabel.stringValue = Translations.get("quickAddHead").format(with: ["repo": r])
+            if isProcessing, let adding = appDelegate.quickAddingRepo {
+                quickAddLabel.stringValue = Translations.get("addingRepo").format(with: ["repo": adding])
+            } else if let r = repo {
+                quickAddLabel.stringValue = Translations.get("quickAddHead").format(with: ["repo": r])
+            }
+            
             quickAddStack.isHidden = false
-            quickAddHitArea.isHidden = false
+            quickAddHitArea.isHidden = isProcessing // Disable clicks while adding
             
-            let tip = Translations.get("quickAdd").format(with: ["repo": r])
-            addBtn.toolTip = tip
+            let tip = (repo != nil) ? Translations.get("quickAdd").format(with: ["repo": repo!]) : ""
             quickAddHitArea.toolTip = tip
             
-            // Layout Swap: Use full width
-            quickAddTrailingToSearch?.isActive = false
-            quickAddHitAreaTrailingToSearch?.isActive = false
-            
-            quickAddTrailingToAddBtn?.isActive = true
-            quickAddHitAreaTrailingToAddBtn?.isActive = true
-            
-            searchField.isHidden = true
-            
-            // Force layout recalculation to avoid "ghost" invisible views
             self.needsLayout = true
             self.layoutSubtreeIfNeeded()
         } else {
-            // Show Refresh
+            // Restore normal header
             leftStack.isHidden = false
-            
             searchField.isHidden = false
+            addBtn.isHidden = false
             updateSearchOpacity()
             
             quickAddStack.isHidden = true
             quickAddHitArea.isHidden = true
             
-            // Layout Swap: Revert to restricted width
-            quickAddTrailingToAddBtn?.isActive = false
-            quickAddHitAreaTrailingToAddBtn?.isActive = false
-            
-            quickAddTrailingToSearch?.isActive = true
-            quickAddHitAreaTrailingToSearch?.isActive = true
-            
             addBtn.toolTip = Translations.get("addRepoUnified")
             
-            // Force layout recalculation
             self.needsLayout = true
             self.layoutSubtreeIfNeeded()
         }
@@ -308,13 +290,14 @@ class HeaderMenuItemView: NSView {
     
     @objc private func addClicked() {
         appDelegate.animateStatusIcon(with: .scale)
-        appDelegate.mainPopover?.performClose(nil)
         if let repo = self.quickAddRepoStr {
             self.appDelegate.quickAddingRepo = repo
+            self.appDelegate.refreshQuickAddState()
             Task {
                 let _ = await self.appDelegate.addRepoSmart(repoName: repo)
                 await MainActor.run {
                     self.appDelegate.quickAddingRepo = nil
+                    self.appDelegate.refreshQuickAddState()
                 }
             }
         } else {

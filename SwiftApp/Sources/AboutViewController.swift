@@ -7,54 +7,80 @@ class AboutViewController: NSViewController {
     }
     
     override func loadView() {
-        let container = AboutView()
+        let container = AboutView(frame: NSRect(x: 0, y: 0, width: 280, height: 380))
         self.view = container
         
-        let stackView = NSStackView()
-        stackView.orientation = .vertical
-        stackView.alignment = .centerX
-        stackView.spacing = 12
-        stackView.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        stackView.translatesAutoresizingMaskIntoConstraints = false
+        // 1. Premium Glass Background
+        let visualEffect = NSVisualEffectView()
+        visualEffect.blendingMode = .behindWindow
+        visualEffect.material = .hudWindow
+        visualEffect.state = .active
+        visualEffect.wantsLayer = true
+        visualEffect.layer?.cornerRadius = 24
+        visualEffect.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(visualEffect)
         
-        container.addSubview(stackView)
+        let mainStack = NSStackView()
+        mainStack.orientation = .vertical
+        mainStack.alignment = .centerX
+        mainStack.spacing = 24
+        mainStack.edgeInsets = NSEdgeInsets(top: 40, left: 30, bottom: 40, right: 30)
+        mainStack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(mainStack)
         
         NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: container.topAnchor),
-            stackView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            stackView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stackView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            visualEffect.topAnchor.constraint(equalTo: container.topAnchor),
+            visualEffect.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            visualEffect.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            visualEffect.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            
+            mainStack.topAnchor.constraint(equalTo: container.topAnchor),
+            mainStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            mainStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            mainStack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            
+            container.widthAnchor.constraint(equalToConstant: 280)
         ])
         
-        // App Icon
+        // --- Identity Group (Icon + Name) ---
+        let identityStack = NSStackView()
+        identityStack.orientation = .vertical
+        identityStack.spacing = 16
+        identityStack.alignment = .centerX
+        
         let appIconImage = NSImage(named: NSImage.applicationIconName) ?? NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
         let iconView = NSImageView(image: appIconImage!)
         iconView.imageScaling = .scaleProportionallyUpOrDown
         iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.widthAnchor.constraint(equalToConstant: 80).isActive = true
-        iconView.heightAnchor.constraint(equalToConstant: 80).isActive = true
-        stackView.addArrangedSubview(iconView)
+        iconView.widthAnchor.constraint(equalToConstant: 100).isActive = true
+        iconView.heightAnchor.constraint(equalToConstant: 100).isActive = true
+        identityStack.addArrangedSubview(iconView)
         
-        // App Name (Blue Pill)
-        let namePill = createPill(text: "Mino", color: .systemBlue, fontSize: 16)
+        let namePill = createPill(text: "Mino", color: .systemBlue, fontSize: 18)
         namePill.toolTip = "https://github.com/nad-bit/Mino"
         let nameClick = NSClickGestureRecognizer(target: self, action: #selector(openGitHub))
         namePill.addGestureRecognizer(nameClick)
-        stackView.addArrangedSubview(namePill)
+        identityStack.addArrangedSubview(namePill)
         
-        // Version and Credits Pills
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+        mainStack.addArrangedSubview(identityStack)
         
-        let pillsStack = NSStackView()
-        pillsStack.orientation = .vertical
-        pillsStack.spacing = 8
-        pillsStack.alignment = .centerX
+        // --- Info Group (Version + Credits) ---
+        let infoStack = NSStackView()
+        infoStack.orientation = .vertical
+        infoStack.spacing = 8
+        infoStack.alignment = .centerX
         
-        pillsStack.addArrangedSubview(createPill(text: Translations.get("versionTitle"), color: .systemGreen))
-        pillsStack.addArrangedSubview(createPill(text: version, color: .systemOrange))
-        pillsStack.addArrangedSubview(createPill(text: "nad", color: .systemGray))
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "???"
         
-        stackView.addArrangedSubview(pillsStack)
+        // Version "Combo" Pill
+        let versionLabel = createPill(text: "\(Translations.get("versionTitle")) \(version)", color: .systemOrange.withAlphaComponent(0.8), fontSize: 11)
+        infoStack.addArrangedSubview(versionLabel)
+        
+        // Author Pill
+        let authorPill = createPill(text: "nad", color: .secondaryLabelColor, fontSize: 10)
+        infoStack.addArrangedSubview(authorPill)
+        
+        mainStack.addArrangedSubview(infoStack)
     }
     
     override func viewWillAppear() {

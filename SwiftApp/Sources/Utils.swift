@@ -45,8 +45,12 @@ class Utils {
             let text = clipboard.trimmingCharacters(in: .whitespacesAndNewlines)
             if text.isEmpty { return nil }
             
-            // 1. Try finding a full GitHub URL in the string (e.g., inside a sentence or rich text payload)
-            // The owner portion strictly forbids periods to filter out app bundles like "Mino.app"
+            // 1. Support the new smart brew syntax
+            if text.lowercased().hasPrefix("brew:") {
+                return text // Return the whole thing including brew:
+            }
+            
+            // 2. Try finding a full GitHub URL in the string
             if let match = githubUrlRegex?.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)),
                let r = Range(match.range(at: 1), in: text) {
                 let candidate = String(text[r]).replacingOccurrences(of: ".git", with: "")
@@ -55,9 +59,7 @@ class Utils {
                 }
             }
             
-            // 2. If no URL is found, check if the ENTIRE string is "owner/repo" isolated.
-            // Using ^ and $ ensures we don't accidentally match local paths inside a longer text,
-            // and the alphanumeric start ensures we reject starting slashes or periods like "./".
+            // 3. Check if the ENTIRE string is "owner/repo" isolated.
             if let match = githubExactRegex?.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)),
                let r = Range(match.range(at: 1), in: text) {
                 let candidate = String(text[r]).replacingOccurrences(of: ".git", with: "")

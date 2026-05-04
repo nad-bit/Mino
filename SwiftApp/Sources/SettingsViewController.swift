@@ -4,6 +4,7 @@ import Cocoa
 class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindowDelegate {
     
     let tokenStatusLabel = NSTextField(labelWithString: "")
+    private let tokenBadge = NSView()
     let tokenConnectBtn = NSButton(title: Translations.get("connectGitHub"), target: nil, action: nil)
     let tokenDeleteBtn = NSButton(title: Translations.get("deleteToken"), target: nil, action: nil)
     private var oauthWindowController: OAuthWindowController?
@@ -14,7 +15,8 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     
     let loginSwitch = NSSwitch()
     private let ownerCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
-    private let newIndicatorCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let ownerLabel = NSTextField(labelWithString: "")
+    private let newIndicatorLabel = NSTextField(labelWithString: "")
     private let newIndicatorStepper = NSStepper()
     let sortSegment = NSSegmentedControl()
     let layoutSegment = NSSegmentedControl()
@@ -59,9 +61,9 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         let stackView = NSStackView()
         stackView.orientation = .vertical
         stackView.alignment = .centerX
-        stackView.spacing = 15
+        stackView.spacing = 12
         stackView.detachesHiddenViews = true
-        stackView.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
+        stackView.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
         stackView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(stackView)
         
@@ -76,28 +78,46 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         let formStack = NSStackView()
         formStack.orientation = .vertical
         formStack.alignment = .centerX
-        formStack.spacing = 18
+        formStack.spacing = 14
         formStack.detachesHiddenViews = true
         formStack.translatesAutoresizingMaskIntoConstraints = false
         stackView.addArrangedSubview(formStack)
-        formStack.widthAnchor.constraint(equalTo: stackView.widthAnchor, constant: -40).isActive = true
+        formStack.widthAnchor.constraint(equalTo: stackView.widthAnchor, constant: -32).isActive = true
         
         // --- 1. Token Section ---
         let tokenStack = createInnerStack()
-        let tokenLabel = NSTextField(labelWithString: Translations.get("configureToken"))
+        
         tokenStatusLabel.textColor = .secondaryLabelColor
-        tokenStatusLabel.font = .systemFont(ofSize: 13)
+        tokenStatusLabel.font = .systemFont(ofSize: 10, weight: .bold)
+        tokenStatusLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        tokenBadge.wantsLayer = true
+        tokenBadge.layer?.cornerRadius = 5
+        tokenBadge.translatesAutoresizingMaskIntoConstraints = false
+        tokenBadge.addSubview(tokenStatusLabel)
+        
+        NSLayoutConstraint.activate([
+            tokenStatusLabel.topAnchor.constraint(equalTo: tokenBadge.topAnchor, constant: 2),
+            tokenStatusLabel.bottomAnchor.constraint(equalTo: tokenBadge.bottomAnchor, constant: -2),
+            tokenStatusLabel.leadingAnchor.constraint(equalTo: tokenBadge.leadingAnchor, constant: 7),
+            tokenStatusLabel.trailingAnchor.constraint(equalTo: tokenBadge.trailingAnchor, constant: -7)
+        ])
+        
         tokenConnectBtn.target = self
         tokenConnectBtn.action = #selector(startOAuth(_:))
+        styleButtonAsBadge(tokenConnectBtn, titleKey: "connectOnly")
+        
         tokenDeleteBtn.target = self
         tokenDeleteBtn.action = #selector(deleteToken(_:))
-        addSettingsRow(to: tokenStack, label: tokenLabel, controls: [tokenStatusLabel, tokenConnectBtn, tokenDeleteBtn])
+        styleButtonAsBadge(tokenDeleteBtn, titleKey: "deleteOnly")
+        
+        addSettingsRow(to: tokenStack, label: tokenBadge, controls: [tokenConnectBtn, tokenDeleteBtn])
         
         formStack.addArrangedSubview(createGroupBox(for: tokenStack))
         
         // --- 2. Menu Settings Section ---
         let menuStack = createInnerStack()
-        menuStack.spacing = 16 // Consistent spacing
+        menuStack.spacing = 12 // Consistent spacing
         
         let layoutLabel = NSTextField(labelWithString: Translations.get("layoutLabel"))
         layoutLabel.font = .systemFont(ofSize: 13, weight: .medium)
@@ -144,53 +164,27 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         menuStack.addArrangedSubview(separatorLine)
         separatorLine.widthAnchor.constraint(equalTo: menuStack.widthAnchor).isActive = true
         
-        // Binary Options Checklist
-        let checklistStack = NSStackView()
-        checklistStack.orientation = .vertical
-        checklistStack.alignment = .leading
-        checklistStack.spacing = 12
-        checklistStack.translatesAutoresizingMaskIntoConstraints = false
+        // Binary Options Rows
         
-        // 1. New Indicator (Dynamic Checkbox + Right Stepper)
-        let indicatorRow = NSStackView()
-        indicatorRow.orientation = .horizontal
-        indicatorRow.alignment = .centerY
-        indicatorRow.translatesAutoresizingMaskIntoConstraints = false
-        
-        newIndicatorCheckbox.target = self
-        newIndicatorCheckbox.action = #selector(toggleNewIndicator(_:))
-        
-        newIndicatorStepper.minValue = 1
+        newIndicatorStepper.minValue = 0
         newIndicatorStepper.maxValue = 30
         newIndicatorStepper.valueWraps = false
         newIndicatorStepper.target = self
         newIndicatorStepper.action = #selector(indicatorDaysChanged(_:))
         newIndicatorStepper.controlSize = .small
         
-        let indicatorSpring = NSView()
-        indicatorSpring.translatesAutoresizingMaskIntoConstraints = false
-        indicatorSpring.setContentHuggingPriority(NSLayoutConstraint.Priority.defaultLow, for: NSLayoutConstraint.Orientation.horizontal)
-        
-        indicatorRow.addArrangedSubview(newIndicatorCheckbox)
-        indicatorRow.addArrangedSubview(indicatorSpring)
-        indicatorRow.addArrangedSubview(newIndicatorStepper)
-        
-        checklistStack.addArrangedSubview(indicatorRow)
-        indicatorRow.widthAnchor.constraint(equalTo: checklistStack.widthAnchor).isActive = true
-        
-        // 2. Owner Checkbox
-        ownerCheckbox.title = Translations.get("showOwner")
         ownerCheckbox.target = self
         ownerCheckbox.action = #selector(toggleOwner(_:))
-        checklistStack.addArrangedSubview(ownerCheckbox)
+        ownerCheckbox.title = ""
+        ownerLabel.stringValue = Translations.get("showOwner")
         
-        menuStack.addArrangedSubview(checklistStack)
-        checklistStack.widthAnchor.constraint(equalTo: menuStack.widthAnchor).isActive = true
+        addSettingsRow(to: menuStack, label: newIndicatorLabel, controls: [newIndicatorStepper])
+        addSettingsRow(to: menuStack, label: ownerLabel, controls: [ownerCheckbox])
+        
         formStack.addArrangedSubview(createGroupBox(for: menuStack))
         
         // --- 3. Interval Section ---
         let intervalStack = createInnerStack()
-        intervalLabel.translatesAutoresizingMaskIntoConstraints = false
         intervalSlider.minValue = 1
         intervalSlider.maxValue = 24
         intervalSlider.numberOfTickMarks = 24
@@ -198,9 +192,9 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         intervalSlider.target = self
         intervalSlider.action = #selector(intervalChanged(_:))
         intervalSlider.translatesAutoresizingMaskIntoConstraints = false
+        intervalSlider.widthAnchor.constraint(equalToConstant: 110).isActive = true
         
-        intervalStack.addArrangedSubview(intervalLabel)
-        intervalStack.addArrangedSubview(intervalSlider)
+        addSettingsRow(to: intervalStack, label: intervalLabel, controls: [intervalSlider])
         
         formStack.addArrangedSubview(createGroupBox(for: intervalStack))
         
@@ -244,20 +238,22 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         let hasToken = ConfigManager.shared.token != nil && !ConfigManager.shared.token!.isEmpty
         
         if hasToken {
-            tokenStatusLabel.stringValue = Translations.get("connected")
+            tokenStatusLabel.stringValue = Translations.get("connected").uppercased()
             tokenStatusLabel.textColor = .systemGreen
+            tokenBadge.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.15).cgColor
             tokenConnectBtn.isHidden = true
             tokenDeleteBtn.isHidden = false
         } else {
-            tokenStatusLabel.stringValue = Translations.get("notConnected")
+            tokenStatusLabel.stringValue = Translations.get("configureToken").uppercased()
             tokenStatusLabel.textColor = .secondaryLabelColor
+            tokenBadge.layer?.backgroundColor = nil // Remove gray pill
             tokenConnectBtn.isHidden = false
             tokenDeleteBtn.isHidden = true
             tokenConnectBtn.isEnabled = true
         }
         
         isConfirmingDelete = false
-        tokenDeleteBtn.attributedTitle = NSAttributedString(string: Translations.get("deleteToken"), attributes: [:])
+        styleButtonAsBadge(tokenDeleteBtn, titleKey: "deleteOnly")
         tokenDeleteBtn.contentTintColor = nil
         
         // Load Interval
@@ -288,12 +284,9 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         updateTextSizePicker()
         
         let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
-        newIndicatorCheckbox.state = showNewIndicator ? .on : .off
-        
         let days = ConfigManager.shared.config.newIndicatorDays ?? Constants.newReleaseThresholdDays
-        newIndicatorStepper.integerValue = days
+        newIndicatorStepper.integerValue = showNewIndicator ? days : 0
         updateIndicatorDaysLabel()
-        updateIndicatorStepperVisibility()
         
         updatePreferredContentSize()
     }
@@ -323,7 +316,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     private func updateIntervalLabel() {
         let hours = intervalSlider.integerValue
         let unit = hours == 1 ? Translations.get("unitHour") : Translations.get("unitHoursPlural")
-        intervalLabel.stringValue = Translations.get("intervalDynamic").format(with: ["hours": "\(hours)", "unit": unit])
+        intervalLabel.stringValue = Translations.get("intervalDynamic").format(with: ["hours": "\(hours)", "unit": unit]).uppercased()
     }
     
     @objc private func startOAuth(_ sender: NSButton) {
@@ -387,13 +380,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     @objc private func deleteToken(_ sender: NSButton) {
         if !isConfirmingDelete {
             isConfirmingDelete = true
-            
-            let title = Translations.get("confirmAction")
-            let attributes: [NSAttributedString.Key: Any] = [
-                .foregroundColor: NSColor.systemRed,
-                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)
-            ]
-            sender.attributedTitle = NSAttributedString(string: title, attributes: attributes)
+            styleButtonAsBadge(sender, titleKey: "confirmDisconnect", color: .systemRed)
             
             // Auto-reset after 5 seconds if no action is taken
             DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
@@ -451,49 +438,31 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         generalSaveWorkItem = pending
         DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
     }
-    
-    @objc private func toggleNewIndicator(_ sender: NSButton) {
-        isUpdatingSelf = true
-        ConfigManager.shared.config.showNewIndicator = sender.state == .on
-        updateIndicatorStepperVisibility()
+       @objc private func indicatorDaysChanged(_ sender: NSStepper) {
+        updateIndicatorDaysLabel()
         
-        generalSaveWorkItem?.cancel()
+        let days = sender.integerValue
         let pending = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.isUpdatingSelf = true
+            ConfigManager.shared.config.showNewIndicator = (days > 0)
+            ConfigManager.shared.config.newIndicatorDays = days
             ConfigManager.shared.saveConfig()
             if let delegate = NSApp.delegate as? AppDelegate {
                 delegate.rebuildMenu()
             }
-            self?.isUpdatingSelf = false
-        }
-        generalSaveWorkItem = pending
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
-    }
-    
-    @objc private func indicatorDaysChanged(_ sender: NSStepper) {
-        updateIndicatorDaysLabel()
-        
-        indicatorSaveWorkItem?.cancel()
-        
-        let pendingSave = DispatchWorkItem { [weak self] in
-            guard let self = self else { return }
-            self.isUpdatingSelf = true
-            ConfigManager.shared.config.newIndicatorDays = self.newIndicatorStepper.integerValue
-            ConfigManager.shared.saveConfig()
-            if let delegate = NSApp.delegate as? AppDelegate {
-                 delegate.rebuildMenu()
-            }
             self.isUpdatingSelf = false
         }
         
-        indicatorSaveWorkItem = pendingSave
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.interactiveControlDelaySeconds, execute: pendingSave)
+        indicatorSaveWorkItem?.cancel()
+        indicatorSaveWorkItem = pending
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.interactiveControlDelaySeconds, execute: pending)
     }
     
     @objc private func layoutChanged(_ sender: NSSegmentedControl) {
         isUpdatingSelf = true
         let layoutModes = ["columns", "cards", "tags"]
         ConfigManager.shared.config.menuLayout = layoutModes[sender.selectedSegment]
-        updateIndicatorStepperVisibility()
         
         generalSaveWorkItem?.cancel()
         let pending = DispatchWorkItem { [weak self] in
@@ -544,29 +513,49 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     
     private func updateIndicatorDaysLabel() {
         let days = newIndicatorStepper.integerValue
-        newIndicatorCheckbox.title = (days == 1) ? Translations.get("indicatorDaySingular") : Translations.get("indicatorDays").format(with: ["days": "\(days)"])
+        if days == 0 {
+            newIndicatorLabel.stringValue = Translations.get("noNewIndicator").uppercased()
+        } else {
+            let text = (days == 1) ? Translations.get("indicatorDaySingular") : Translations.get("indicatorDays").format(with: ["days": "\(days)"])
+            newIndicatorLabel.stringValue = text.uppercased()
+        }
     }
     
-    private func updateIndicatorStepperVisibility() {
-        let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
-        newIndicatorCheckbox.isEnabled = true
-        newIndicatorCheckbox.state = showNewIndicator ? .on : .off
-        newIndicatorStepper.isEnabled = showNewIndicator
+    
+    private func createBadgeLabel(for textField: NSTextField) -> NSView {
+        textField.font = .systemFont(ofSize: 10, weight: .bold)
+        textField.stringValue = textField.stringValue.uppercased()
+        textField.textColor = .secondaryLabelColor
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        return textField
     }
     
-    private func addSettingsRow(to stack: NSStackView, label: NSView, controls: [NSView]) {
+    private func addSettingsRow(to stack: NSStackView, label: NSView, controls: [NSView], subtitle: NSView? = nil) {
         let row = NSStackView()
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 10
         row.translatesAutoresizingMaskIntoConstraints = false
         
+        let labelContainer = NSStackView()
+        labelContainer.orientation = .vertical
+        labelContainer.alignment = .leading
+        labelContainer.spacing = 4
+        labelContainer.detachesHiddenViews = true
+        
+        var finalLabel = label
         if let textField = label as? NSTextField {
             textField.lineBreakMode = .byTruncatingTail
             textField.setContentCompressionResistancePriority(NSLayoutConstraint.Priority.defaultLow, for: NSLayoutConstraint.Orientation.horizontal)
+            finalLabel = createBadgeLabel(for: textField)
         }
         
-        row.addArrangedSubview(label)
+        labelContainer.addArrangedSubview(finalLabel)
+        if let sub = subtitle {
+            labelContainer.addArrangedSubview(sub)
+        }
+        
+        row.addArrangedSubview(labelContainer)
         
         let spring = NSView()
         spring.translatesAutoresizingMaskIntoConstraints = false
@@ -585,10 +574,21 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 15
+        stack.spacing = 12
         stack.detachesHiddenViews = true
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
+    }
+    
+    private func styleButtonAsBadge(_ button: NSButton, titleKey: String, color: NSColor? = nil) {
+        let title = Translations.get(titleKey).uppercased()
+        let attrTitle = NSAttributedString(string: title, attributes: [
+            .font: NSFont.systemFont(ofSize: 10, weight: .bold),
+            .foregroundColor: color ?? NSColor.controlTextColor
+        ])
+        button.attributedTitle = attrTitle
+        button.bezelStyle = .rounded
+        button.controlSize = .small
     }
     
     private func createGroupBox(for innerStack: NSStackView) -> NSBox {
@@ -607,10 +607,10 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         cv.addSubview(innerStack)
         
         NSLayoutConstraint.activate([
-            innerStack.topAnchor.constraint(equalTo: cv.topAnchor, constant: 12),
-            innerStack.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -12),
-            innerStack.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 16),
-            innerStack.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -16),
+            innerStack.topAnchor.constraint(equalTo: cv.topAnchor, constant: 10),
+            innerStack.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -10),
+            innerStack.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 14),
+            innerStack.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -14),
             box.widthAnchor.constraint(equalToConstant: 440)
         ])
         

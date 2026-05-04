@@ -84,7 +84,7 @@ Click the `(+)` button in the menu to open the floating Window.
 
 **Standard Manual Input:**
 - Enter `owner/repo` format (e.g., `microsoft/vscode`).
-- Toggle the segment to Homebrew to select from your installed Casks.
+- Enter a Homebrew **Cask name** (e.g., `lulu` or `stats`) to automatically resolve and track its GitHub repository. No prefixes required.
 
 ### Menu Interface
 

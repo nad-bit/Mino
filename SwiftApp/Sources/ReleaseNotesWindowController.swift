@@ -234,11 +234,8 @@ class ReleaseNotesViewController: NSViewController {
         
         // Inject explicit line breaks between block elements and headings for NSTextView
         // NSTextView ignores CSS margins if textLists are wiped or due to HTML layout quirks
-        var fullHTML = bodyText
-        let blockToHeadingRegex = try? NSRegularExpression(pattern: "(</(?:ul|ol|p|div|blockquote)>)(\\s*)(<(?:h[1-6]|p|ul|ol|div|blockquote)\\b[^>]*>)")
-        if let r = blockToHeadingRegex {
-            fullHTML = r.stringByReplacingMatches(in: fullHTML, options: [], range: NSRange(location: 0, length: fullHTML.utf16.count), withTemplate: "$1<br><br>$3")
-        }
+        let fullHTML = bodyText
+        // Manual break injection removed in favor of paragraphSpacing for cleaner typography
         
         // Convert standard Markdown newlines to HTML breaks so text doesn't bunch up in WebKit
         if hasHTML, let htmlData = fullHTML.data(using: .utf8) {
@@ -266,6 +263,8 @@ class ReleaseNotesViewController: NSViewController {
                 htmlAttrStr.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: htmlAttrStr.length), options: []) { value, range, stop in
                     let bodyStyle = (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle ?? NSMutableParagraphStyle()
                     bodyStyle.lineSpacing = 4.0
+                    bodyStyle.paragraphSpacing = 12.0
+                    bodyStyle.paragraphSpacingBefore = 8.0
                     // GitHub HTML already writes the bullet/number into the text content.
                     // Wipe WebKit's native text lists to prevent duplicate indices (e.g. "1. 1.").
                     bodyStyle.textLists = []
@@ -325,9 +324,11 @@ class ReleaseNotesViewController: NSViewController {
                 // but applying our base editorial font to the unformatted chunks
                 let nsAttrStr = NSMutableAttributedString(attrStr)
                 
-                // Increase line height for editorial feel
+                // Increase line height and paragraph spacing for editorial feel
                 let bodyStyle = NSMutableParagraphStyle()
                 bodyStyle.lineSpacing = 4.0
+                bodyStyle.paragraphSpacing = 12.0
+                bodyStyle.paragraphSpacingBefore = 8.0
                 nsAttrStr.addAttribute(.paragraphStyle, value: bodyStyle, range: NSRange(location: 0, length: nsAttrStr.length))
                 
                 // Add a default font to the whole range if a specific one wasn't applied by Markdown (like bold)
