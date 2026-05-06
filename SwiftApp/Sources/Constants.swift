@@ -22,6 +22,8 @@ enum Constants {
     static let menuBaseFontSize: CGFloat = 14.0
     static let menuFontSizeMin: CGFloat = 10.0
     static let menuFontSizeMax: CGFloat = 18.0
+    static let popoverAnimates: Bool = false
+    static let defaultAnimationDuration: TimeInterval = 0.15
     
     // System Constants
     static let launchAgentLabel = "com.nad.mino"

@@ -59,9 +59,7 @@ class RefreshCoordinator {
         let nextRefreshSeconds = nextRefreshDate.timeIntervalSince(Date())
         
         // Lightweight update of repository age labels and header title
-        if let headerView = delegate.mainPopoverVC.view.subviews.first?.subviews.first(where: { $0 is HeaderMenuItemView }) as? HeaderMenuItemView {
-            headerView.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
-        }
+        delegate.footerView?.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
         
         for repoView in delegate.mainPopoverVC.repoViews {
             repoView.updateAgeDisplay()
@@ -79,14 +77,12 @@ class RefreshCoordinator {
         if isRefreshing { return }
         isRefreshing = true
         
-        if let headerView = delegate.mainPopoverVC.view.subviews.first?.subviews.first(where: { $0 is HeaderMenuItemView }) as? HeaderMenuItemView {
-            headerView.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
-        }
+        delegate.footerView?.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
         delegate.animateStatusIcon(with: .rotate)
         
         // 1. Optimized prioritized sorting (O(N) lookup preparation)
         let repoConfigs = ConfigManager.shared.config.repos
-        let configMap = Dictionary(uniqueKeysWithValues: repoConfigs.map { ($0.name, $0) })
+        let configMap = Dictionary(repoConfigs.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         
         let sortedRepos = repoConfigs.map { $0.name }.sorted { a, b in
             // Favorites first

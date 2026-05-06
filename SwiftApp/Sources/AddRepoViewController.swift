@@ -11,18 +11,10 @@ class AddRepoViewController: NSViewController, NSTextFieldDelegate {
     var completionHandler: ((String?, String?, String?, @escaping (Bool) -> Void) -> Void)?
     
     override func loadView() {
-        // High-efficiency minimalist root
+        // Use a plain NSView as root — the NSPopover container provides the native
+        // translucent material automatically, matching Preferences and Notes windows.
         let rootView = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 145))
         self.view = rootView
-        
-        let fx = NSVisualEffectView(frame: rootView.bounds)
-        fx.material = .popover
-        fx.blendingMode = .behindWindow
-        fx.state = .active
-        fx.wantsLayer = true
-        fx.layer?.cornerRadius = 14
-        fx.translatesAutoresizingMaskIntoConstraints = false
-        rootView.addSubview(fx)
         
         let mainStack = NSStackView()
         mainStack.orientation = .vertical
@@ -33,11 +25,6 @@ class AddRepoViewController: NSViewController, NSTextFieldDelegate {
         rootView.addSubview(mainStack)
         
         NSLayoutConstraint.activate([
-            fx.topAnchor.constraint(equalTo: rootView.topAnchor),
-            fx.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
-            fx.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
-            fx.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
-            
             mainStack.topAnchor.constraint(equalTo: rootView.topAnchor),
             mainStack.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             mainStack.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),

@@ -21,7 +21,7 @@ class MainPopoverViewController: NSViewController {
     
     // Centralized Mouse Tracking
     private var mouseMonitor: Any?
-    private var currentlyHighlightedRow: RepoMenuItemView?
+    internal var currentlyHighlightedRow: RepoMenuItemView?
     
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
@@ -33,7 +33,8 @@ class MainPopoverViewController: NSViewController {
     }
     
     override func loadView() {
-        let container = NSView()
+        let container = MainPopoverView()
+        container.appDelegate = self.appDelegate
         self.view = container
         
         // 1. Setup Table & ScrollView
@@ -173,7 +174,6 @@ class MainPopoverViewController: NSViewController {
         }
         
         guard let headerView = headerView else { return }
-        headerView.updateTimeText(appDelegate.getRefreshTitle(), isRefreshing: appDelegate.isRefreshing)
         
         // Restore previous search query if any
         if !appDelegate.currentSearchQuery.isEmpty {
@@ -197,6 +197,7 @@ class MainPopoverViewController: NSViewController {
             appDelegate.footerView = fv
         }
         footerView?.updateRepoCount()
+        footerView?.updateTimeText(appDelegate.getRefreshTitle(), isRefreshing: appDelegate.isRefreshing)
         
         // 4. Get and Sort Data
         let config = ConfigManager.shared.config
@@ -217,22 +218,47 @@ class MainPopoverViewController: NSViewController {
             return name.contains(lowerQuery) || tags.contains(where: { $0.contains(lowerQuery) })
         }
         
-        var sortedRepos = filteredRepos
-        if isSortedByName {
-            sortedRepos.sort { $0.name.split(separator: "/").last?.lowercased() ?? "" < $1.name.split(separator: "/").last?.lowercased() ?? "" }
-        } else {
-            sortedRepos.sort { r1, r2 in
-                let (_, s1) = Utils.getReleaseAge(dateString: appDelegate.repoCache[r1.name]?.date)
-                let (_, s2) = Utils.getReleaseAge(dateString: appDelegate.repoCache[r2.name]?.date)
-                return s1 < s2
+        // OPTIMIZATION: Pre-calculate sort keys to avoid expensive date parsing inside the sort closure
+        struct SortableRepo {
+            let repo: RepoConfig
+            let nameKey: String
+            let dateKey: Double
+            let hasError: Bool
+        }
+        
+        let sortableItems: [SortableRepo] = filteredRepos.map { repo in
+            let info = appDelegate.repoCache[repo.name]
+            let dateKey: Double
+            if let dateStr = info?.date {
+                // We use parseDate directly which is slightly faster than getReleaseAge
+                dateKey = Utils.parseDate(dateString: dateStr)?.timeIntervalSince1970 ?? 0
+            } else {
+                dateKey = 0
+            }
+            
+            return SortableRepo(
+                repo: repo,
+                nameKey: repo.name.split(separator: "/").last?.lowercased() ?? "",
+                dateKey: dateKey,
+                hasError: info?.error != nil
+            )
+        }
+        
+        let sortedItems = sortableItems.sorted { r1, r2 in
+            // 1. Errors always at the bottom
+            if r1.hasError != r2.hasError {
+                return !r1.hasError 
+            }
+            
+            // 2. Main sort
+            if isSortedByName {
+                return r1.nameKey < r2.nameKey
+            } else {
+                return r1.dateKey > r2.dateKey // Newest first
             }
         }
-        sortedRepos.sort { r1, r2 in
-            let e1 = appDelegate.repoCache[r1.name]?.error != nil
-            let e2 = appDelegate.repoCache[r2.name]?.error != nil
-            if e1 != e2 { return !e1 }
-            return false
-        }
+        
+        let sortedRepos = sortedItems.map { $0.repo }
         
         // 5. Build Row Views & Calculate Target Width
         let baseFontSize = config.menuFontSize ?? Constants.menuBaseFontSize
@@ -411,7 +437,7 @@ class MainPopoverViewController: NSViewController {
     }
     
     enum RepoAction {
-        case open, install, notes, delete
+        case open, install, notes, delete, copy
     }
     
     func triggerActionOnHighlighted(_ action: RepoAction) {
@@ -426,6 +452,11 @@ class MainPopoverViewController: NSViewController {
             row.notesClicked()
         case .delete:
             row.deleteClicked()
+        case .copy:
+            let repoName = row.displayData.repoName
+            let url = "https://github.com/\(repoName)"
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(url, forType: .string)
         }
     }
 }
@@ -474,3 +505,14 @@ class MainPopoverFlippedView: NSView {
 }
 
 
+/// Custom view that handles keyboard shortcuts when no other view (like search field) does.
+class MainPopoverView: NSView {
+    weak var appDelegate: AppDelegate?
+    
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let appDelegate = appDelegate, appDelegate.handleGlobalShortcuts(with: event) {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+}

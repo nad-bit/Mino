@@ -52,6 +52,16 @@ class MenuActionButton: NSButton {
         let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways]
         trackingArea = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
         addTrackingArea(trackingArea!)
+        
+        // Fix for "ghost hover" when the view moves but the mouse stays still.
+        // Optimization: only perform this expensive check if the button is currently hovered.
+        if isHovered, let window = self.window {
+            let mouseLocation = window.mouseLocationOutsideOfEventStream
+            let localPoint = convert(mouseLocation, from: nil)
+            if !bounds.contains(localPoint) {
+                resetHoverState()
+            }
+        }
     }
     
     override func mouseEntered(with event: NSEvent) {
@@ -569,20 +579,21 @@ class RepoMenuItemView: NSView {
     @objc func installClicked() {
         if let caskName = caskName {
             appDelegate.animateStatusIcon(with: .scale)
-            appDelegate.performAfterMenuClose {
+            appDelegate.performAfterPopoverClose {
                 self.appDelegate.handleInstallBrewCask(for: caskName)
             }
         }
     }
     
     @objc func notesClicked() {
-        appDelegate.animateStatusIcon(with: .scale)
-        appDelegate.handleShowNotes(for: repoName, relativeTo: self)
+        DispatchQueue.main.async {
+            self.appDelegate.handleShowNotes(for: self.repoName, relativeTo: self)
+        }
     }
     
     @objc func openRepoClicked() {
         appDelegate.animateStatusIcon(with: .scale)
-        appDelegate.performAfterMenuClose {
+        appDelegate.performAfterPopoverClose {
             self.appDelegate.handleOpenRepo(for: self.repoName)
         }
     }
@@ -597,12 +608,11 @@ class RepoMenuItemView: NSView {
             
             // Fire-and-forget fade animation for visual polish
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.2
+                ctx.duration = Constants.defaultAnimationDuration
                 self.animator().alphaValue = 0
             }
             
-            // Use a Timer in .common mode (fires during NSMenu tracking)
-            // instead of NSAnimationContext completion handler which may not fire
+            // Use a Timer in .common mode to fire reliably during popover animations
             let deleteTimer = Timer(timeInterval: 0.25, repeats: false) { [weak self] _ in
                 guard let self = self else { return }
                 MainActor.assumeIsolated {
@@ -622,7 +632,7 @@ class RepoMenuItemView: NSView {
             
             // Fade out other action buttons to focus attention on confirmation
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.15
+                ctx.duration = Constants.defaultAnimationDuration
                 self.installBtn.animator().alphaValue = 0
                 self.notesBtn.animator().alphaValue = 0
                 self.openRepoBtn.animator().alphaValue = 0
@@ -630,7 +640,7 @@ class RepoMenuItemView: NSView {
             
             needsDisplay = true
             
-            // Auto-cancel after 2s (must use .common mode to fire during NSMenu tracking)
+            // Auto-cancel after 2s
             let timer = Timer(timeInterval: 2.0, repeats: false) { [weak self] _ in
                 DispatchQueue.main.async {
                     self?.cancelDeleteConfirm()
@@ -695,7 +705,7 @@ class RepoMenuItemView: NSView {
 
         if animated {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.2
+                context.duration = Constants.defaultAnimationDuration
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 context.allowsImplicitAnimation = true
                 
@@ -839,7 +849,7 @@ class RepoMenuItemView: NSView {
         ConfigManager.shared.saveConfig()
         
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.15
+            ctx.duration = Constants.defaultAnimationDuration
             self.starLabel.animator().textColor = newState ? .systemYellow : .clear
         }
     }

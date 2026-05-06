@@ -172,6 +172,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         newIndicatorStepper.target = self
         newIndicatorStepper.action = #selector(indicatorDaysChanged(_:))
         newIndicatorStepper.controlSize = .small
+        newIndicatorStepper.autorepeat = false
         
         ownerCheckbox.target = self
         ownerCheckbox.action = #selector(toggleOwner(_:))
@@ -410,16 +411,11 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         isUpdatingSelf = true
         ConfigManager.shared.config.showOwner = sender.state == .on
         
-        generalSaveWorkItem?.cancel()
-        let pending = DispatchWorkItem { [weak self] in
-            ConfigManager.shared.saveConfig()
-            if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.rebuildMenu()
-            }
-            self?.isUpdatingSelf = false
+        ConfigManager.shared.saveConfig()
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.rebuildMenu()
         }
-        generalSaveWorkItem = pending
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
+        self.isUpdatingSelf = false
     }
     
     @objc private func sortChanged(_ sender: NSSegmentedControl) {
@@ -427,36 +423,24 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         let isByName = sender.selectedSegment == 0
         ConfigManager.shared.config.sortBy = isByName ? "name" : "date"
         
-        generalSaveWorkItem?.cancel()
-        let pending = DispatchWorkItem { [weak self] in
-            ConfigManager.shared.saveConfig()
-            if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.rebuildMenu()
-            }
-            self?.isUpdatingSelf = false
+        ConfigManager.shared.saveConfig()
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.rebuildMenu()
         }
-        generalSaveWorkItem = pending
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
+        self.isUpdatingSelf = false
     }
-       @objc private func indicatorDaysChanged(_ sender: NSStepper) {
+    @objc private func indicatorDaysChanged(_ sender: NSStepper) {
         updateIndicatorDaysLabel()
         
         let days = sender.integerValue
-        let pending = DispatchWorkItem { [weak self] in
-            guard let self = self else { return }
-            self.isUpdatingSelf = true
-            ConfigManager.shared.config.showNewIndicator = (days > 0)
-            ConfigManager.shared.config.newIndicatorDays = days
-            ConfigManager.shared.saveConfig()
-            if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.rebuildMenu()
-            }
-            self.isUpdatingSelf = false
+        self.isUpdatingSelf = true
+        ConfigManager.shared.config.showNewIndicator = (days > 0)
+        ConfigManager.shared.config.newIndicatorDays = days
+        ConfigManager.shared.saveConfig()
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.rebuildMenu()
         }
-        
-        indicatorSaveWorkItem?.cancel()
-        indicatorSaveWorkItem = pending
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.interactiveControlDelaySeconds, execute: pending)
+        self.isUpdatingSelf = false
     }
     
     @objc private func layoutChanged(_ sender: NSSegmentedControl) {
@@ -464,16 +448,11 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         let layoutModes = ["columns", "cards", "tags"]
         ConfigManager.shared.config.menuLayout = layoutModes[sender.selectedSegment]
         
-        generalSaveWorkItem?.cancel()
-        let pending = DispatchWorkItem { [weak self] in
-            ConfigManager.shared.saveConfig()
-            if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.rebuildMenu()
-            }
-            self?.isUpdatingSelf = false
+        ConfigManager.shared.saveConfig()
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.rebuildMenu()
         }
-        generalSaveWorkItem = pending
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
+        self.isUpdatingSelf = false
     }
     
     @objc private func textSizePickerAction(_ sender: NSSegmentedControl) {
@@ -496,19 +475,13 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     }
     
     private func scheduleTextSizeSave(_ size: CGFloat) {
-        textSizeSaveWorkItem?.cancel()
-        let pending = DispatchWorkItem { [weak self] in
-            guard let self = self else { return }
-            self.isUpdatingSelf = true
-            ConfigManager.shared.config.menuFontSize = size
-            ConfigManager.shared.saveConfig()
-            if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.rebuildMenu()
-            }
-            self.isUpdatingSelf = false
+        self.isUpdatingSelf = true
+        ConfigManager.shared.config.menuFontSize = size
+        ConfigManager.shared.saveConfig()
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.rebuildMenu()
         }
-        textSizeSaveWorkItem = pending
-        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.menuUpdateBatchDelaySeconds, execute: pending)
+        self.isUpdatingSelf = false
     }
     
     private func updateIndicatorDaysLabel() {

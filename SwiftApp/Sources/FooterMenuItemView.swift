@@ -3,7 +3,7 @@ import Cocoa
 @MainActor
 class FooterMenuItemView: NSView {
     
-    let settingsBtn = MenuActionButton()
+    let refreshBtn = MenuActionButton()
     private let quitBtn = MenuActionButton()
     private let repoCountLabel = NSTextField(labelWithString: "")
     private let appDelegate: AppDelegate
@@ -23,16 +23,15 @@ class FooterMenuItemView: NSView {
     }
     
     private func setupView() {
-        // Settings Button
+        // Refresh Button
         let config = NSImage.SymbolConfiguration(pointSize: Constants.menuBaseFontSize - 2, weight: .semibold)
-        settingsBtn.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: Translations.get("preferences"))?.withSymbolConfiguration(config)
-        settingsBtn.isBordered = false
-        settingsBtn.target = self
-        settingsBtn.action = #selector(settingsClicked)
-        settingsBtn.toolTip = Translations.get("preferences")
-        settingsBtn.baseColor = .secondaryLabelColor
-        settingsBtn.hoverColor = .labelColor
-        settingsBtn.translatesAutoresizingMaskIntoConstraints = false
+        refreshBtn.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")?.withSymbolConfiguration(config)
+        refreshBtn.isBordered = false
+        refreshBtn.target = self
+        refreshBtn.action = #selector(refreshClicked)
+        refreshBtn.baseColor = .secondaryLabelColor
+        refreshBtn.hoverColor = .labelColor
+        refreshBtn.translatesAutoresizingMaskIntoConstraints = false
         
         // Quit Button
         quitBtn.image = NSImage(systemSymbolName: "power", accessibilityDescription: Translations.get("quit"))?.withSymbolConfiguration(config)
@@ -56,15 +55,15 @@ class FooterMenuItemView: NSView {
         
         updateRepoCount()
         
-        addSubview(settingsBtn)
+        addSubview(refreshBtn)
         addSubview(quitBtn)
         addSubview(repoCountLabel)
         
         NSLayoutConstraint.activate([
-            settingsBtn.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
-            settingsBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
-            settingsBtn.widthAnchor.constraint(equalToConstant: 24),
-            settingsBtn.heightAnchor.constraint(equalToConstant: 24),
+            refreshBtn.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            refreshBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
+            refreshBtn.widthAnchor.constraint(equalToConstant: 24),
+            refreshBtn.heightAnchor.constraint(equalToConstant: 24),
             
             quitBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
             quitBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -73,7 +72,7 @@ class FooterMenuItemView: NSView {
             
             repoCountLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
             repoCountLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            repoCountLabel.leadingAnchor.constraint(greaterThanOrEqualTo: settingsBtn.trailingAnchor, constant: 8),
+            repoCountLabel.leadingAnchor.constraint(greaterThanOrEqualTo: refreshBtn.trailingAnchor, constant: 8),
             repoCountLabel.trailingAnchor.constraint(lessThanOrEqualTo: quitBtn.leadingAnchor, constant: -8)
         ])
     }
@@ -88,9 +87,18 @@ class FooterMenuItemView: NSView {
         }
     }
     
-    @objc private func settingsClicked() {
-        appDelegate.animateStatusIcon(with: .scale)
-        self.appDelegate.openSettingsWindow(self)
+    @objc private func refreshClicked() {
+        DispatchQueue.main.async {
+            self.appDelegate.triggerFullRefresh(self)
+        }
+    }
+    
+    func updateTimeText(_ text: String, isRefreshing: Bool) {
+        if refreshBtn.toolTip != text {
+            refreshBtn.toolTip = text
+        }
+        refreshBtn.baseColor = isRefreshing ? .tertiaryLabelColor : .secondaryLabelColor
+        refreshBtn.needsDisplay = true
     }
     
     @objc private func quitClicked() {
@@ -103,7 +111,7 @@ class FooterMenuItemView: NSView {
         // No full-row highlight for footer, buttons handle their own hover.
         // But reset hover state on all buttons to avoid stale highlights
         // when the menu is closed mid-hover via a click.
-        settingsBtn.resetHoverState()
+        refreshBtn.resetHoverState()
         quitBtn.resetHoverState()
     }
     

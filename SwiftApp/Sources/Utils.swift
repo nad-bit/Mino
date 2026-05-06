@@ -91,8 +91,8 @@ extension NSWindow {
         
         // Fast, fluid animation
         NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.15 // Fast but visible (user asked for fast)
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn) // Accelerate towards the icon
+            context.duration = Constants.defaultAnimationDuration // Fast but visible (user asked for fast)
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut) // Accelerate towards the icon
             
             // Animate frame and alpha
             self.animator().setFrame(targetFrame, display: true)

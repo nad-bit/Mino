@@ -5,6 +5,26 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] - 2026-05-06
+
+### Added
+- **Undo Delete**: Implemented a global `CMD+Z` shortcut to instantly undo the last repository deletion, complete with cache restoration and zero API latency.
+- **Copy Repository URL**: Added `CMD+C` shortcut to quickly copy the GitHub URL of the currently selected repository directly to the clipboard.
+- **Performance Optimization**: Implemented a high-performance sorting algorithm using pre-calculated keys (Schwartzian transform) to eliminate redundant date parsing, resulting in significantly faster search filtering for large repository lists (200+).
+
+### Changed
+- **Intuitive Shortcuts**: Remapped the "About" window shortcut to `CMD+M` (for Mino) and the "Release Notes" shortcut to `CMD+I` (for Info) to better align with native macOS application conventions.
+- **UI Architecture**: Relocated the Settings button to the Header and the Refresh button to the Footer to ensure consistent popover anchoring and eliminate vertical layout jumps during menu resizing.
+- **Interface Harmonization**: Standardized the visual materials of the "Add Repository" and "About" windows by utilizing native system vibrancy, matching the premium aesthetics of the Preferences and Notes popovers.
+
+### Fixed
+- **Tooltip Refresh**: Resolved an issue where the "Refresh" button tooltip failed to update its age indicator due to the button relocation and view hierarchy traversal changes.
+- **Visual Stability**: Resolved "ghost hover" artifacts where buttons remained highlighted after the menu resized or moved away from a stationary mouse.
+- **Duplicate Prevention**: Fixed a critical race condition that could cause a fatal crash if a user manually added a repository and simultaneously triggered an undo action.
+- **Case-Insensitive Configs**: Enhanced all repository existence checks to be completely case-insensitive, preventing conflicting configurations.
+- **Interaction Fluidity**: Resolved a UI toggle bug in the Settings button and implemented asynchronous execution for popover triggers to ensure perfectly smooth animations.
+- **Architecture Cleanup**: Removed dead code, vestigial `NSMenuDelegate` conformances, and renamed misleading legacy variables (`menuIsOpen` to `popoverIsOpen`) to ensure a perfectly clean `NSPopover` codebase.
+
 ## [2.1.1] - 2026-05-04
 
 ### Added

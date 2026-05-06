@@ -40,12 +40,47 @@ class RepoCoordinator {
     func deleteRepoInline(repoName: String) {
         guard let delegate = delegate else { return }
         
+        // Snapshot before deletion for CMD+Z undo
+        if let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
+            delegate.lastDeletedRepo = (
+                config: ConfigManager.shared.config.repos[index],
+                index: index,
+                cache: delegate.repoCache[repoName]
+            )
+        }
+        
         cleanupRepoData(repoName: repoName)
         
         // Full rebuild is safer to ensure all layout constraints and scroll heights are updated.
         delegate.rebuildMenu()
         
         delegate.animateStatusIcon(with: .replaceWithSlash)
+    }
+    
+    func undoLastDelete() {
+        guard let delegate = delegate,
+              let last = delegate.lastDeletedRepo else { return }
+        
+        delegate.lastDeletedRepo = nil
+        
+        // Prevent duplicate if the user manually added the repo back before hitting CMD+Z (case-insensitive check)
+        if ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == last.config.name.lowercased() }) {
+            return
+        }
+        
+        // Re-insert at original position (clamped to current count)
+        let insertIndex = min(last.index, ConfigManager.shared.config.repos.count)
+        ConfigManager.shared.config.repos.insert(last.config, at: insertIndex)
+        ConfigManager.shared.saveConfig()
+        
+        // Restore cache if available
+        if let cache = last.cache {
+            delegate.repoCache[last.config.name] = cache
+        }
+        
+        delegate.updatePopularTagsCache()
+        delegate.rebuildMenu()
+        delegate.animateStatusIcon(with: .bounce)
     }
     
     // MARK: - Navigation
@@ -72,13 +107,23 @@ class RepoCoordinator {
     
     @objc func handleShowNotes(for repoName: String, relativeTo view: NSView) {
         guard let delegate = delegate else { return }
+        
+        // Toggle: If the notes popover is already open for this exact repo, close it.
+        if let popover = delegate.releaseNotesPopover,
+           popover.isShown,
+           let vc = popover.contentViewController as? ReleaseNotesViewController,
+           vc.currentRepoName == repoName {
+            popover.performClose(nil)
+            return
+        }
+        
         let info = delegate.repoCache[repoName] ?? RepoInfo(name: repoName, error: nil)
         
         if delegate.releaseNotesPopover == nil {
             let popover = NSPopover()
             popover.contentViewController = ReleaseNotesViewController()
             popover.behavior = .transient
-            popover.animates = true
+            popover.animates = Constants.popoverAnimates
             delegate.releaseNotesPopover = popover
         }
         
@@ -129,7 +174,19 @@ class RepoCoordinator {
                     alert.runModal()
                 }
             } else {
-                delegate.sendNotification(title: Translations.get("error"), subtitle: Translations.get("installFailed").format(with: ["cask_name": caskName]), message: String(result.message.prefix(100)))
+                let lowerMsg = result.message.lowercased()
+                let isDownloadError = lowerMsg.contains("download failed") || 
+                                    lowerMsg.contains("returned error: 404") || 
+                                    lowerMsg.contains("returned error: 503")
+                
+                if isDownloadError {
+                    delegate.sendNotification(title: Translations.get("brewDownloadErrorTitle"), 
+                                            subtitle: Translations.get("brewDownloadErrorMsg"))
+                } else {
+                    delegate.sendNotification(title: Translations.get("error"), 
+                                            subtitle: Translations.get("installFailed").format(with: ["cask_name": caskName]), 
+                                            message: String(result.message.prefix(100)))
+                }
             }
         }
     }
@@ -169,7 +226,7 @@ class RepoCoordinator {
             popover.contentViewController = vc
             // Using applicationDefined to stay open until manually closed or eye-clicked
             popover.behavior = .applicationDefined 
-            popover.animates = true
+            popover.animates = Constants.popoverAnimates
             delegate.addRepoPopover = popover
             
             vc.completionHandler = { [weak delegate] repoName, source, cask, completion in
@@ -254,8 +311,8 @@ class RepoCoordinator {
     func addRepo(repoName: String, source: String, cask: String? = nil) async -> Bool {
         guard let delegate = delegate else { return false }
         
-        if ConfigManager.shared.config.repos.contains(where: { $0.name == repoName }) {
-            if let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
+        if ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == repoName.lowercased() }) {
+            if let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name.lowercased() == repoName.lowercased() }) {
                 if ConfigManager.shared.config.repos[index].source == "manual" && source == "brew" {
                     ConfigManager.shared.config.repos[index].source = "brew"
                     ConfigManager.shared.config.repos[index].cask = cask
@@ -283,6 +340,12 @@ class RepoCoordinator {
             return false
         } else {
             let fetchedTags = await GitHubAPI.shared.fetchRepoTags(repo: repoName)
+            
+            // Re-check for duplicates after async fetch to prevent race conditions (e.g. CMD+Z during fetch)
+            if ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == repoName.lowercased() }) {
+                return true
+            }
+            
             let newRepo = RepoConfig(name: repoName, source: source, cask: cask, tags: fetchedTags ?? [])
             ConfigManager.shared.config.repos.append(newRepo)
             ConfigManager.shared.saveConfig()
@@ -293,7 +356,7 @@ class RepoCoordinator {
                 delegate.rebuildMenu()
                 delegate.animateStatusIcon(with: .bounce)
                 
-                if delegate.menuIsOpen {
+                if delegate.popoverIsOpen {
                     delegate.clearUnreadPulse()
                 } else {
                     UserDefaults.standard.set(true, forKey: "HasUnreadPulse")

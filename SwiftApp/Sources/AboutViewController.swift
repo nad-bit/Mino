@@ -10,16 +10,8 @@ class AboutViewController: NSViewController {
         let container = AboutView(frame: NSRect(x: 0, y: 0, width: 280, height: 380))
         self.view = container
         
-        // 1. Premium Glass Background
-        let visualEffect = NSVisualEffectView()
-        visualEffect.blendingMode = .behindWindow
-        visualEffect.material = .hudWindow
-        visualEffect.state = .active
-        visualEffect.wantsLayer = true
-        visualEffect.layer?.cornerRadius = 24
-        visualEffect.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(visualEffect)
-        
+        // The NSPopover container provides native translucent material automatically,
+        // matching Preferences and Notes windows — no manual NSVisualEffectView needed.
         let mainStack = NSStackView()
         mainStack.orientation = .vertical
         mainStack.alignment = .centerX
@@ -29,11 +21,6 @@ class AboutViewController: NSViewController {
         container.addSubview(mainStack)
         
         NSLayoutConstraint.activate([
-            visualEffect.topAnchor.constraint(equalTo: container.topAnchor),
-            visualEffect.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            visualEffect.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            visualEffect.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            
             mainStack.topAnchor.constraint(equalTo: container.topAnchor),
             mainStack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             mainStack.trailingAnchor.constraint(equalTo: container.trailingAnchor),

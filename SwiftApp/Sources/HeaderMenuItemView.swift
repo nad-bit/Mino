@@ -3,21 +3,20 @@ import Cocoa
 @MainActor
 class HeaderMenuItemView: NSView {
     
-    private let refreshBtn = MenuActionButton()
+    let settingsBtn = MenuActionButton()
     private let addBtn = MenuActionButton()
     public var searchField: MenuSearchField!
     
     private let quickAddIcon = NSImageView()
     private let quickAddLabel = NSTextField(labelWithString: "")
     private let quickAddStack = NSStackView()
-    private var quickAddRepoStr: String? = nil
+    internal var quickAddRepoStr: String? = nil
     
     private let leftStack = NSStackView()
     private let quickAddHitArea = NSButton()
     
     private let appDelegate: AppDelegate
     
-    // Track states
     private var lastHighlightState = false
     private var isRefreshingState = false
     
@@ -49,15 +48,16 @@ class HeaderMenuItemView: NSView {
     }
     
     private func setupView() {
-        // Refresh Button
-        let refreshConfig = NSImage.SymbolConfiguration(pointSize: Constants.menuBaseFontSize - 2, weight: .semibold)
-        refreshBtn.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")?.withSymbolConfiguration(refreshConfig)
-        refreshBtn.isBordered = false
-        refreshBtn.target = self
-        refreshBtn.action = #selector(refreshClicked)
-        refreshBtn.baseColor = .secondaryLabelColor
-        refreshBtn.hoverColor = .labelColor
-        refreshBtn.translatesAutoresizingMaskIntoConstraints = false
+        // Settings Button
+        let settingsConfig = NSImage.SymbolConfiguration(pointSize: Constants.menuBaseFontSize - 2, weight: .semibold)
+        settingsBtn.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: Translations.get("preferences"))?.withSymbolConfiguration(settingsConfig)
+        settingsBtn.isBordered = false
+        settingsBtn.target = self
+        settingsBtn.action = #selector(settingsClicked)
+        settingsBtn.toolTip = Translations.get("preferences")
+        settingsBtn.baseColor = .secondaryLabelColor
+        settingsBtn.hoverColor = .labelColor
+        settingsBtn.translatesAutoresizingMaskIntoConstraints = false
         
         // Add Button
         let addConfig = NSImage.SymbolConfiguration(pointSize: Constants.menuBaseFontSize, weight: .bold)
@@ -119,7 +119,7 @@ class HeaderMenuItemView: NSView {
         quickAddHitArea.translatesAutoresizingMaskIntoConstraints = false
         quickAddHitArea.isHidden = true
         
-        leftStack.addArrangedSubview(refreshBtn)
+        leftStack.addArrangedSubview(settingsBtn)
         leftStack.orientation = .horizontal
         leftStack.spacing = 6
         leftStack.alignment = .centerY
@@ -153,8 +153,8 @@ class HeaderMenuItemView: NSView {
             addBtn.widthAnchor.constraint(equalToConstant: 24),
             addBtn.heightAnchor.constraint(equalToConstant: 24),
             
-            refreshBtn.widthAnchor.constraint(equalToConstant: 24),
-            refreshBtn.heightAnchor.constraint(equalToConstant: 24)
+            settingsBtn.widthAnchor.constraint(equalToConstant: 24),
+            settingsBtn.heightAnchor.constraint(equalToConstant: 24)
         ])
         
         // swappable constraints no longer needed for centered layout
@@ -225,30 +225,20 @@ class HeaderMenuItemView: NSView {
         
         if searchField.alphaValue != targetAlpha {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.2
+                context.duration = Constants.defaultAnimationDuration
                 searchField.animator().alphaValue = targetAlpha
             }
         }
     }
     
-    func updateTimeText(_ text: String, isRefreshing: Bool) {
-        if refreshBtn.toolTip != text {
-            refreshBtn.toolTip = text
-        }
-        self.isRefreshingState = isRefreshing
-        let shouldHighlightStyle = lastHighlightState && quickAddRepoStr != nil
-        applyHighlightState(shouldHighlightStyle)
-    }
+
     
     func menuDidChangeHighlight(highlightedItem: Any?) {
         let highlighted = (highlightedItem as? HeaderMenuItemView) === self
         if highlighted != lastHighlightState {
             lastHighlightState = highlighted
             
-            // Proactively refresh tooltip when hovering to ensure absolute freshness
-            if highlighted && quickAddRepoStr == nil {
-                updateTimeText(appDelegate.getRefreshTitle(), isRefreshing: appDelegate.isRefreshing)
-            }
+
             
             let shouldHighlightStyle = highlighted && quickAddRepoStr != nil
             applyHighlightState(shouldHighlightStyle)
@@ -260,11 +250,8 @@ class HeaderMenuItemView: NSView {
         let baseSecondary: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
         let hoverSecondary: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
         
-        let baseTertiary: NSColor = highlighted ? .selectedMenuItemTextColor : .tertiaryLabelColor
-        let hoverTertiary: NSColor = highlighted ? .selectedMenuItemTextColor : .secondaryLabelColor
-        
-        refreshBtn.baseColor = isRefreshingState ? baseTertiary : baseSecondary
-        refreshBtn.hoverColor = isRefreshingState ? hoverTertiary : hoverSecondary
+        settingsBtn.baseColor = baseSecondary
+        settingsBtn.hoverColor = hoverSecondary
         
         addBtn.baseColor = baseSecondary
         addBtn.hoverColor = hoverSecondary
@@ -275,20 +262,18 @@ class HeaderMenuItemView: NSView {
         // Reset hover visuals if row is no longer highlighted,
         // in case mouseExited was never delivered after a click.
         if !highlighted {
-            refreshBtn.resetHoverState()
+            settingsBtn.resetHoverState()
             addBtn.resetHoverState()
         }
     }
     
-    @objc private func refreshClicked() {
-        appDelegate.animateStatusIcon(with: .scale)
-        // Note: We intentionally don't close the menu for refresh
+    @objc private func settingsClicked() {
         DispatchQueue.main.async {
-            self.appDelegate.triggerFullRefresh(nil)
+            self.appDelegate.openSettingsWindow(self.settingsBtn)
         }
     }
     
-    @objc private func addClicked() {
+    @objc func addClicked() {
         appDelegate.animateStatusIcon(with: .scale)
         if let repo = self.quickAddRepoStr {
             self.appDelegate.quickAddingRepo = repo

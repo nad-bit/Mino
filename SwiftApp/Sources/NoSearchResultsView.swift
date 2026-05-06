@@ -85,6 +85,11 @@ class NoSearchResultsView: NSView {
         // 1. Reset state
         mainStack.arrangedSubviews.filter { $0 !== errorStack }.forEach { $0.removeFromSuperview() }
         
+        for btn in tagButtons {
+            btn.contentTintColor = .secondaryLabelColor
+            btn.layer?.backgroundColor = NSColor.clear.cgColor
+        }
+        
         textLabel.stringValue = isSearching ? Translations.get("noResults") : Translations.get("noRepos")
         iconView.image = NSImage(systemSymbolName: isSearching ? "eye.slash" : "slash.circle", accessibilityDescription: nil)
         
@@ -198,6 +203,21 @@ class TagButton: NSButton {
         trackingAreas.forEach { removeTrackingArea($0) }
         let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil)
         addTrackingArea(area)
+        
+        // Fix for "ghost hover" when the view moves but the mouse stays still
+        // Optimization: only perform this expensive check if the button is currently hovered.
+        let isHovered = self.contentTintColor == .white
+        if isHovered, let window = self.window {
+            let mouseLocation = window.mouseLocationOutsideOfEventStream
+            let localPoint = convert(mouseLocation, from: nil)
+            let isInside = bounds.contains(localPoint)
+            
+            if !isInside {
+                self.contentTintColor = .secondaryLabelColor
+                self.layer?.backgroundColor = NSColor.clear.cgColor
+                NSCursor.arrow.set()
+            }
+        }
     }
     
     override func mouseEntered(with event: NSEvent) {

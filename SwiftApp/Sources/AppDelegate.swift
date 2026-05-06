@@ -9,7 +9,7 @@ enum SymbolAnimation {
 }
 
 @MainActor
-class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFieldDelegate, NSPopoverDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPopoverDelegate {
     var statusItem: NSStatusItem!
     private var statusIconView: NSImageView!
     private var statusIndicatorDot: NSBox!
@@ -18,6 +18,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var releaseNotesPopover: NSPopover?
     var settingsPopover: NSPopover?
     var aboutPopover: NSPopover?
+    var lastSettingsCloseTime: Date?
     
     var repoCache: [String: RepoInfo] = [:]
     
@@ -29,11 +30,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     var currentSearchQuery: String = ""
     var readReposThisSession: Set<String> = []
     
-    var menuIsOpen = false
+    var popoverIsOpen = false
     
-    // Defer actions until menu completes its closing animation
-    var pendingMenuAction: (() -> Void)? = nil
+    // Defer actions until the popover finishes its closing animation
+    var pendingAction: (() -> Void)? = nil
     var quickAddingRepo: String? = nil
+    
+    // Undo support for last deleted repo
+    var lastDeletedRepo: (config: RepoConfig, index: Int, cache: RepoInfo?)? = nil
     private var lastPasteboardChangeCount = -1
     private var lastClipboardRepo: String? = nil
     var popularTagsCache: [String] = []
@@ -48,18 +52,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     
 
     
-    func hideInformationalWindows() {
+    func hideInformationalWindows(except popoverToKeep: NSPopover? = nil) {
         // Ensure any attached sheets are dismissed to prevent UI lockups (e.g. ghost NSAlerts)
         [releaseNotesPopover, settingsPopover].forEach { popover in
-            if let window = popover?.contentViewController?.view.window, let sheet = window.attachedSheet {
+            if popover != popoverToKeep, let window = popover?.contentViewController?.view.window, let sheet = window.attachedSheet {
                 window.endSheet(sheet)
             }
         }
         
-        releaseNotesPopover?.performClose(nil)
-        settingsPopover?.performClose(nil)
-        aboutPopover?.performClose(nil)
-        addRepoPopover?.performClose(nil)
+        if popoverToKeep != releaseNotesPopover { releaseNotesPopover?.performClose(nil) }
+        if popoverToKeep != settingsPopover { settingsPopover?.performClose(nil) }
+        if popoverToKeep != aboutPopover { aboutPopover?.performClose(nil) }
+        if popoverToKeep != addRepoPopover { addRepoPopover?.performClose(nil) }
     }
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
@@ -113,7 +117,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         let popover = NSPopover()
         popover.contentViewController = mainPopoverVC
         popover.behavior = .transient
-        popover.animates = true
+        popover.animates = Constants.popoverAnimates
         popover.delegate = self
         self.mainPopover = popover
         
@@ -186,7 +190,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
             let popover = NSPopover()
             popover.contentViewController = AboutViewController()
             popover.behavior = .transient
-            popover.animates = true
+            popover.animates = Constants.popoverAnimates
             self.aboutPopover = popover
         }
         
@@ -250,7 +254,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         repoCoordinator.handleInstallBrewCask(for: caskName)
     }
     
-    func performAfterMenuClose(_ action: @escaping () -> Void) {
+    func performAfterPopoverClose(_ action: @escaping () -> Void) {
         mainPopover?.performClose(nil)
         action()
     }
@@ -276,13 +280,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     }
     
     @objc func openSettingsWindow(_ sender: Any?) {
-        hideInformationalWindows()
+        hideInformationalWindows(except: settingsPopover)
         
         if settingsPopover == nil {
             let popover = NSPopover()
             popover.contentViewController = SettingsViewController()
             popover.behavior = .transient
-            popover.animates = true
+            popover.animates = Constants.popoverAnimates
+            popover.delegate = self
             self.settingsPopover = popover
         }
         
@@ -291,9 +296,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         if popover.isShown {
             popover.performClose(sender)
         } else {
-            // Find the sender view or default to status item button
-            // If the view is already detached (e.g. menu closed), fallback to status bar button
-            if let view = sender as? NSView, view.window != nil {
+            // Prevent immediate reopening if closed by transient behavior (clicking the button itself)
+            if let lastClose = lastSettingsCloseTime, Date().timeIntervalSince(lastClose) < 0.2 {
+                return
+            }
+            if let headerView = self.headerView, headerView.window != nil {
+                // Anchor to the entire header row so the popover spawns at the absolute outer edge
+                // of the menu, just like the Notes window, without overlapping.
+                popover.show(relativeTo: headerView.bounds, of: headerView, preferredEdge: .minX)
+            } else if let view = sender as? NSView, view.window != nil {
                 popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minX)
             } else if let btn = statusItem.button {
                 popover.show(relativeTo: btn.bounds, of: btn, preferredEdge: .minY)
@@ -386,7 +397,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         }
     }
     
-    // MARK: - NSMenuDelegate
+    // MARK: - Popover State
     
     func markRepoAsRead(_ repoName: String) {
         readReposThisSession.insert(repoName)
@@ -444,29 +455,42 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
     // MARK: - NSPopoverDelegate
     
     func popoverWillShow(_ notification: Notification) {
-        menuIsOpen = true
-        readReposThisSession.removeAll()
+        if let popover = notification.object as? NSPopover, popover == mainPopover {
+            popoverIsOpen = true
+            readReposThisSession.removeAll()
+        }
     }
     
     func popoverDidClose(_ notification: Notification) {
-        menuIsOpen = false
+        guard let popover = notification.object as? NSPopover else { return }
         
-        // Mark currently cached versions as definitively seen upon closing the popover
-        // BUT ONLY for repos that were actually hovered/read during this session
-        var seenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
-        for (repoName, info) in repoCache {
-            if let v = info.version, readReposThisSession.contains(repoName) {
-                seenVersions[repoName] = v
-            }
+        if popover == settingsPopover {
+            lastSettingsCloseTime = Date()
+            return
         }
-        UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
         
-        // Execute any actions deferred by custom views (like opening Settings/Quit)
-        if let action = pendingMenuAction {
-            pendingMenuAction = nil
-            DispatchQueue.main.async {
-                action()
+        if popover == mainPopover {
+            popoverIsOpen = false
+            
+            // Mark currently cached versions as definitively seen upon closing the popover
+            // BUT ONLY for repos that were actually hovered/read during this session
+            var seenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
+            for (repoName, info) in repoCache {
+                if let v = info.version, readReposThisSession.contains(repoName) {
+                    seenVersions[repoName] = v
+                }
             }
+            UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
+            
+            // Execute any actions deferred by custom views (like opening Settings/Quit)
+            if let action = pendingAction {
+                pendingAction = nil
+                DispatchQueue.main.async {
+                    action()
+                }
+            }
+            
+            updateStatusIcon(hasUpdates: false)
         }
     }
     
@@ -477,6 +501,72 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSSearchFiel
         if title == Translations.get("error") || title == Translations.get("brewErrorTitle") {
             animateStatusIcon(with: .wiggle)
         }
+    }
+    
+    // MARK: - Keyboard Shortcuts
+    
+    func handleGlobalShortcuts(with event: NSEvent) -> Bool {
+        // 1. Navigation (Arrows) - Intercepted even without modifiers
+        if event.keyCode == 125 { // Down Arrow
+            mainPopoverVC.moveHighlight(direction: 1)
+            return true
+        } else if event.keyCode == 126 { // Up Arrow
+            mainPopoverVC.moveHighlight(direction: -1)
+            return true
+        }
+        
+        // 2. Global App Shortcuts (CMD + ...)
+        if event.modifierFlags.contains(.command) {
+            switch event.charactersIgnoringModifiers {
+            case ",":
+                openSettingsWindow(footerView)
+                return true
+            case "m": // CMD+M → About (M de Mino)
+                showAboutPanel()
+                return true
+            case "n":
+                unifiedAddRepoDialog(self)
+                return true
+            case "q":
+                quitApp(nil)
+                return true
+            case "o": // CMD+O → Open repo
+                mainPopoverVC.triggerActionOnHighlighted(.open)
+                return true
+            case "b": // CMD+B → Install via Homebrew
+                mainPopoverVC.triggerActionOnHighlighted(.install)
+                return true
+            case "i": // CMD+I → Info / Release Notes
+                mainPopoverVC.triggerActionOnHighlighted(.notes)
+                return true
+            case "c": // CMD+C → Copy GitHub URL
+                mainPopoverVC.triggerActionOnHighlighted(.copy)
+                return true
+            case "z": // CMD+Z → Undo last delete
+                repoCoordinator.undoLastDelete()
+                return true
+            case "\u{7F}": // CMD+Backspace → Delete
+                mainPopoverVC.triggerActionOnHighlighted(.delete)
+                return true
+            default:
+                break
+            }
+        }
+        
+        // 3. Contextual Row Actions (Return / Enter)
+        if event.keyCode == 36 { // Return
+            if mainPopoverVC.currentlyHighlightedRow != nil {
+                mainPopoverVC.triggerActionOnHighlighted(.open)
+                return true
+            } else if headerView?.quickAddRepoStr != nil {
+                // If Quick Add is active and no row is specifically highlighted, 
+                // Return triggers the Quick Add action.
+                headerView?.addClicked()
+                return true
+            }
+        }
+        
+        return false
     }
 }
 
@@ -491,54 +581,9 @@ class MenuSearchField: NSSearchField {
     }
     
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        // 1. Navigation (Arrows) - Intercepted even without modifiers
-        // Using keyCode for reliability across layouts
-        if event.keyCode == 125 { // Down Arrow
-            appDelegate?.mainPopoverVC.moveHighlight(direction: 1)
-            return true
-        } else if event.keyCode == 126 { // Up Arrow
-            appDelegate?.mainPopoverVC.moveHighlight(direction: -1)
+        if let appDelegate = appDelegate, appDelegate.handleGlobalShortcuts(with: event) {
             return true
         }
-        
-        // 2. Global App Shortcuts (CMD + ...)
-        if event.modifierFlags.contains(.command) {
-            switch event.charactersIgnoringModifiers {
-            case ",":
-                appDelegate?.openSettingsWindow(appDelegate?.footerView)
-                return true
-            case "i":
-                appDelegate?.showAboutPanel()
-                return true
-            case "n":
-                appDelegate?.unifiedAddRepoDialog(self)
-                return true
-            case "q":
-                appDelegate?.quitApp(nil)
-                return true
-            case "o": // CMD+O (Open)
-                appDelegate?.mainPopoverVC.triggerActionOnHighlighted(.open)
-                return true
-            case "b": // CMD+B (Install/Brew)
-                appDelegate?.mainPopoverVC.triggerActionOnHighlighted(.install)
-                return true
-            case "l": // CMD+L (Notes)
-                appDelegate?.mainPopoverVC.triggerActionOnHighlighted(.notes)
-                return true
-            case "\u{7F}": // CMD+Backspace (Delete)
-                appDelegate?.mainPopoverVC.triggerActionOnHighlighted(.delete)
-                return true
-            default:
-                break
-            }
-        }
-        
-        // 3. Contextual Row Actions (Return / Enter)
-        if event.keyCode == 36 { // Return
-            appDelegate?.mainPopoverVC.triggerActionOnHighlighted(.open)
-            return true
-        }
-        
         return super.performKeyEquivalent(with: event)
     }
 }

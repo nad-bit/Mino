@@ -59,6 +59,8 @@ enum Translations {
             "apiTooManyRequests": "Too many requests (429)",
             "apiRepoNotFound": "Repository not found or private", "apiRateLimit": "API rate limit exceeded", "apiHttpError": "HTTP Error {code}",
             "repoPlaceholder": "owner/repo or cask",
+            "brewDownloadErrorTitle": "Download Failed",
+            "brewDownloadErrorMsg": "Homebrew could not download the file.",
         ],
         "es": [
             "addingRepo": "Añadiendo {repo}...",
@@ -117,6 +119,8 @@ enum Translations {
             "apiTooManyRequests": "Demasiadas peticiones (429)",
             "apiRepoNotFound": "Repositorio no encontrado o privado", "apiRateLimit": "Límite de peticiones a la API excedido", "apiHttpError": "Error HTTP {code}",
             "repoPlaceholder": "dueño/repo o cask",
+            "brewDownloadErrorTitle": "Error de descarga",
+            "brewDownloadErrorMsg": "Homebrew no pudo descargar el archivo.",
         ],
         "fr": [
             "addingRepo": "Ajout de {repo}...",
@@ -172,6 +176,8 @@ enum Translations {
             "apiTooManyRequests": "Trop de requêtes (429)",
             "apiRepoNotFound": "Dépôt introuvable ou privé", "apiRateLimit": "Limite de requêtes API dépassée", "apiHttpError": "Erreur HTTP {code}",
             "repoPlaceholder": "propriétaire/dépôt ou cask",
+            "brewDownloadErrorTitle": "Échec du téléchargement",
+            "brewDownloadErrorMsg": "Homebrew n'a pas pu télécharger le fichier.",
         ],
         "de": [
             "addingRepo": "Füge {repo} hinzu...",
@@ -227,6 +233,8 @@ enum Translations {
             "apiTooManyRequests": "Zu viele Anfragen (429)",
             "apiRepoNotFound": "Repository nicht gefunden oder privat", "apiRateLimit": "API-Ratenlimit überschritten", "apiHttpError": "HTTP-Fehler {code}",
             "repoPlaceholder": "besitzer/repo oder cask",
+            "brewDownloadErrorTitle": "Download fehlgeschlagen",
+            "brewDownloadErrorMsg": "Homebrew konnte die Datei nicht herunterladen.",
         ],
         "it": [
             "addingRepo": "Aggiunta di {repo}...",
@@ -282,6 +290,8 @@ enum Translations {
             "apiTooManyRequests": "Troppe richieste (429)",
             "apiRepoNotFound": "Repository non trovato o privato", "apiRateLimit": "Limite di richieste API superato", "apiHttpError": "Errore HTTP {code}",
             "repoPlaceholder": "proprietario/repo o cask",
+            "brewDownloadErrorTitle": "Download fallito",
+            "brewDownloadErrorMsg": "Homebrew non ha potuto scaricare il file.",
         ],
         "pt": [
             "addingRepo": "Adicionando {repo}...",
@@ -336,6 +346,8 @@ enum Translations {
             "apiTooManyRequests": "Muitas requisições (429)",
             "apiRepoNotFound": "Repositório não encontrado ou privado", "apiRateLimit": "Limite de requisições da API excedido", "apiHttpError": "Erro HTTP {code}",
             "repoPlaceholder": "proprietário/repo ou cask",
+            "brewDownloadErrorTitle": "Download falhou",
+            "brewDownloadErrorMsg": "O Homebrew não conseguiu descarregar o ficheiro.",
         ],
          "zh": [
             "addingRepo": "正在添加 {repo}...",
@@ -390,6 +402,8 @@ enum Translations {
             "apiTooManyRequests": "请求过多 (429)",
             "apiRepoNotFound": "找不到仓库或为私有", "apiRateLimit": "超出 API 速率限制", "apiHttpError": "HTTP 错误 {code}",
             "repoPlaceholder": "所有者/仓库 或 cask",
+            "brewDownloadErrorTitle": "下载失败",
+            "brewDownloadErrorMsg": "Homebrew 无法下载该文件。",
         ],
         "hi": [
             "addingRepo": "{repo} जोड़ा जा रहा है...",
@@ -444,6 +458,8 @@ enum Translations {
             "apiTooManyRequests": "बहुत अधिक अनुरोध (429)",
             "apiRepoNotFound": "भंडार नहीं मिला या निजी है", "apiRateLimit": "API दर सीमा पार हो गई", "apiHttpError": "HTTP त्रुटि {code}",
             "repoPlaceholder": "मालिक/भंडार या cask",
+            "brewDownloadErrorTitle": "डाउनलोड विफल",
+            "brewDownloadErrorMsg": "Homebrew फ़ाइल डाउनलोड नहीं कर सका।",
         ],
         "ar": [
             "addingRepo": "جاري إضافة {repo}...",
@@ -498,6 +514,8 @@ enum Translations {
             "apiTooManyRequests": "طلبات كثيرة جداً (429)",
             "apiRepoNotFound": "لم يتم العثور على المستودع أو أنه خاص", "apiRateLimit": "تم تجاوز حد معدل API", "apiHttpError": "خطأ HTTP {code}",
             "repoPlaceholder": "المالك/المستودع أو cask",
+            "brewDownloadErrorTitle": "فشل التنزيل",
+            "brewDownloadErrorMsg": "تعذر على Homebrew تنزيل الملف.",
         ],
         "ru": [
             "addingRepo": "Добавление {repo}...",
@@ -552,6 +570,8 @@ enum Translations {
             "apiTooManyRequests": "Слишком много запросов (429)",
             "apiRepoNotFound": "Репозиторий не найден или является приватным", "apiRateLimit": "Превышен лимит запросов API", "apiHttpError": "Ошибка HTTP {code}",
             "repoPlaceholder": "владелец/репозиторий или cask",
+            "brewDownloadErrorTitle": "Ошибка загрузки",
+            "brewDownloadErrorMsg": "Homebrew не удалось загрузить файл.",
         ],
         "ja": [
             "addingRepo": "{repo} を追加中...",
@@ -606,6 +626,8 @@ enum Translations {
             "apiTooManyRequests": "リクエストが多すぎます (429)",
             "apiRepoNotFound": "リポジトリが見つからないかプライベートです", "apiRateLimit": "API レート制限を超えました", "apiHttpError": "HTTP エラー {code}",
             "repoPlaceholder": "オーナー/リポジトリ または cask",
+            "brewDownloadErrorTitle": "ダウンロード失敗",
+            "brewDownloadErrorMsg": "Homebrewはファイルをダウンロードできませんでした。",
         ],
     ]
     
