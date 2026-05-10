@@ -90,6 +90,8 @@ class NoSearchResultsView: NSView {
             btn.layer?.backgroundColor = NSColor.clear.cgColor
         }
         
+        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        textLabel.font = .systemFont(ofSize: baseFontSize, weight: .medium)
         textLabel.stringValue = isSearching ? Translations.get("noResults") : Translations.get("noRepos")
         iconView.image = NSImage(systemSymbolName: isSearching ? "eye.slash" : "slash.circle", accessibilityDescription: nil)
         
@@ -98,7 +100,6 @@ class NoSearchResultsView: NSView {
         } else {
             errorStack.isHidden = true
             
-            let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
             let font = NSFont.systemFont(ofSize: baseFontSize - 1, weight: .medium)
             let paddingX: CGFloat = 32.0 // mainStack.edgeInsets.left + right
             let availableWidth = targetWidth - paddingX

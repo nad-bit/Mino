@@ -6,6 +6,38 @@ class AboutViewController: NSViewController {
         override var acceptsFirstResponder: Bool { true }
     }
     
+    class HoverablePillView: NSView {
+        var onHover: ((Bool) -> Void)?
+        var isClickable = false
+        private var trackingArea: NSTrackingArea?
+        
+        override func resetCursorRects() {
+            if isClickable {
+                addCursorRect(bounds, cursor: .pointingHand)
+            }
+        }
+        
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            if let old = trackingArea { removeTrackingArea(old) }
+            let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil)
+            addTrackingArea(area)
+            trackingArea = area
+        }
+        
+        override func mouseEntered(with event: NSEvent) {
+            if isClickable {
+                onHover?(true)
+            }
+        }
+        
+        override func mouseExited(with event: NSEvent) {
+            if isClickable {
+                onHover?(false)
+            }
+        }
+    }
+    
     override func loadView() {
         let container = AboutView(frame: NSRect(x: 0, y: 0, width: 280, height: 380))
         self.view = container
@@ -43,7 +75,7 @@ class AboutViewController: NSViewController {
         iconView.heightAnchor.constraint(equalToConstant: 100).isActive = true
         identityStack.addArrangedSubview(iconView)
         
-        let namePill = createPill(text: "Mino", color: .systemBlue, fontSize: 18)
+        let namePill = createPill(text: "Mino", color: .systemBlue, fontSize: 18, isClickable: true)
         namePill.toolTip = "https://github.com/nad-bit/Mino"
         let nameClick = NSClickGestureRecognizer(target: self, action: #selector(openGitHub))
         namePill.addGestureRecognizer(nameClick)
@@ -81,17 +113,24 @@ class AboutViewController: NSViewController {
         }
     }
     
-    private func createPill(text: String, color: NSColor, fontSize: CGFloat = 11) -> NSView {
+    private func createPill(text: String, color: NSColor, fontSize: CGFloat = 11, isClickable: Bool = false) -> NSView {
         let field = NSTextField(labelWithString: text)
         field.font = .systemFont(ofSize: fontSize, weight: .bold)
         field.textColor = .white
         field.translatesAutoresizingMaskIntoConstraints = false
         
-        let container = NSView()
+        let container = HoverablePillView()
+        container.isClickable = isClickable
         container.wantsLayer = true
         container.layer?.backgroundColor = color.cgColor
         container.layer?.cornerRadius = 10
         container.translatesAutoresizingMaskIntoConstraints = false
+        
+        if isClickable {
+            container.onHover = { [weak container] isHovered in
+                container?.layer?.backgroundColor = isHovered ? color.withAlphaComponent(0.8).cgColor : color.cgColor
+            }
+        }
         
         container.addSubview(field)
         

@@ -15,6 +15,8 @@ class HeaderMenuItemView: NSView {
     private let leftStack = NSStackView()
     private let quickAddHitArea = NSButton()
     
+    private var isProcessingQuickAdd = false
+    
     private let appDelegate: AppDelegate
     
     private var lastHighlightState = false
@@ -133,14 +135,14 @@ class HeaderMenuItemView: NSView {
         
         NSLayoutConstraint.activate([
             leftStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
-            leftStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            leftStack.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
             
             searchField.centerXAnchor.constraint(equalTo: centerXAnchor),
             searchField.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.40),
-            searchField.centerYAnchor.constraint(equalTo: centerYAnchor),
+            searchField.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
             
             quickAddStack.centerXAnchor.constraint(equalTo: centerXAnchor),
-            quickAddStack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            quickAddStack.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
             quickAddStack.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -40),
             
             quickAddHitArea.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -149,7 +151,7 @@ class HeaderMenuItemView: NSView {
             quickAddHitArea.bottomAnchor.constraint(equalTo: bottomAnchor),
             
             addBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
-            addBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
+            addBtn.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
             addBtn.widthAnchor.constraint(equalToConstant: 24),
             addBtn.heightAnchor.constraint(equalToConstant: 24),
             
@@ -168,6 +170,7 @@ class HeaderMenuItemView: NSView {
     
     func updateClipboardState(repo: String?, isProcessing: Bool = false) {
         self.quickAddRepoStr = repo
+        self.isProcessingQuickAdd = isProcessing
         
         let showQuickAdd = (repo != nil) || isProcessing
         
@@ -177,10 +180,23 @@ class HeaderMenuItemView: NSView {
             searchField.isHidden = true
             addBtn.isHidden = true
             
-            if isProcessing, let adding = appDelegate.quickAddingRepo {
-                quickAddLabel.stringValue = Translations.get("addingRepo").format(with: ["repo": adding])
+            if isProcessing {
+                if let adding = appDelegate.quickAddingRepo {
+                    quickAddLabel.stringValue = Translations.get("addingRepo").format(with: ["repo": adding])
+                    quickAddLabel.textColor = .systemOrange // Orange for additions
+                    quickAddLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .semibold)
+                } else {
+                    // Global full refresh status - Blue & Italic to differentiate
+                    quickAddLabel.stringValue = Translations.get("refreshing")
+                    quickAddLabel.textColor = .controlAccentColor
+                    let baseFont = NSFont.systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .semibold)
+                    quickAddLabel.font = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
+                }
+                isProcessingQuickAdd = true
             } else if let r = repo {
                 quickAddLabel.stringValue = Translations.get("quickAddHead").format(with: ["repo": r])
+                quickAddLabel.textColor = .secondaryLabelColor
+                quickAddLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .medium)
             }
             
             quickAddStack.isHidden = false
@@ -256,7 +272,21 @@ class HeaderMenuItemView: NSView {
         addBtn.baseColor = baseSecondary
         addBtn.hoverColor = hoverSecondary
         
-        quickAddLabel.textColor = baseSecondary
+        if isProcessingQuickAdd {
+            if appDelegate.quickAddingRepo != nil {
+                quickAddLabel.textColor = .systemOrange
+                quickAddLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .semibold)
+            } else {
+                // Global refresh style
+                quickAddLabel.textColor = .controlAccentColor
+                let baseFont = NSFont.systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .semibold)
+                quickAddLabel.font = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
+            }
+        } else {
+            quickAddLabel.textColor = baseSecondary
+            quickAddLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .medium)
+        }
+        
         quickAddIcon.contentTintColor = baseSecondary
         
         // Reset hover visuals if row is no longer highlighted,

@@ -28,7 +28,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     // Search properties
     var searchField: NSSearchField?
     var currentSearchQuery: String = ""
-    var readReposThisSession: Set<String> = []
+    private var lastMainPopoverOpenTime: Date?
     
     var popoverIsOpen = false
     
@@ -53,8 +53,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
 
     
     func hideInformationalWindows(except popoverToKeep: NSPopover? = nil) {
-        // Ensure any attached sheets are dismissed to prevent UI lockups (e.g. ghost NSAlerts)
-        [releaseNotesPopover, settingsPopover].forEach { popover in
+        // Ensure any attached sheets are dismissed to prevent UI lockups
+        [releaseNotesPopover, settingsPopover, aboutPopover, addRepoPopover].forEach { popover in
             if popover != popoverToKeep, let window = popover?.contentViewController?.view.window, let sheet = window.attachedSheet {
                 window.endSheet(sheet)
             }
@@ -140,6 +140,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             self.triggerFullRefresh(nil)
             self.refreshCoordinator.startTagBackfillSequence()
         }
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(configDidUpdate), name: Notification.Name("ConfigChanged"), object: nil)
+    }
+    
+    @objc private func configDidUpdate() {
+        DispatchQueue.main.async {
+            self.footerView?.updateTimeText(self.getRefreshTitle(), isRefreshing: self.isRefreshing)
+        }
     }
     
     func applicationWillTerminate(_ aNotification: Notification) {
@@ -163,7 +171,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         } else {
             if let button = statusItem.button {
                 refreshQuickAddState()
-                clearUnreadPulse()
                 rebuildMenu() // Ensure latest data
                 mainPopover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
                 
@@ -184,8 +191,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     }
     
     @objc func showAboutPanel() {
-        hideInformationalWindows()
-        
+        hideInformationalWindows(except: aboutPopover)
         if aboutPopover == nil {
             let popover = NSPopover()
             popover.contentViewController = AboutViewController()
@@ -212,8 +218,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         }
     }
     
-    func rebuildMenu() {
-        mainPopoverVC.rebuildMenu()
+    func rebuildMenu(preserveScroll: Bool = false) {
+        mainPopoverVC.rebuildMenu(preserveScroll: preserveScroll)
         refreshQuickAddState()
     }
     
@@ -254,6 +260,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         repoCoordinator.handleInstallBrewCask(for: caskName)
     }
     
+    func handleToggleFavorite(for repoName: String) {
+        guard let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) else { return }
+        
+        let newState = !(ConfigManager.shared.config.repos[index].isFavorite ?? false)
+        ConfigManager.shared.config.repos[index].isFavorite = newState
+        ConfigManager.shared.saveConfig()
+        
+        // Sync the change with the UI's data source so scrolling doesn't revert the visual state
+        mainPopoverVC.updateFavoriteState(for: repoName, isFavorite: newState)
+    }
+    
     func performAfterPopoverClose(_ action: @escaping () -> Void) {
         mainPopover?.performClose(nil)
         action()
@@ -274,6 +291,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     }
     
     // MARK: - App Actions
+    
+    func focusSearchField() {
+        if let sf = searchField {
+            sf.window?.makeFirstResponder(sf)
+        }
+    }
     
     @objc func quitApp(_ sender: Any?) {
         NSApplication.shared.terminate(sender)
@@ -301,9 +324,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
                 return
             }
             if let headerView = self.headerView, headerView.window != nil {
-                // Anchor to the entire header row so the popover spawns at the absolute outer edge
-                // of the menu, just like the Notes window, without overlapping.
-                popover.show(relativeTo: headerView.bounds, of: headerView, preferredEdge: .minX)
+                // Anchor to the top edge of the header with zero height.
+                // This forces the arrow to the top and helps align the popover body 
+                // with the menu's top edge even when constrained by the screen.
+                let anchor = NSRect(x: 0, y: 0, width: headerView.bounds.width, height: 0)
+                popover.show(relativeTo: anchor, of: headerView, preferredEdge: .minX)
             } else if let view = sender as? NSView, view.window != nil {
                 popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minX)
             } else if let btn = statusItem.button {
@@ -399,13 +424,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     
     // MARK: - Popover State
     
-    func markRepoAsRead(_ repoName: String) {
-        readReposThisSession.insert(repoName)
-    }
     
-    func isRepoRead(_ repoName: String) -> Bool {
-        return readReposThisSession.contains(repoName)
-    }
     
     func clearUnreadPulse() {
         // Acknowledge current versions for the red pulse
@@ -422,10 +441,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     }
     
     func refreshQuickAddState() {
-        // Hybrid Quick Add interceptor
+        // Hybrid Quick Add & Global Refresh interceptor
         if let header = headerView {
-            if quickAddingRepo != nil {
-                // A repo is currently being fetched — show "Adding..." status centered
+            if quickAddingRepo != nil || refreshCoordinator.isRefreshing {
+                // Currently fetching — show "Adding..." or "Refreshing..." status
                 header.updateClipboardState(repo: nil, isProcessing: true)
             } else {
                 let currentChangeCount = NSPasteboard.general.changeCount
@@ -457,7 +476,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     func popoverWillShow(_ notification: Notification) {
         if let popover = notification.object as? NSPopover, popover == mainPopover {
             popoverIsOpen = true
-            readReposThisSession.removeAll()
+            lastMainPopoverOpenTime = Date()
         }
     }
     
@@ -472,15 +491,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         if popover == mainPopover {
             popoverIsOpen = false
             
-            // Mark currently cached versions as definitively seen upon closing the popover
-            // BUT ONLY for repos that were actually hovered/read during this session
-            var seenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
-            for (repoName, info) in repoCache {
-                if let v = info.version, readReposThisSession.contains(repoName) {
-                    seenVersions[repoName] = v
+            // Mark visible versions as seen ONLY if the popover was open for a reasonable time (0.8s)
+            // to avoid accidental 'marking as seen' on double-clicks or very fast interactions.
+            if let openTime = lastMainPopoverOpenTime, Date().timeIntervalSince(openTime) > 0.8 {
+                var seenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
+                
+                // Purely visual tracking: only what's on screen at the moment of closing is "seen"
+                for rowView in mainPopoverVC.repoViews {
+                    let name = rowView.displayData.repoName
+                    if let currentVersion = repoCache[name]?.version {
+                        seenVersions[name] = currentVersion
+                    }
                 }
+                UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
             }
-            UserDefaults.standard.set(seenVersions, forKey: "LastSeenVersions")
+            
+            // Clear the global red dot indicator ONLY when closing the main menu
+            clearUnreadPulse()
             
             // Execute any actions deferred by custom views (like opening Settings/Quit)
             if let action = pendingAction {
@@ -523,6 +550,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
                 return true
             case "m": // CMD+M → About (M de Mino)
                 showAboutPanel()
+                return true
+            case "f": // CMD+F → Focus search
+                focusSearchField()
                 return true
             case "n":
                 unifiedAddRepoDialog(self)

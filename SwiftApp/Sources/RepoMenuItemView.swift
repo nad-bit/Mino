@@ -2,19 +2,19 @@ import Cocoa
 
 /// Holds the pre-parsed data for building any layout mode.
 struct RepoDisplayData {
-    let repoName: String
-    let formattedName: String
-    let version: String?          // e.g. "v2.12.5"
-    let ageLabel: String?         // e.g. "3 days"
-    let ageSeconds: Double
-    let originalDate: String?     // Raw ISO8601 date from GitHub
-    let errorMessage: String?
-    let isLoading: Bool
-    let caskName: String?
-    let freshnessColor: NSColor   // 🟢/🟡/⚪ mapped to NSColor
-    let isNew: Bool
-    let tags: [String]
-    let isFavorite: Bool
+    var repoName: String
+    var formattedName: String
+    var version: String?          // e.g. "v2.12.5"
+    var ageLabel: String?         // e.g. "3 days"
+    var ageSeconds: Double
+    var originalDate: String?     // Raw ISO8601 date from GitHub
+    var errorMessage: String?
+    var isLoading: Bool
+    var caskName: String?
+    var freshnessColor: NSColor   // 🟢/🟡/⚪ mapped to NSColor
+    var isNew: Bool
+    var tags: [String]
+    var isFavorite: Bool
 }
 
 class MenuActionButton: NSButton {
@@ -132,9 +132,8 @@ class RepoMenuItemView: NSView {
     // Public exposure for AppDelegate search filtering
     let displayData: RepoDisplayData
     
-    // Track highlight and "seen" state
+    // Track highlight state
     private var lastHighlightState = false
-    private var wasEverHovered = false
     
     // Inline delete confirmation state
     private var isConfirmingDelete = false
@@ -152,7 +151,6 @@ class RepoMenuItemView: NSView {
         self.baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
         self.displayData = displayData
         self.originalDate = displayData.originalDate
-        self.wasEverHovered = appDelegate.isRepoRead(repoName)
         
         let rowHeight: CGFloat = (layout == "cards") ? baseFontSize + 27 : baseFontSize + 9
         
@@ -224,10 +222,6 @@ class RepoMenuItemView: NSView {
         if highlighted != lastHighlightState {
             lastHighlightState = highlighted
             
-            if highlighted {
-                wasEverHovered = true
-                appDelegate.markRepoAsRead(repoName)
-            }
             
             applyHighlightState(highlighted)
             needsDisplay = true
@@ -593,9 +587,7 @@ class RepoMenuItemView: NSView {
     
     @objc func openRepoClicked() {
         appDelegate.animateStatusIcon(with: .scale)
-        appDelegate.performAfterPopoverClose {
-            self.appDelegate.handleOpenRepo(for: self.repoName)
-        }
+        self.appDelegate.handleOpenRepo(for: self.repoName)
     }
     
     @objc func deleteClicked() {
@@ -674,10 +666,6 @@ class RepoMenuItemView: NSView {
         if highlighted != lastHighlightState {
             lastHighlightState = highlighted
             
-            if highlighted {
-                wasEverHovered = true
-                appDelegate.markRepoAsRead(repoName)
-            }
             
             applyHighlightState(highlighted)
             needsDisplay = true // Triggers updateLayer()
@@ -795,7 +783,7 @@ class RepoMenuItemView: NSView {
             layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.25).cgColor
         } else if lastHighlightState {
             layer?.backgroundColor = NSColor.selectedContentBackgroundColor.cgColor
-        } else if !wasEverHovered && displayData.isNew {
+        } else if displayData.isNew {
             layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
         } else {
             layer?.backgroundColor = nil
@@ -839,19 +827,9 @@ class RepoMenuItemView: NSView {
         // No action on background click anymore, use explicit buttons
     }
     
-    // Right click: toggle favorite (in-place, no menu rebuild)
+    // Right click: toggle favorite (via AppDelegate to ensure DataSource sync)
     override func rightMouseUp(with event: NSEvent) {
-        guard let index = ConfigManager.shared.config.repos
-            .firstIndex(where: { $0.name == repoName }) else { return }
-        
-        let newState = !(ConfigManager.shared.config.repos[index].isFavorite ?? false)
-        ConfigManager.shared.config.repos[index].isFavorite = newState
-        ConfigManager.shared.saveConfig()
-        
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = Constants.defaultAnimationDuration
-            self.starLabel.animator().textColor = newState ? .systemYellow : .clear
-        }
+        appDelegate.handleToggleFavorite(for: repoName)
     }
     
     // MARK: - Local Live Updates

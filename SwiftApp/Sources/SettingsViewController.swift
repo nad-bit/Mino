@@ -321,10 +321,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     }
     
     @objc private func startOAuth(_ sender: NSButton) {
-        // CLOSE POPOVER FIRST to avoid blocking the screen during authentication
-        if let delegate = NSApp.delegate as? AppDelegate {
-            delegate.settingsPopover?.performClose(nil)
-        }
+        // Task to start authentication
         
         Task {
             do {

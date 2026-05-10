@@ -26,15 +26,55 @@ class ResponsiveImageAttachment: NSTextAttachment {
 /// NSTextField subclass that shows a pointing-hand cursor on hover.
 /// Used for the version pill in the Release Notes window.
 class ClickableTextField: NSTextField {
+    var onHover: ((Bool) -> Void)?
+    
+    private var trackingArea: NSTrackingArea?
+    
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .pointingHand)
+    }
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let old = trackingArea { removeTrackingArea(old) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+    
+    override func mouseEntered(with event: NSEvent) {
+        onHover?(true)
+    }
+    
+    override func mouseExited(with event: NSEvent) {
+        onHover?(false)
+    }
+}
+
+class ClickableTagPill: ClickableTextField {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupHover()
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupHover()
+    }
+    
+    private func setupHover() {
+        self.onHover = { [weak self] isHovered in
+            guard let self = self else { return }
+            self.backgroundColor = isHovered ? NSColor.textColor.withAlphaComponent(0.15) : NSColor.textColor.withAlphaComponent(0.08)
+            self.textColor = isHovered ? .labelColor : .secondaryLabelColor
+        }
     }
 }
 
 class ReleaseNotesViewController: NSViewController {
     private var textView: NSTextView!
     private var titleLabel: NSTextField!
-    private var versionLabel: NSTextField!
+    private var versionLabel: ClickableTextField!
     private var tagsFooterView: WrappingTagsView!
     private(set) var currentRepoName: String?
     private var repoReleasesURL: URL?
@@ -48,14 +88,14 @@ class ReleaseNotesViewController: NSViewController {
     }
     
     override func loadView() {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: 500))
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: Constants.notesWindowWidth, height: Constants.notesWindowHeight))
         self.view = view
         
         let mainStack = NSStackView()
         mainStack.orientation = .vertical
         mainStack.alignment = .centerX
         mainStack.spacing = 16
-        mainStack.edgeInsets = NSEdgeInsets(top: 36, left: 0, bottom: 20, right: 0)
+        mainStack.edgeInsets = NSEdgeInsets(top: 20, left: 0, bottom: 20, right: 0)
         mainStack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(mainStack)
         
@@ -64,7 +104,7 @@ class ReleaseNotesViewController: NSViewController {
             mainStack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             mainStack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             mainStack.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            view.widthAnchor.constraint(equalToConstant: 600)
+            view.widthAnchor.constraint(equalToConstant: Constants.notesWindowWidth)
         ])
         
         // --- 1. Header (Title + Version) ---
@@ -93,6 +133,11 @@ class ReleaseNotesViewController: NSViewController {
         versionLabel.addGestureRecognizer(clickGesture)
         versionLabel.toolTip = Translations.get("openReleases")
         
+        versionLabel.onHover = { [weak self] (isHovered: Bool) in
+            guard let self = self else { return }
+            self.versionLabel.backgroundColor = isHovered ? NSColor.controlAccentColor.withAlphaComponent(0.8) : NSColor.controlAccentColor
+        }
+        
         // --- 2. Body (ScrollView + TextView) ---
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -102,10 +147,9 @@ class ReleaseNotesViewController: NSViewController {
         mainStack.addArrangedSubview(scrollView)
         scrollView.widthAnchor.constraint(equalTo: mainStack.widthAnchor).isActive = true
         
-        // Dynamic height: give the scrollview a flexible height that pushes the tags to the bottom
-        let scrollHeight = scrollView.heightAnchor.constraint(equalToConstant: 340)
-        scrollHeight.priority = .defaultHigh
-        scrollHeight.isActive = true
+        // Dynamic height: allow the scrollview to expand and fill all available space
+        scrollView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        scrollView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         
         textView = NSTextView()
         textView.isEditable = false
@@ -123,7 +167,33 @@ class ReleaseNotesViewController: NSViewController {
         mainStack.addArrangedSubview(tagsFooterView)
         tagsFooterView.widthAnchor.constraint(equalTo: mainStack.widthAnchor, constant: -48).isActive = true
         
-        self.preferredContentSize = NSSize(width: 600, height: 500)
+        tagsFooterView.onTagSelected = { [weak self] tag in
+            guard let self = self else { return }
+            
+            // Close notes and open main menu filtered by tag
+            if let appDelegate = NSApp.delegate as? AppDelegate {
+                // If it's a popover, close it
+                if let window = self.view.window, let popover = window.value(forKey: "popover") as? NSPopover {
+                    popover.performClose(nil)
+                } else {
+                    self.view.window?.close()
+                }
+                
+                let cleanTag = tag.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+                let query = cleanTag
+                
+                appDelegate.currentSearchQuery = query
+                appDelegate.searchField?.stringValue = query
+                appDelegate.filterMenuBySearchQuery(query)
+                appDelegate.headerView?.updateSearchOpacity()
+                
+                if !appDelegate.popoverIsOpen {
+                    appDelegate.togglePopover(nil)
+                }
+            }
+        }
+        
+        self.preferredContentSize = NSSize(width: Constants.notesWindowWidth, height: Constants.notesWindowHeight)
     }
     
     @objc func openReleases() {
@@ -355,6 +425,7 @@ class ReleaseNotesViewController: NSViewController {
 
 // MARK: - WrappingTagsView
 class WrappingTagsView: NSView {
+    var onTagSelected: ((String) -> Void)?
     private var cachedHeight: CGFloat = 0.0
     private var lastWidth: CGFloat = 0.0
     
@@ -363,7 +434,7 @@ class WrappingTagsView: NSView {
         let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
         let offset = baseFontSize - 13.0
         for tag in tags {
-            let pillNode = NSTextField(labelWithString: "  #\(tag)  ")
+            let pillNode = ClickableTagPill(labelWithString: "  #\(tag)  ")
             pillNode.font = .systemFont(ofSize: 11 + offset, weight: .medium)
             pillNode.textColor = .secondaryLabelColor
             pillNode.backgroundColor = NSColor.textColor.withAlphaComponent(0.08)
@@ -379,9 +450,19 @@ class WrappingTagsView: NSView {
             f.size.height = max(f.height, 20)
             pillNode.frame = f
             
+            let click = NSClickGestureRecognizer(target: self, action: #selector(tagClicked(_:)))
+            pillNode.addGestureRecognizer(click)
+            pillNode.identifier = NSUserInterfaceItemIdentifier(tag)
+            
             addSubview(pillNode)
         }
         needsLayout = true
+    }
+    
+    @objc private func tagClicked(_ sender: NSClickGestureRecognizer) {
+        if let tag = sender.view?.identifier?.rawValue {
+            onTagSelected?(tag)
+        }
     }
     
     override var isFlipped: Bool { return true }

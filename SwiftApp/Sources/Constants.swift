@@ -14,13 +14,16 @@ enum Constants {
     
     // UI Constants
     static let newReleaseThresholdDays: Int = 7 // Fallback default, overridden by config
-    static let menuHeaderFooterHeight: CGFloat = 32.0
+    static let menuHeaderFooterHeight: CGFloat = 54.0
     static let menuMinWidth: CGFloat = 320.0
     static let menuDefaultWidth: CGFloat = 400.0
     static let menuMaxWidth: CGFloat = 500.0
+    static let menuMaxHeight: CGFloat = 600.0
+    static let notesWindowWidth: CGFloat = 600.0
+    static let notesWindowHeight: CGFloat = 500.0
     static let tagCloudMaxTags: Int = 27
     static let menuBaseFontSize: CGFloat = 14.0
-    static let menuFontSizeMin: CGFloat = 10.0
+    static let menuFontSizeMin: CGFloat = 11.0
     static let menuFontSizeMax: CGFloat = 18.0
     static let popoverAnimates: Bool = false
     static let defaultAnimationDuration: TimeInterval = 0.15

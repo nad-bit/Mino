@@ -104,6 +104,12 @@ class AddRepoViewController: NSViewController, NSTextFieldDelegate {
         self.preferredContentSize = NSSize(width: 240, height: 145)
     }
     
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        // Ensure focus and scroll reset are applied after the window is fully on screen
+        view.window?.makeFirstResponder(inputField)
+    }
+    
     override func viewWillDisappear() {
         super.viewWillDisappear()
         clipboardTimer?.invalidate()
@@ -212,6 +218,14 @@ class AddRepoViewController: NSViewController, NSTextFieldDelegate {
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
         if #available(macOS 14.0, *) {
             eyeImageView.addSymbolEffect(.bounce, options: .nonRepeating)
+        }
+    }
+    
+    // MARK: - NSTextFieldDelegate
+    
+    func controlTextDidChange(_ obj: Notification) {
+        if inputField.stringValue.isEmpty {
+            inputField.currentEditor()?.selectedRange = NSRange(location: 0, length: 0)
         }
     }
     

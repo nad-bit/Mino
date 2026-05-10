@@ -19,6 +19,9 @@ class MainPopoverViewController: NSViewController {
     private var headerView: HeaderMenuItemView?
     private var footerView: FooterMenuItemView?
     
+    private var headerHeightConstraint: NSLayoutConstraint?
+    private var footerHeightConstraint: NSLayoutConstraint?
+    
     // Centralized Mouse Tracking
     private var mouseMonitor: Any?
     internal var currentlyHighlightedRow: RepoMenuItemView?
@@ -102,6 +105,15 @@ class MainPopoverViewController: NSViewController {
             tableView.trailingAnchor.constraint(equalTo: clipView.trailingAnchor)
         ])
         
+        headerContainer.translatesAutoresizingMaskIntoConstraints = false
+        footerContainer.translatesAutoresizingMaskIntoConstraints = false
+        
+        headerHeightConstraint = headerContainer.heightAnchor.constraint(equalToConstant: Constants.menuHeaderFooterHeight)
+        headerHeightConstraint?.isActive = true
+        
+        footerHeightConstraint = footerContainer.heightAnchor.constraint(equalToConstant: Constants.menuHeaderFooterHeight)
+        footerHeightConstraint?.isActive = true
+        
         setupScrollObservation()
     }
     
@@ -119,6 +131,23 @@ class MainPopoverViewController: NSViewController {
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
             self?.updateHighlightUnderMouse()
             return event
+        }
+    }
+    
+    func updateFavoriteState(for repoName: String, isFavorite: Bool) {
+        if let rowIdx = tableRepos.firstIndex(where: { $0.repoName == repoName }) {
+            tableRepos[rowIdx].isFavorite = isFavorite
+            tableView.reloadData(forRowIndexes: IndexSet(integer: rowIdx), columnIndexes: IndexSet(integer: 0))
+        }
+    }
+    
+    func updateAllAgeLabels() {
+        for i in 0..<tableRepos.count {
+            if let date = tableRepos[i].originalDate {
+                let ageInfo = Utils.getReleaseAge(dateString: date)
+                tableRepos[i].ageLabel = tableRepos[i].isLoading ? nil : ageInfo.label
+                tableRepos[i].ageSeconds = ageInfo.seconds
+            }
         }
     }
     
@@ -152,10 +181,13 @@ class MainPopoverViewController: NSViewController {
         currentlyHighlightedRow = nil
     }
     
-    func rebuildMenu() {
+    func rebuildMenu(preserveScroll: Bool = false) {
         guard let appDelegate = appDelegate else { return }
         
+        let scrollPoint = scrollView.contentView.bounds.origin
+        
         // 1. Setup/Update Header
+        headerHeightConstraint?.constant = Constants.menuHeaderFooterHeight
         if headerView == nil {
             let hv = HeaderMenuItemView(appDelegate: appDelegate)
             headerContainer.addSubview(hv)
@@ -164,8 +196,7 @@ class MainPopoverViewController: NSViewController {
                 hv.topAnchor.constraint(equalTo: headerContainer.topAnchor),
                 hv.leadingAnchor.constraint(equalTo: headerContainer.leadingAnchor),
                 hv.trailingAnchor.constraint(equalTo: headerContainer.trailingAnchor),
-                hv.bottomAnchor.constraint(equalTo: headerContainer.bottomAnchor),
-                headerContainer.heightAnchor.constraint(equalToConstant: Constants.menuHeaderFooterHeight)
+                hv.bottomAnchor.constraint(equalTo: headerContainer.bottomAnchor)
             ])
             self.headerView = hv
             appDelegate.headerView = hv
@@ -182,6 +213,7 @@ class MainPopoverViewController: NSViewController {
         }
         
         // 3. Setup/Update Footer
+        footerHeightConstraint?.constant = Constants.menuHeaderFooterHeight
         if footerView == nil {
             let fv = FooterMenuItemView(appDelegate: appDelegate)
             footerContainer.addSubview(fv)
@@ -190,8 +222,7 @@ class MainPopoverViewController: NSViewController {
                 fv.topAnchor.constraint(equalTo: footerContainer.topAnchor),
                 fv.leadingAnchor.constraint(equalTo: footerContainer.leadingAnchor),
                 fv.trailingAnchor.constraint(equalTo: footerContainer.trailingAnchor),
-                fv.bottomAnchor.constraint(equalTo: footerContainer.bottomAnchor),
-                footerContainer.heightAnchor.constraint(equalToConstant: Constants.menuHeaderFooterHeight)
+                fv.bottomAnchor.constraint(equalTo: footerContainer.bottomAnchor)
             ])
             self.footerView = fv
             appDelegate.footerView = fv
@@ -300,6 +331,7 @@ class MainPopoverViewController: NSViewController {
             tableView.isHidden = false
             scrollView.isHidden = false
             
+            let lastSeenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
             var newTableData: [RepoDisplayData] = []
             for repoObj in sortedRepos {
                 let repoName = repoObj.name
@@ -314,7 +346,6 @@ class MainPopoverViewController: NSViewController {
                 let isLoading = info.version == nil && !isError
                 let ageInfo = Utils.getReleaseAge(dateString: info.date)
                 
-                let lastSeenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
                 var isNewUpdate = false
                 if !isLoading && !isError {
                     if let currentVersion = info.version, lastSeenVersions[repoName] != currentVersion {
@@ -362,6 +393,14 @@ class MainPopoverViewController: NSViewController {
         self.view.layoutSubtreeIfNeeded()
         updatePreferredContentSize()
         
+        if preserveScroll {
+            let contentHeight = tableView.frame.height
+            let clipHeight = scrollView.contentView.bounds.height
+            let maxScroll = max(0, contentHeight - clipHeight)
+            let clampedY = min(scrollPoint.y, maxScroll)
+            scrollView.contentView.scroll(to: NSPoint(x: scrollPoint.x, y: clampedY))
+        }
+        
         // Ensure highlights update correctly as items move under a stationary mouse
         updateHighlightUnderMouse()
     }
@@ -377,10 +416,14 @@ class MainPopoverViewController: NSViewController {
             visibleItemsHeight = CGFloat(tableRepos.count) * lastRowHeight
         }
         
-        let targetScrollHeight = min(visibleItemsHeight, 600)
+        let targetScrollHeight = min(visibleItemsHeight, Constants.menuMaxHeight)
         
-        scrollView.constraints.filter { $0.firstAttribute == .height }.forEach { scrollView.removeConstraint($0) }
-        scrollView.heightAnchor.constraint(equalToConstant: targetScrollHeight).isActive = true
+        // Use a persistent reference to the constraint to avoid leaking/conflicts
+        if let existing = scrollView.constraints.first(where: { $0.firstAttribute == .height }) {
+            existing.constant = targetScrollHeight
+        } else {
+            scrollView.heightAnchor.constraint(equalToConstant: targetScrollHeight).isActive = true
+        }
         
         let targetWidth = self.lastTargetWidth ?? Constants.menuDefaultWidth
         let headerFooterHeight = Constants.menuHeaderFooterHeight * 2

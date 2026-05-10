@@ -61,6 +61,7 @@ class RefreshCoordinator {
         // Lightweight update of repository age labels and header title
         delegate.footerView?.updateTimeText(getRefreshTitle(), isRefreshing: isRefreshing)
         
+        delegate.mainPopoverVC.updateAllAgeLabels()
         for repoView in delegate.mainPopoverVC.repoViews {
             repoView.updateAgeDisplay()
         }
@@ -78,7 +79,10 @@ class RefreshCoordinator {
         isRefreshing = true
         
         delegate.footerView?.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
+        delegate.refreshQuickAddState()
         delegate.animateStatusIcon(with: .rotate)
+        
+        let startTime = Date()
         
         // 1. Optimized prioritized sorting (O(N) lookup preparation)
         let repoConfigs = ConfigManager.shared.config.repos
@@ -205,18 +209,26 @@ class RefreshCoordinator {
                     if didDiscover {
                         await MainActor.run {
                             ConfigManager.shared.saveConfig()
-                            delegate.rebuildMenu()
+                            delegate.rebuildMenu(preserveScroll: true)
                         }
                     }
                 }
             }
             // ------------------------------------
             
+            // Ensure the "Refreshing..." status remains visible for at least 1 second 
+            // to provide consistent visual feedback even for very fast updates.
+            let elapsed = Date().timeIntervalSince(startTime)
+            if elapsed < 1.0 {
+                try? await Task.sleep(nanoseconds: UInt64((1.0 - elapsed) * 1_000_000_000))
+            }
+            
             self.isRefreshing = false
             self.lastRefreshTime = Date()
             self.startTimers()
             delegate.updatePopularTagsCache()
-            delegate.rebuildMenu()
+            delegate.refreshQuickAddState()
+            delegate.rebuildMenu(preserveScroll: true)
         }
     }
     
@@ -253,7 +265,7 @@ class RefreshCoordinator {
                 await MainActor.run {
                     ConfigManager.shared.saveConfig()
                     delegate.updatePopularTagsCache()
-                    delegate.rebuildMenu() // Re-render tag cloud if it's currently relevant
+                    delegate.rebuildMenu(preserveScroll: true) // Re-render tag cloud if it's currently relevant
                 }
             }
         }

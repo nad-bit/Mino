@@ -17,7 +17,6 @@ class RepoCoordinator {
         guard let delegate = delegate else { return }
         ConfigManager.shared.config.repos.removeAll { $0.name == repoName }
         delegate.repoCache.removeValue(forKey: repoName)
-        delegate.readReposThisSession.remove(repoName)
         
         var seenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
         seenVersions.removeValue(forKey: repoName)
@@ -52,7 +51,7 @@ class RepoCoordinator {
         cleanupRepoData(repoName: repoName)
         
         // Full rebuild is safer to ensure all layout constraints and scroll heights are updated.
-        delegate.rebuildMenu()
+        delegate.rebuildMenu(preserveScroll: true)
         
         delegate.animateStatusIcon(with: .replaceWithSlash)
     }
@@ -79,16 +78,15 @@ class RepoCoordinator {
         }
         
         delegate.updatePopularTagsCache()
-        delegate.rebuildMenu()
-        delegate.animateStatusIcon(with: .bounce)
+        delegate.rebuildMenu(preserveScroll: true)
+        delegate.animateStatusIcon(with: .rotate)
     }
     
     // MARK: - Navigation
     
     @objc func handleOpenRepo(for repoName: String) {
-        guard let delegate = delegate else { return }
+        guard delegate != nil else { return }
         
-        delegate.hideInformationalWindows()
         
         if let url = URL(string: "https://github.com/\(repoName)") {
             NSWorkspace.shared.open(url)
@@ -96,9 +94,8 @@ class RepoCoordinator {
     }
     
     @objc func handleOpenReleases(for repoName: String) {
-        guard let delegate = delegate else { return }
+        guard delegate != nil else { return }
         
-        delegate.hideInformationalWindows()
         
         if let url = URL(string: "https://github.com/\(repoName)/releases") {
             NSWorkspace.shared.open(url)
@@ -126,9 +123,6 @@ class RepoCoordinator {
             popover.animates = Constants.popoverAnimates
             delegate.releaseNotesPopover = popover
         }
-        
-        delegate.settingsPopover?.performClose(nil)
-        delegate.addRepoPopover?.performClose(nil)
         
         guard let popover = delegate.releaseNotesPopover,
               let vc = popover.contentViewController as? ReleaseNotesViewController else { return }
@@ -220,40 +214,38 @@ class RepoCoordinator {
     @objc func openAddRepoDialog(_ sender: Any) {
         guard let delegate = delegate else { return }
         
-        if delegate.addRepoPopover == nil {
-            let popover = NSPopover()
-            let vc = AddRepoViewController()
-            popover.contentViewController = vc
-            // Using applicationDefined to stay open until manually closed or eye-clicked
-            popover.behavior = .applicationDefined 
-            popover.animates = Constants.popoverAnimates
-            delegate.addRepoPopover = popover
+        // Always recreate for a 100% fresh state, avoiding any AppKit caching of the input field's internal editor
+        let popover = NSPopover()
+        let vc = AddRepoViewController()
+        popover.contentViewController = vc
+        popover.behavior = .applicationDefined 
+        popover.animates = Constants.popoverAnimates
+        delegate.addRepoPopover = popover
+        
+        vc.completionHandler = { [weak delegate] repoName, source, cask, completion in
+            guard let delegate = delegate else { return }
             
-            vc.completionHandler = { [weak delegate] repoName, source, cask, completion in
-                guard let delegate = delegate else { return }
-                
-                if let repo = repoName {
-                    delegate.quickAddingRepo = repo
+            if let repo = repoName {
+                delegate.quickAddingRepo = repo
+            }
+            
+            Task {
+                var success = false
+                if let repo = repoName, source == "manual" {
+                    success = await delegate.repoCoordinator.addRepoSmart(repoName: repo)
+                } else if source == "brew", let caskName = cask {
+                    success = await delegate.repoCoordinator.processBrewSelection(caskName: caskName)
                 }
                 
-                Task {
-                    var success = false
-                    if let repo = repoName, source == "manual" {
-                        success = await delegate.repoCoordinator.addRepoSmart(repoName: repo)
-                    } else if source == "brew", let caskName = cask {
-                        success = await delegate.repoCoordinator.processBrewSelection(caskName: caskName)
-                    }
-                    
-                    await MainActor.run {
-                        delegate.quickAddingRepo = nil
-                        delegate.refreshQuickAddState()
-                        completion(success)
-                    }
+                await MainActor.run {
+                    delegate.quickAddingRepo = nil
+                    delegate.refreshQuickAddState()
+                    completion(success)
                 }
             }
         }
         
-        delegate.hideInformationalWindows()
+        delegate.hideInformationalWindows(except: delegate.addRepoPopover)
         delegate.bringToFront()
         
         if let popover = delegate.addRepoPopover, let vc = popover.contentViewController as? AddRepoViewController {
@@ -356,12 +348,8 @@ class RepoCoordinator {
                 delegate.rebuildMenu()
                 delegate.animateStatusIcon(with: .bounce)
                 
-                if delegate.popoverIsOpen {
-                    delegate.clearUnreadPulse()
-                } else {
-                    UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
-                    delegate.updateStatusIcon(hasUpdates: true)
-                }
+                UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
+                delegate.updateStatusIcon(hasUpdates: true)
             }
             return true
         }

@@ -5,6 +5,26 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.3] - Unreleased
+
+### Added
+- **Surgical UI Updates**: Implemented granular row updates for repository favorites and real-time age labels. Changes are now reflected instantly in the data source, ensuring visual persistence even when scrolling through large lists with recycled rows.
+- **Interactive Tag Filtering**: Enhanced the "Release Notes" window by making footer tags clickable. Selecting a tag now automatically filters the main repository list, providing a fluid search experience.
+- **Quick Add Status Feedback**: Introduced a vibrant orange color and semibold weight for the "Adding..." status in the header, providing clear visual differentiation from the static "Ready to add" state.
+- **Search Shortcut**: Implemented `CMD + F` to instantly focus the search field when the main menu is open, improving keyboard-driven navigation.
+
+### Changed
+- **Intelligent Scroll Preservation**: Refactored the menu rebuild engine to capture and restore the user's scroll position during background updates, deletions, and undos. This eliminates jarring view jumps and provides a rock-solid navigation experience.
+- **Centralized Window Management**: Migrated the Release Notes window dimensions and layout to a constant-driven system with dynamic content scaling, ensuring a clean appearance across all window sizes.
+- **Native Window Coordination**: Streamlined the UI architecture by transitioning to a fully native `NSPopover` lifecycle and implementing an exclusion system that ensures only one focused window is open at a time.
+
+### Fixed
+- **Input Field State Persistence**: Resolved a persistent UI bug in the "Add Repository" dialog where long strings would cause the placeholder and cursor to become off-center. The window now resets to a 100% fresh state on every opening.
+- **Config-UI Sync**: Fixed a latency issue where the footer's refresh tooltip didn't update immediately after changing the refresh interval in Preferences.
+- **Optical UI Alignment**: Corrected a subtle vertical misalignment in header elements and resolved a "stepped" visual glitch in the Settings popover anchoring.
+- **Freshness Reliability**: Simplified the "new update" indicator logic to be exclusively triggered by visual visibility upon closing the menu, eliminating accidental dismissals.
+- **Tag Search Injection**: Resolved a filtering bug where prepending the "#" symbol to tag-based searches made the filter ineffective.
+
 ## [2.1.2] - 2026-05-06
 
 ### Added
