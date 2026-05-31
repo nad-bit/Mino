@@ -67,6 +67,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     }
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        // Disable the default in-memory URL cache for URLSession.shared.
+        // HomebrewManager and RepoCoordinator use .shared for one-off API calls;
+        // with 300+ repos the cached responses accumulate and are never reclaimed.
+        URLCache.shared = URLCache(memoryCapacity: 0, diskCapacity: 0)
+        
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         
         if let btn = statusItem.button {
@@ -146,6 +151,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     
     @objc private func configDidUpdate() {
         DispatchQueue.main.async {
+            // When the user reduces the refresh interval, the next refresh date
+            // (lastRefreshTime + newInterval) may already be in the past, which
+            // would cause updateCountdown() to trigger an unwanted immediate refresh.
+            // Prevent this by resetting the countdown to start from now.
+            let newMinutes = ConfigManager.shared.config.refreshMinutes
+            let nextRefresh = self.refreshCoordinator.lastRefreshTime.addingTimeInterval(TimeInterval(newMinutes * 60))
+            if nextRefresh.timeIntervalSinceNow <= 0 && !self.refreshCoordinator.isRefreshing {
+                self.refreshCoordinator.lastRefreshTime = Date()
+            }
+            
             self.footerView?.updateTimeText(self.getRefreshTitle(), isRefreshing: self.isRefreshing)
         }
     }
@@ -535,10 +550,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     func handleGlobalShortcuts(with event: NSEvent) -> Bool {
         // 1. Navigation (Arrows) - Intercepted even without modifiers
         if event.keyCode == 125 { // Down Arrow
+            mainPopoverVC.clearButtonFocus()
             mainPopoverVC.moveHighlight(direction: 1)
             return true
         } else if event.keyCode == 126 { // Up Arrow
+            mainPopoverVC.clearButtonFocus()
             mainPopoverVC.moveHighlight(direction: -1)
+            return true
+        } else if event.keyCode == 123 { // Left Arrow
+            mainPopoverVC.moveButtonFocus(direction: -1)
+            return true
+        } else if event.keyCode == 124 { // Right Arrow
+            mainPopoverVC.moveButtonFocus(direction: 1)
             return true
         }
         
@@ -585,6 +608,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         
         // 3. Contextual Row Actions (Return / Enter)
         if event.keyCode == 36 { // Return
+            // If a specific button is focused via ←→, trigger it
+            if mainPopoverVC.triggerFocusedButton() {
+                return true
+            }
             if mainPopoverVC.currentlyHighlightedRow != nil {
                 mainPopoverVC.triggerActionOnHighlighted(.open)
                 return true

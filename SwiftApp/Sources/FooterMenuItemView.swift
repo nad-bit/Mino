@@ -59,22 +59,42 @@ class FooterMenuItemView: NSView {
         addSubview(quitBtn)
         addSubview(repoCountLabel)
         
+        let btnSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) + 10
+        
         NSLayoutConstraint.activate([
             refreshBtn.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             refreshBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
-            refreshBtn.widthAnchor.constraint(equalToConstant: 24),
-            refreshBtn.heightAnchor.constraint(equalToConstant: 24),
+            refreshBtn.widthAnchor.constraint(equalToConstant: btnSize),
+            refreshBtn.heightAnchor.constraint(equalToConstant: btnSize),
             
             quitBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
             quitBtn.centerYAnchor.constraint(equalTo: centerYAnchor),
-            quitBtn.widthAnchor.constraint(equalToConstant: 24),
-            quitBtn.heightAnchor.constraint(equalToConstant: 24),
+            quitBtn.widthAnchor.constraint(equalToConstant: btnSize),
+            quitBtn.heightAnchor.constraint(equalToConstant: btnSize),
             
             repoCountLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
             repoCountLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             repoCountLabel.leadingAnchor.constraint(greaterThanOrEqualTo: refreshBtn.trailingAnchor, constant: 8),
             repoCountLabel.trailingAnchor.constraint(lessThanOrEqualTo: quitBtn.leadingAnchor, constant: -8)
         ])
+        
+        updateFontSize()
+    }
+    
+    func updateFontSize() {
+        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        let btnSize = baseFontSize + 10
+        
+        let config = NSImage.SymbolConfiguration(pointSize: baseFontSize - 2, weight: .semibold)
+        refreshBtn.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")?.withSymbolConfiguration(config)
+        refreshBtn.constraints.first(where: { $0.firstAttribute == .width })?.constant = btnSize
+        refreshBtn.constraints.first(where: { $0.firstAttribute == .height })?.constant = btnSize
+        
+        quitBtn.image = NSImage(systemSymbolName: "power", accessibilityDescription: Translations.get("quit"))?.withSymbolConfiguration(config)
+        quitBtn.constraints.first(where: { $0.firstAttribute == .width })?.constant = btnSize
+        quitBtn.constraints.first(where: { $0.firstAttribute == .height })?.constant = btnSize
+        
+        repoCountLabel.font = .systemFont(ofSize: baseFontSize - 2)
     }
     
     /// Refreshes the repo count label from the current config.

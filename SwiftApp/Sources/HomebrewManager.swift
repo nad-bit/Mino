@@ -236,64 +236,6 @@ class HomebrewManager {
         }
     }
     
-    func downloadGlobalCaskMap() async -> [String: String] {
-        guard let url = URL(string: "https://formulae.brew.sh/api/cask.json") else { return [:] }
-        
-        do {
-            var request = URLRequest(url: url)
-            request.timeoutInterval = Constants.httpRequestTimeoutSeconds
-            request.setValue(Constants.userAgent, forHTTPHeaderField: "User-Agent")
-            
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                return [:]
-            }
-            
-            guard let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-                return [:]
-            }
-            
-            var map: [String: String] = [:]
-            let regex = try NSRegularExpression(pattern: "(?:github\\.com/)?([^/\\s\"]+/[^/\\s\"]+)")
-            
-            for item in jsonArray {
-                guard let token = item["token"] as? String else { continue }
-                
-                // Extract repository identifier from URLs (homepage or download url)
-                var repoName: String? = nil
-                
-                if let urlStr = item["url"] as? String {
-                    let range = NSRange(location: 0, length: urlStr.utf16.count)
-                    if let match = regex.firstMatch(in: urlStr, options: [], range: range) {
-                        if let r = Range(match.range(at: 1), in: urlStr) {
-                            repoName = String(urlStr[r]).replacingOccurrences(of: ".git", with: "")
-                        }
-                    }
-                }
-                
-                if repoName == nil, let hpStr = item["homepage"] as? String {
-                    let range = NSRange(location: 0, length: hpStr.utf16.count)
-                    if let match = regex.firstMatch(in: hpStr, options: [], range: range) {
-                         if let r = Range(match.range(at: 1), in: hpStr) {
-                             repoName = String(hpStr[r]).replacingOccurrences(of: ".git", with: "")
-                         }
-                    }
-                }
-                
-                if let r = repoName {
-                    map[r.lowercased()] = token
-                }
-            }
-            
-            return map
-            
-        } catch {
-            print("Failed to download global cask map: \(error)")
-            return [:]
-        }
-    }
-    
     func runBrewUpdate() async -> Bool {
         guard let path = brewPath else { return false }
         return await withCheckedContinuation { continuation in

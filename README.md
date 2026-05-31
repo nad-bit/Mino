@@ -21,7 +21,7 @@ https://github.com/user-attachments/assets/3ca0d651-5059-4683-812f-c9f24b8aa8fc
 - **🍺 Homebrew Integration**: Detects installed Casks automatically and enables one-click install/update directly from the menu (only shown if Homebrew is installed)
 - **🧩 Integrated Search**: A sleek, centered search field with an intelligent Tag Cloud. Filter your repositories by language, topic, or status instantly using the auto-generated suggestion cloud.
 - **🧠 Quick Add**: Copy a GitHub repository URL, open the menu, and the header intelligently transforms into a "Quick Add" action with dynamic iconography. Bypass modal windows completely!
-- **📏 Dynamic Typography**: Choose your preferred text size (10pt to 18pt). The entire menu UI, from repository names to release notes, scales proportionally to ensure perfect legibility for every user.
+- **📏 Dynamic Typography**: Choose your preferred text size (11pt to 21pt). The entire menu UI, from repository names to release notes, scales proportionally to ensure perfect legibility for every user.
 - **⏱ Tooltip Tracker**: The refresh countdown is hidden for a cleaner look — simply hover over the refresh icon to see the time remaining.
 - **🎯 Multi-Hunt Window**: The floating "Add Repositories..." window acts as a persistent tracking hub. Keep it open while you browse Safari, and simply hit `CMD+C` on sequential GitHub URLs. Mino automatically sniffs your clipboard and queues them up for rapid batch-ingestion without ever losing focus.
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
@@ -93,7 +93,7 @@ Each repository displays its name, latest version, and time since release. Hover
 | Button | Action |
 |--------|--------|
 | 📦 | Install/update via Homebrew (if available) |
-| 📄 | View the release notes on GitHub |
+| 📄 | View the release notes |
 | ↗ | Open the repository on GitHub |
 | 🗑 | Remove from watch list |
 
@@ -112,7 +112,7 @@ Accessible via the **Preferences** menu item:
 |--------|-------------|
 | **GitHub Account** | Connect via OAuth for 5,000 req/hr limit (vs 60/hr unauthenticated) |
 | **Menu layout** | Segmented control: Choose between 3 distinct UI arrangements (Columns, Cards, Tags) |
-| **Text Size** | Segmented control: Choose your preferred reading comfort (11pt to 18pt) |
+| **Text Size** | Segmented control: Choose your preferred reading comfort (11pt to 21pt) |
 | **Sort by** | Segmented control: Date or Name |
 | **New Release Indicator** | Toggle the ● freshness dot (Columns/Cards) or dynamic pill color (Tags) and configure threshold (1-30 days) |
 | **Show Owner Name** | Toggle `owner/` prefix in repo names |
@@ -148,10 +148,17 @@ Mino is designed for power users. Use these shortcuts while the main menu is ope
 | Shortcut | Action |
 |----------|--------|
 | `CMD + ,` | Open Preferences |
+| `CMD + N` | Open new "Multi-Hunt" window |
 | `CMD + F` | Focus Search field |
 | `CMD + I` | Show Release Notes for selected repo |
 | `CMD + Z` | Undo last repository deletion |
+| `CMD + B` | Install or update the focused repo |
 | `CMD + Q` | Quit Mino |
+| `TAB`     | Switch focus between Search field and Repo list |
+| `↑↓`     | Navigate up and down the Repo list |
+| `←→`     | Cycle through the inline action buttons on the selected repo |
+| `ENTER`   | Trigger the focused action button, or open the repo on GitHub if no button is focused |
+| `CMD + DELETE` | Delete the selected repo |
 | `ESC`     | Close any active popover |
 
 ## Architecture

@@ -75,7 +75,6 @@ class HeaderMenuItemView: NSView {
         // Search Field (Setup moved here since it was removed from refresh config block)
         self.searchField = MenuSearchField(appDelegate: appDelegate)
         searchField.placeholderString = Translations.get("search")
-        searchField.controlSize = .small
         searchField.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2)
         searchField.alignment = .center
         searchField.focusRingType = .none
@@ -133,6 +132,8 @@ class HeaderMenuItemView: NSView {
         addSubview(searchField)
         addSubview(addBtn)
         
+        let btnSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) + 10
+        
         NSLayoutConstraint.activate([
             leftStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             leftStack.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
@@ -152,20 +153,58 @@ class HeaderMenuItemView: NSView {
             
             addBtn.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
             addBtn.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
-            addBtn.widthAnchor.constraint(equalToConstant: 24),
-            addBtn.heightAnchor.constraint(equalToConstant: 24),
+            addBtn.widthAnchor.constraint(equalToConstant: btnSize),
+            addBtn.heightAnchor.constraint(equalToConstant: btnSize),
             
-            settingsBtn.widthAnchor.constraint(equalToConstant: 24),
-            settingsBtn.heightAnchor.constraint(equalToConstant: 24)
+            settingsBtn.widthAnchor.constraint(equalToConstant: btnSize),
+            settingsBtn.heightAnchor.constraint(equalToConstant: btnSize)
         ])
-        
-        // swappable constraints no longer needed for centered layout
         
         // Initial state: Search is dominant
         updateClipboardState(repo: nil)
         
+        updateFontSize()
+        
         // Define width constraint (initially inactive until targetWidth is set)
         widthConstraint = widthAnchor.constraint(equalToConstant: Constants.menuMinWidth)
+    }
+    
+    func updateFontSize() {
+        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        let btnSize = baseFontSize + 10
+        
+        let settingsConfig = NSImage.SymbolConfiguration(pointSize: baseFontSize - 2, weight: .semibold)
+        settingsBtn.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: Translations.get("preferences"))?.withSymbolConfiguration(settingsConfig)
+        settingsBtn.constraints.first(where: { $0.firstAttribute == .width })?.constant = btnSize
+        settingsBtn.constraints.first(where: { $0.firstAttribute == .height })?.constant = btnSize
+        
+        let addConfig = NSImage.SymbolConfiguration(pointSize: baseFontSize, weight: .bold)
+        addBtn.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add Repository")?.withSymbolConfiguration(addConfig)
+        addBtn.constraints.first(where: { $0.firstAttribute == .width })?.constant = btnSize
+        addBtn.constraints.first(where: { $0.firstAttribute == .height })?.constant = btnSize
+        
+        searchField.font = .systemFont(ofSize: baseFontSize - 2)
+        if baseFontSize >= 18 {
+            searchField.controlSize = .large
+        } else if baseFontSize >= 14 {
+            searchField.controlSize = .regular
+        } else {
+            searchField.controlSize = .small
+        }
+        
+        let quickAddIconCfg = NSImage.SymbolConfiguration(pointSize: baseFontSize - 1, weight: .semibold)
+        quickAddIcon.image = NSImage(systemSymbolName: "arrow.right", accessibilityDescription: nil)?.withSymbolConfiguration(quickAddIconCfg)
+        
+        if isProcessingQuickAdd {
+            if appDelegate.quickAddingRepo != nil {
+                quickAddLabel.font = .systemFont(ofSize: baseFontSize - 2, weight: .semibold)
+            } else {
+                let baseFont = NSFont.systemFont(ofSize: baseFontSize - 2, weight: .semibold)
+                quickAddLabel.font = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
+            }
+        } else {
+            quickAddLabel.font = .systemFont(ofSize: baseFontSize - 2, weight: .medium)
+        }
     }
     
     func updateClipboardState(repo: String?, isProcessing: Bool = false) {

@@ -5,7 +5,37 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.3] - Unreleased
+## [2.1.5] - Unreleased
+
+### Added
+
+### Changed
+
+### Fixed
+
+## [2.1.4] - 2026-05-31
+
+### Added
+- **Keyboard Focus Navigation (`←` / `→` & `ENTER`)**: Added horizontal keyboard navigation using left/right arrows to cycle through inline action buttons (`Install/Update`, `View Notes`, `Open Repo`, `Delete Repo`) on the highlighted repository row, triggering them via `ENTER`.
+- **Inline Action Shortcuts**: Documented new inline action shortcuts `CMD + B` (Install/Update), `CMD + C` (Copy URL), and `CMD + DELETE` (Delete) to instantly invoke actions on the currently selected repository.
+
+### Changed
+- **On-Demand Release Notes**: Release notes are no longer downloaded during bulk refresh cycles. The body content (HTML/Markdown) is now fetched lazily when the user opens the Release Notes window for a specific repository. With 300+ tracked repos, this eliminates ~300–900 unnecessary API calls per refresh and removes several megabytes of cached HTML from persistent memory.
+- **Version-Pinned Notes**: On-demand release notes now fetch the body for the exact version displayed in the menu (via `/releases/tags/{tag}`) instead of `/releases/latest`, preventing a mismatch when a newer release exists on GitHub but the menu hasn't refreshed yet.
+- **Dead Code Removal**: Removed the unused `downloadGlobalCaskMap()` function — a vestige of the legacy periodic `cask.json` catalog download that was replaced by event-driven discovery in v2.0.6.
+- **Dynamic Text Scaling in Menu Header/Footer**: Fully integrated text scaling (up to 21pt) in the popover header and footer, including dynamic search field size and fully vertically centered search input text.
+- **Favorites Star Layout**: Resized and adjusted the constraints of the Favorites star symbol to prevent clipping at larger font sizes.
+
+### Fixed
+- **Memory Optimization**: Disabled in-memory URL caching across all HTTP sessions (`GitHubAPI`, `URLSession.shared`). With large tracking lists, the default `URLCache` accumulated response data across refresh cycles that macOS never reclaimed, causing a progressive RAM increase over days of use.
+- **Premature Refresh on Interval Change**: Reducing the refresh interval in Preferences (e.g. from 2h to 1h) no longer triggers an unintended immediate refresh when the elapsed time since the last refresh exceeds the new interval. The countdown now resets cleanly from the moment of change.
+- **Duplicate OAuth Window**: Clicking the "Connect" button in Preferences while an OAuth authentication window is already open now brings the existing window to the front instead of spawning a duplicate.
+- **Keyboard Delete Confirmation**: Resolved a bug where the delete confirmation (second `Enter` press) could not be triggered via the keyboard due to action buttons filtering by alpha value.
+- **Stale Keyboard Outlines**: Fixed a bug where the focused button outline (blue ring) would persist after changing rows during the 2-second delete confirmation period.
+- **Stale Keyboard Focus under Mouse**: Cleared active inline action button keyboard focus when highlighting rows with the mouse.
+- **Delete Confirmation Reset on Navigation**: Canceling the inline delete confirmation immediately upon row unhighlight (by mouse or keyboard) rather than waiting for the 2-second timer to expire.
+
+## [2.1.3] - 2026-05-30
 
 ### Added
 - **Surgical UI Updates**: Implemented granular row updates for repository favorites and real-time age labels. Changes are now reflected instantly in the data source, ensuring visual persistence even when scrolling through large lists with recycled rows.

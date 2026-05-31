@@ -258,7 +258,18 @@ class ReleaseNotesViewController: NSViewController {
         }
         
         // --- TEXT BODY (Markdown & HTML) ---
-        var bodyText = info.body ?? Translations.get("noNotes")
+        // body == nil means we're still fetching (on-demand loading)
+        // body == "" means the fetch completed but found no content
+        let isLoading = info.body == nil && info.error == nil
+        let hasContent = info.body != nil && !info.body!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        var bodyText: String
+        if isLoading {
+            bodyText = Translations.get("loading")
+        } else if hasContent {
+            bodyText = info.body!
+        } else {
+            bodyText = Translations.get("noNotes")
+        }
         bodyText = bodyText.replacingOccurrences(of: "\r\n", with: "\n")
         
         // Let markdown natively handle spacing after lists

@@ -58,7 +58,7 @@ struct AppConfig: Codable {
         if menuFontSize == nil {
             let legacy = try? decoder.container(keyedBy: LegacyKeys.self)
             if let isCompact = try? legacy?.decodeIfPresent(Bool.self, forKey: .isCompactMode), isCompact == true {
-                menuFontSize = 11.0
+                menuFontSize = 16.0
             }
         }
     }
@@ -71,18 +71,26 @@ struct AppConfig: Codable {
             RepoConfig(name: "alienator88/Sentinel", source: "brew", cask: "alienator88-sentinel"),
             RepoConfig(name: "alienator88/Pearcleaner", source: "brew", cask: "pearcleaner"),
             RepoConfig(name: "Caldis/Mos", source: "manual"),
+            RepoConfig(name: "darrylmorley/whatcable", source: "manual"),
             RepoConfig(name: "homielab/mountmate", source: "brew", cask: "mountmate"),
             RepoConfig(name: "ronitsingh10/FineTune", source: "brew", cask: "finetune"),
-            RepoConfig(name: "jsattler/BetterCapture", source: "brew", cask: "jsattler/tap/bettercapture"),
-            RepoConfig(name: "66HEX/frame", source: "manual"),
-            RepoConfig(name: "paolorotolo/GHomeBar", source: "manual")
+            RepoConfig(name: "jsattler/BetterCapture", source: "brew", cask: "bettercapture"),
+            RepoConfig(name: "Feng6611/mac-command-reopen", source: "manual"),
+            RepoConfig(name: "paolorotolo/GHomeBar", source: "manual"),
+            RepoConfig(name: "aagedal/Aagedal-Media-Converter", source: "manual"),
+            RepoConfig(name: "Santosh7017/AndroidFileSync", source: "manual"),
+            RepoConfig(name: "gangz1o/Clipaste", source: "manual"),
+            RepoConfig(name: "jaywcjlove/awesome-swift-macos-apps", source: "manual"),
+            RepoConfig(name: "nickybmon/OpenEmu-Silicon", source: "manual"),
+            RepoConfig(name: "SoulSniper-V2/SnapState", source: "brew", cask: "soulsniper-v2/tap/snapstate"),
+            RepoConfig(name: "idawnlight/ShichiZip", source: "brew", cask: "shichizip")
         ]
         self.refreshMinutes = Constants.defaultRefreshIntervalMinutes
         self.sortBy = "name"
         self.showOwner = false
         self.showNewIndicator = true
         self.newIndicatorDays = 7
-        self.menuLayout = "columns"
+        self.menuLayout = "cards"
         self.menuFontSize = Constants.menuBaseFontSize
     }
 }

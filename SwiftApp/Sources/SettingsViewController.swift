@@ -321,7 +321,12 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     }
     
     @objc private func startOAuth(_ sender: NSButton) {
-        // Task to start authentication
+        // Prevent duplicate OAuth windows — bring the existing one to front
+        if let existing = oauthWindowController, existing.window?.isVisible == true {
+            existing.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
         
         Task {
             do {

@@ -170,6 +170,7 @@ class MainPopoverViewController: NSViewController {
         }
         
         if hitView !== currentlyHighlightedRow {
+            currentlyHighlightedRow?.clearKeyboardFocus()
             currentlyHighlightedRow?.setHighlighted(false)
             currentlyHighlightedRow = hitView
             currentlyHighlightedRow?.setHighlighted(true)
@@ -205,6 +206,7 @@ class MainPopoverViewController: NSViewController {
         }
         
         guard let headerView = headerView else { return }
+        headerView.updateFontSize()
         
         // Restore previous search query if any
         if !appDelegate.currentSearchQuery.isEmpty {
@@ -227,6 +229,7 @@ class MainPopoverViewController: NSViewController {
             self.footerView = fv
             appDelegate.footerView = fv
         }
+        footerView?.updateFontSize()
         footerView?.updateRepoCount()
         footerView?.updateTimeText(appDelegate.getRefreshTitle(), isRefreshing: appDelegate.isRefreshing)
         
@@ -501,6 +504,48 @@ class MainPopoverViewController: NSViewController {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(url, forType: .string)
         }
+    }
+    
+    // MARK: - Horizontal Button Focus (←→)
+    
+    /// Moves the keyboard focus ring across the action buttons of the highlighted row.
+    /// direction: -1 for left, +1 for right
+    func moveButtonFocus(direction: Int) {
+        guard let row = currentlyHighlightedRow else { return }
+        let buttons = row.actionButtons
+        guard !buttons.isEmpty else { return }
+        
+        let current = row.focusedButtonIndex
+        let next: Int
+        
+        if let cur = current {
+            next = cur + direction
+            if next < 0 || next >= buttons.count {
+                // Went past the edge — unfocus all buttons (back to row-level)
+                row.clearKeyboardFocus()
+                return
+            }
+        } else {
+            // No button focused yet — enter from the appropriate end
+            next = direction > 0 ? 0 : buttons.count - 1
+        }
+        
+        row.setKeyboardFocus(index: next)
+    }
+    
+    /// Triggers the currently focused button on the highlighted row.
+    /// Returns true if an action was triggered.
+    func triggerFocusedButton() -> Bool {
+        guard let row = currentlyHighlightedRow, row.focusedButtonIndex != nil else {
+            return false
+        }
+        row.triggerFocusedAction()
+        return true
+    }
+    
+    /// Clears button focus on the current row (used when switching rows with ↑↓).
+    func clearButtonFocus() {
+        currentlyHighlightedRow?.clearKeyboardFocus()
     }
 }
 

@@ -9,13 +9,13 @@ class GitHubAPI {
         config.timeoutIntervalForRequest = Constants.httpRequestTimeoutSeconds
         config.timeoutIntervalForResource = Constants.httpRequestTimeoutSeconds * 2
         config.httpAdditionalHeaders = ["User-Agent": Constants.userAgent]
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
         self.session = URLSession(configuration: config)
     }
     
     func fetchRepoInfo(repo: String, hasExistingRelease: Bool = false) async -> RepoInfo {
-        var requestHeaders: [String: String] = [
-            "Accept": "application/vnd.github.html+json"
-        ]
+        var requestHeaders: [String: String] = [:]
         
         if let token = ConfigManager.shared.token {
             requestHeaders["Authorization"] = "Bearer \(token)"
@@ -73,19 +73,8 @@ class GitHubAPI {
         let version = json?["tag_name"] as? String
         let date = json?["published_at"] as? String
         
-        // Prioritize the pre-rendered HTML if we requested it, fallback to raw body
-        // Treat empty/whitespace-only content as nil so the UI shows "no notes" instead of a blank window
-        let rawBody = json?["body_html"] as? String ?? json?["body"] as? String
-        var body = rawBody?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? rawBody : nil
-        
-        // GitHub's web UI shows the tag commit message when the release body is empty.
-        // Replicate that behavior: fetch the commit pointed to by the tag for its message.
-        if body == nil, let tagName = version {
-            body = try? await fetchTagCommitMessage(repo: repo, tag: tagName, headers: headers)
-        }
-        
         if version != nil && date != nil {
-            return RepoInfo(name: repo, version: version, date: date, body: body)
+            return RepoInfo(name: repo, version: version, date: date)
         } else {
             throw URLError(.cannotParseResponse)
         }
@@ -120,13 +109,12 @@ class GitHubAPI {
               let sha = firstCommit["sha"] as? String,
               let commitInfo = firstCommit["commit"] as? [String: Any],
               let authorInfo = commitInfo["author"] as? [String: Any],
-              let date = authorInfo["date"] as? String,
-              let message = commitInfo["message"] as? String else {
+              let date = authorInfo["date"] as? String else {
             throw URLError(.cannotParseResponse)
         }
         
         let shortSha = String(sha.prefix(7))
-        return RepoInfo(name: repo, version: shortSha, date: date, body: message)
+        return RepoInfo(name: repo, version: shortSha, date: date)
     }
     
     /// Fetches the commit message associated with a tag.
@@ -183,6 +171,81 @@ class GitHubAPI {
         // Only return if there's meaningful content
         guard let msg = message, !msg.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return msg
+    }
+    
+    /// Fetches the release notes body for a single repo on demand.
+    /// Requests pre-rendered HTML from GitHub for rich formatting.
+    /// When a version tag is provided, fetches the body for that specific release
+    /// to ensure consistency with the version displayed in the menu.
+    /// Returns the body text, an error message for display, or nil if no content found.
+    func fetchReleaseBody(repo: String, version: String? = nil) async -> String? {
+        var headers: [String: String] = [
+            "Accept": "application/vnd.github.html+json"
+        ]
+        if let token = ConfigManager.shared.token {
+            headers["Authorization"] = "Bearer \(token)"
+        }
+        
+        // 1. Try the pinned version first (matches what the menu displays)
+        if let tag = version {
+            let endpoint = "\(Constants.githubAPIBaseURL)/repos/\(repo)/releases/tags/\(tag)"
+            if let url = URL(string: endpoint) {
+                var request = URLRequest(url: url)
+                headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+                
+                if let (data, response) = try? await session.data(for: request),
+                   let httpResponse = response as? HTTPURLResponse {
+                    
+                    // Surface rate limit errors to the user
+                    if httpResponse.statusCode == 403 {
+                        return Translations.get("apiRateLimit")
+                    } else if httpResponse.statusCode == 429 {
+                        return Translations.get("apiTooManyRequests")
+                    }
+                    
+                    if httpResponse.statusCode == 200,
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        
+                        let rawBody = json["body_html"] as? String ?? json["body"] as? String
+                        if let body = rawBody, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            return body
+                        }
+                        
+                        // GitHub shows the tag commit message when body is empty
+                        if let tagName = json["tag_name"] as? String {
+                            return try? await fetchTagCommitMessage(repo: repo, tag: tagName, headers: headers)
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 2. Fallback: fetch the latest commit message (for repos tracked by commit SHA)
+        if let url = URL(string: "\(Constants.githubAPIBaseURL)/repos/\(repo)/commits?per_page=1") {
+            var request = URLRequest(url: url)
+            headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+            
+            if let (data, response) = try? await session.data(for: request),
+               let httpResponse = response as? HTTPURLResponse {
+                
+                if httpResponse.statusCode == 403 {
+                    return Translations.get("apiRateLimit")
+                } else if httpResponse.statusCode == 429 {
+                    return Translations.get("apiTooManyRequests")
+                }
+                
+                if httpResponse.statusCode == 200,
+                   let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+                   let firstCommit = jsonArray.first,
+                   let commitInfo = firstCommit["commit"] as? [String: Any],
+                   let message = commitInfo["message"] as? String,
+                   !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return message
+                }
+            }
+        }
+        
+        return nil
     }
     
     func validateToken(_ token: String) async -> Bool {

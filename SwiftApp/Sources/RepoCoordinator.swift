@@ -130,10 +130,23 @@ class RepoCoordinator {
         // Forzar la carga de la vista antes de acceder a los outlets
         _ = vc.view
         
+        // Show immediately with loading state, then fetch body on demand
         vc.loadNotes(for: info)
         popover.contentSize = vc.preferredContentSize
-        
         popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minX)
+        
+        // Fetch the release body asynchronously (pinned to the cached version)
+        Task {
+            let body = await GitHubAPI.shared.fetchReleaseBody(repo: repoName, version: info.version)
+            await MainActor.run {
+                // Only update if the popover is still showing the same repo
+                guard popover.isShown,
+                      vc.currentRepoName == repoName else { return }
+                var updatedInfo = info
+                updatedInfo.body = body ?? ""
+                vc.loadNotes(for: updatedInfo)
+            }
+        }
     }
     
     // MARK: - Install

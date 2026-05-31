@@ -135,6 +135,9 @@ class RepoMenuItemView: NSView {
     // Track highlight state
     private var lastHighlightState = false
     
+    // Keyboard button focus
+    private(set) var focusedButtonIndex: Int? = nil
+    
     // Inline delete confirmation state
     private var isConfirmingDelete = false
     private var deleteConfirmTimer: Timer?
@@ -222,6 +225,9 @@ class RepoMenuItemView: NSView {
         if highlighted != lastHighlightState {
             lastHighlightState = highlighted
             
+            if !highlighted && isConfirmingDelete {
+                cancelDeleteConfirm()
+            }
             
             applyHighlightState(highlighted)
             needsDisplay = true
@@ -249,6 +255,41 @@ class RepoMenuItemView: NSView {
         buttonStack.alignment = .centerY
         buttonStack.distribution = .fillEqually
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
+    }
+    
+    // MARK: - Keyboard Button Focus
+    
+    /// Returns only the action buttons that are visible and actionable.
+    var actionButtons: [MenuActionButton] {
+        return [installBtn, notesBtn, openRepoBtn, deleteBtn].filter { $0.action != nil }
+    }
+    
+    /// Applies a visual keyboard focus ring to the button at the given index.
+    func setKeyboardFocus(index: Int?) {
+        // Clear focus on all potential buttons to ensure no stale borders persist
+        for btn in [installBtn, notesBtn, openRepoBtn, deleteBtn] {
+            btn.layer?.borderWidth = 0
+        }
+        
+        focusedButtonIndex = index
+        
+        // Apply new focus
+        if let idx = index, idx < actionButtons.count {
+            let btn = actionButtons[idx]
+            btn.layer?.borderWidth = 2
+            btn.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        }
+    }
+    
+    /// Clears any keyboard focus ring.
+    func clearKeyboardFocus() {
+        setKeyboardFocus(index: nil)
+    }
+    
+    /// Triggers the action of the currently focused button.
+    func triggerFocusedAction() {
+        guard let idx = focusedButtonIndex, idx < actionButtons.count else { return }
+        actionButtons[idx].performClick(nil)
     }
     
     private func setupButton(_ btn: MenuActionButton, icon: String, action: Selector, tooltip: String) {
@@ -283,7 +324,7 @@ class RepoMenuItemView: NSView {
         starLabel.translatesAutoresizingMaskIntoConstraints = false
         starLabel.setContentHuggingPriority(.required, for: .horizontal)
         starLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-        starLabel.widthAnchor.constraint(equalToConstant: 16).isActive = true
+        starLabel.widthAnchor.constraint(equalToConstant: max(16, size + 2)).isActive = true
     }
     
     // MARK: - Layout: Tags (Single line with colorful pill)
