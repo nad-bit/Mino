@@ -67,10 +67,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     }
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
-        // Disable the default in-memory URL cache for URLSession.shared.
-        // HomebrewManager and RepoCoordinator use .shared for one-off API calls;
-        // with 300+ repos the cached responses accumulate and are never reclaimed.
-        URLCache.shared = URLCache(memoryCapacity: 0, diskCapacity: 0)
         
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         
@@ -466,7 +462,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
                 let clipboardRepo: String?
                 
                 if currentChangeCount != lastPasteboardChangeCount {
-                    // Contents have changed, perform the expensive regex check
+                    // Contents changed — re-run the clipboard regex (pre-compiled, fast)
                     lastPasteboardChangeCount = currentChangeCount
                     lastClipboardRepo = Utils.getGitHubRepoFromClipboard()
                     clipboardRepo = lastClipboardRepo

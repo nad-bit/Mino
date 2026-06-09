@@ -213,6 +213,11 @@ class ReleaseNotesViewController: NSViewController {
     
     func loadNotes(for info: RepoInfo) {
         self.currentRepoName = info.name
+        
+        // Release previous content's image attachments and WebKit buffers
+        // before loading new content to prevent accumulation across repos.
+        textView.textStorage?.setAttributedString(NSAttributedString())
+        
         let caskName = ConfigManager.shared.config.repos.first(where: { $0.name == info.name && $0.source == "brew" })?.cask
         
         // --- TITLE ---

@@ -12,14 +12,37 @@ class HomebrewManager {
         return nil
     }
     
-    func listCasks() async -> [String] {
-        guard let path = brewPath else { return [] }
+    private func createProcess(arguments: [String]) -> Process? {
+        guard let path = brewPath else { return nil }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+        
+        var env = ProcessInfo.processInfo.environment
+        env["HOMEBREW_NO_REQUIRE_TAP_TRUST"] = "1"
+        process.environment = env
+        return process
+    }
+    
+    func trustCask(cask: String) async -> Bool {
+        guard let process = createProcess(arguments: ["trust", "--cask", cask]) else { return false }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: path)
-                process.arguments = ["list", "--casks"]
-                
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    continuation.resume(returning: process.terminationStatus == 0)
+                } catch {
+                    continuation.resume(returning: false)
+                }
+            }
+        }
+    }
+    
+    func listCasks() async -> [String] {
+        guard let process = createProcess(arguments: ["list", "--casks"]) else { return [] }
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
                 let pipe = Pipe()
                 process.standardOutput = pipe
                 
@@ -44,13 +67,9 @@ class HomebrewManager {
     }
     
     func infoForCask(cask: String) async -> String? {
-        guard let path = brewPath else { return nil }
+        guard let process = createProcess(arguments: ["info", "--cask", "--json=v2", cask]) else { return nil }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: path)
-                process.arguments = ["info", "--cask", "--json=v2", cask]
-                
                 let pipe = Pipe()
                 process.standardOutput = pipe
                 
@@ -74,15 +93,17 @@ class HomebrewManager {
     }
     
     func installCask(cask: String) async -> (success: Bool, message: String) {
-        guard let path = brewPath else { return (false, "Homebrew not found") }
+        // If it's a tap cask, trust it first so it's also trusted permanently in the user's terminal
+        if cask.contains("/") {
+            _ = await trustCask(cask: cask)
+        }
+        
+        guard let process = createProcess(arguments: ["reinstall", "--cask", cask]) else {
+            return (false, "Homebrew not found")
+        }
         
         return await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: path)
-                // Use `reinstall` so aborted sudo stubs don't trick Homebrew into "already installed".
-                process.arguments = ["reinstall", "--cask", cask]
-                
                 let pipeOut = Pipe()
                 process.standardOutput = pipeOut
                 let pipeErr = Pipe()
@@ -165,8 +186,6 @@ class HomebrewManager {
     }
     
     func findCaskForRepo(repoName: String) async -> String? {
-        guard let path = brewPath else { return nil }
-        
         let shortName = repoName.split(separator: "/").last.map { String($0) } ?? repoName
         let repoUrlPattern = "github.com/\(repoName)".lowercased()
         
@@ -174,13 +193,11 @@ class HomebrewManager {
         let candidates = await brewSearch(term: shortName)
         guard !candidates.isEmpty else { return nil }
         
+        guard let process = createProcess(arguments: ["info", "--cask", "--json=v2"] + candidates) else { return nil }
+        
         // 2. Info mapping
         return await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: path)
-                process.arguments = ["info", "--cask", "--json=v2"] + candidates
-                
                 let pipe = Pipe()
                 process.standardOutput = pipe
                 
@@ -211,12 +228,9 @@ class HomebrewManager {
     }
     
     private func brewSearch(term: String) async -> [String] {
-        guard let path = brewPath else { return [] }
+        guard let process = createProcess(arguments: ["search", "--cask", term]) else { return [] }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: path)
-                process.arguments = ["search", "--cask", term]
                 let pipe = Pipe()
                 process.standardOutput = pipe
                 do {
@@ -237,13 +251,9 @@ class HomebrewManager {
     }
     
     func runBrewUpdate() async -> Bool {
-        guard let path = brewPath else { return false }
+        guard let process = createProcess(arguments: ["update"]) else { return false }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: path)
-                process.arguments = ["update"]
-                
                 do {
                     try process.run()
                     process.waitUntilExit()

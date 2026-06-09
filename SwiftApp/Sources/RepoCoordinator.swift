@@ -111,6 +111,9 @@ class RepoCoordinator {
            let vc = popover.contentViewController as? ReleaseNotesViewController,
            vc.currentRepoName == repoName {
             popover.performClose(nil)
+            // Purge WebKit's internal URL cache that accumulates when parsing
+            // HTML release notes via NSAttributedString(data:options:documentType:.html)
+            URLCache.shared.removeAllCachedResponses()
             return
         }
         
@@ -381,7 +384,7 @@ class RepoCoordinator {
         
         guard let url = URL(string: "https://formulae.brew.sh/api/cask/\(caskName).json") else { return false }
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await GitHubAPI.shared.data(from: url)
             
             // TAP casks (e.g. from custom taps) are not in the public API and return 404
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {

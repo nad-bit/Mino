@@ -47,7 +47,7 @@ class GitHubAuth {
         let body = ["client_id": Constants.githubClientID, "scope": "repo"]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await GitHubAPI.shared.session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
@@ -75,7 +75,7 @@ class GitHubAuth {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
         while isPolling && Date() < expirationDate {
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, _) = try await GitHubAPI.shared.session.data(for: request)
             let response = try JSONDecoder().decode(TokenResponse.self, from: data)
             
             if let token = response.accessToken {

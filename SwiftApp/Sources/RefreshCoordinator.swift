@@ -225,6 +225,11 @@ class RefreshCoordinator {
             
             self.isRefreshing = false
             self.lastRefreshTime = Date()
+            
+            // Release accumulated HTTP connection pools, TLS session tickets,
+            // and internal Foundation caches that grow over days of continuous use.
+            GitHubAPI.shared.resetSession()
+            
             self.startTimers()
             delegate.updatePopularTagsCache()
             delegate.refreshQuickAddState()

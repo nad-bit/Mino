@@ -2,16 +2,37 @@ import Foundation
 
 class GitHubAPI {
     static let shared = GitHubAPI()
-    private let session: URLSession
+    /// Shared across the module so GitHubAuth and RepoCoordinator
+    /// reuse the same cache-disabled, timeout-configured session
+    /// instead of falling back to URLSession.shared.
+    private(set) var session: URLSession
     
     private init() {
+        self.session = URLSession(configuration: GitHubAPI.makeConfiguration())
+    }
+    
+    private static func makeConfiguration() -> URLSessionConfiguration {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = Constants.httpRequestTimeoutSeconds
         config.timeoutIntervalForResource = Constants.httpRequestTimeoutSeconds * 2
         config.httpAdditionalHeaders = ["User-Agent": Constants.userAgent]
         config.urlCache = nil
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        self.session = URLSession(configuration: config)
+        return config
+    }
+    
+    /// Invalidates the current session (releasing keep-alive connection pools,
+    /// TLS session tickets, and internal credential caches accumulated over
+    /// multiple refresh cycles) and creates a fresh replacement.
+    func resetSession() {
+        session.finishTasksAndInvalidate()
+        session = URLSession(configuration: GitHubAPI.makeConfiguration())
+    }
+    
+    /// Generic data fetch for non-GitHub API calls (e.g. Homebrew formulae API).
+    /// Routes through the same cache-disabled session.
+    func data(from url: URL) async throws -> (Data, URLResponse) {
+        return try await session.data(from: url)
     }
     
     func fetchRepoInfo(repo: String, hasExistingRelease: Bool = false) async -> RepoInfo {

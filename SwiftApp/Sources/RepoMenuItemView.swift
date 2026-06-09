@@ -54,7 +54,7 @@ class MenuActionButton: NSButton {
         addTrackingArea(trackingArea!)
         
         // Fix for "ghost hover" when the view moves but the mouse stays still.
-        // Optimization: only perform this expensive check if the button is currently hovered.
+        // Only perform this coordinate check if the button is currently hovered.
         if isHovered, let window = self.window {
             let mouseLocation = window.mouseLocationOutsideOfEventStream
             let localPoint = convert(mouseLocation, from: nil)
@@ -121,16 +121,16 @@ class RepoMenuItemView: NSView {
         return iv
     }
     
-    // Data
-    private let repoName: String
-    private let caskName: String?
+    // Data (var for cell reuse via reconfigure(with:))
+    private var repoName: String
+    private var caskName: String?
     private let appDelegate: AppDelegate
     private let layoutMode: String
     private let baseFontSize: CGFloat
-    private let originalDate: String?
+    private var originalDate: String?
     
     // Public exposure for AppDelegate search filtering
-    let displayData: RepoDisplayData
+    private(set) var displayData: RepoDisplayData
     
     // Track highlight state
     private var lastHighlightState = false
@@ -179,6 +179,71 @@ class RepoMenuItemView: NSView {
         self.layerContentsRedrawPolicy = .onSetNeedsDisplay
         self.layer?.cornerRadius = 5
         self.layer?.masksToBounds = true
+    }
+    
+    /// Reconfigures this view with new data, reusing the NSView allocation,
+    /// CALayer, and all instance-property components (buttons, labels, stacks).
+    /// Only the lightweight NSStackView wrappers and constraints are recreated.
+    func reconfigure(with data: RepoDisplayData) {
+        // Close release notes popover if it is currently open for this repo before we recycle the view.
+        if let popover = appDelegate.releaseNotesPopover,
+           popover.isShown,
+           let vc = popover.contentViewController as? ReleaseNotesViewController,
+           vc.currentRepoName == self.repoName {
+            popover.performClose(nil)
+            // Purge WebKit's internal URL cache that accumulates when parsing
+            // HTML release notes via NSAttributedString(data:options:documentType:.html)
+            URLCache.shared.removeAllCachedResponses()
+        }
+
+        // 1. Update stored data
+        self.repoName = data.repoName
+        self.caskName = data.caskName
+        self.originalDate = data.originalDate
+        self.displayData = data
+        
+        // 2. Reset interactive state
+        if isConfirmingDelete {
+            isConfirmingDelete = false
+            deleteConfirmTimer?.invalidate()
+            deleteConfirmTimer = nil
+        }
+        lastHighlightState = false
+        focusedButtonIndex = nil
+        
+        // 3. Strip the old view hierarchy (auto-deactivates inter-view constraints)
+        subviews.forEach { $0.removeFromSuperview() }
+        
+        // 4. Remove only the explicit size constraints WE add in setupButton /
+        //    configureStarLabel / dotLabel setup.  Do NOT call removeConstraints
+        //    on NSStackView or labels — that destroys their internal layout.
+        for btn in [installBtn, notesBtn, openRepoBtn, deleteBtn] {
+            for c in btn.constraints where c.firstAttribute == .width || c.firstAttribute == .height {
+                c.isActive = false
+            }
+        }
+        for c in starLabel.constraints where c.firstAttribute == .width {
+            c.isActive = false
+        }
+        for c in dotLabel.constraints where c.firstAttribute == .width {
+            c.isActive = false
+        }
+        
+        // 5. Clear install button action before setupButtons re-evaluates caskName
+        installBtn.action = nil
+        
+        // 6. Rebuild the layout with updated data
+        setupButtons()
+        switch layoutMode {
+        case "cards":  setupCardsView(data: data)
+        case "tags":   setupTagsView(data: data)
+        default:       setupColumnsView(data: data)
+        }
+        
+        // 7. Reset visual state (alphaValue guards against stale delete animations)
+        self.alphaValue = 1.0
+        applyHighlightState(false, animated: false)
+        needsDisplay = true
     }
     
     /// Calculates the ideal width this row needs to show its content without truncation.

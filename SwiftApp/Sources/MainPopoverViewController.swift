@@ -559,22 +559,19 @@ extension MainPopoverViewController: NSTableViewDataSource, NSTableViewDelegate 
         let data = tableRepos[row]
         let config = ConfigManager.shared.config
         let currentLayout = config.menuLayout ?? "columns"
+        let fontSize = config.menuFontSize ?? Constants.menuBaseFontSize
         
-        let identifier = NSUserInterfaceItemIdentifier("RepoRow")
-        var cellView = tableView.makeView(withIdentifier: identifier, owner: self) as? RepoMenuItemView
+        // Layout+fontSize-specific identifier ensures recycled cells always match
+        // the current visual configuration, avoiding stale constraint/sizing issues.
+        let identifier = NSUserInterfaceItemIdentifier("RepoRow-\(currentLayout)-\(fontSize)")
         
-        if cellView == nil {
-            cellView = RepoMenuItemView(repoName: data.repoName, displayData: data, layout: currentLayout, appDelegate: appDelegate)
-            cellView?.identifier = identifier
-        } else {
-            // Since RepoMenuItemView is complex and its layout is set in init,
-            // for now we re-init if the layout changed, otherwise we could update data.
-            // But to be 100% safe with virtualization and the current RepoMenuItemView implementation,
-            // we'll just create a new one. In a future refactor, we'd add an 'update(with:)' method.
-            cellView = RepoMenuItemView(repoName: data.repoName, displayData: data, layout: currentLayout, appDelegate: appDelegate)
-            cellView?.identifier = identifier
+        if let cellView = tableView.makeView(withIdentifier: identifier, owner: self) as? RepoMenuItemView {
+            cellView.reconfigure(with: data)
+            return cellView
         }
         
+        let cellView = RepoMenuItemView(repoName: data.repoName, displayData: data, layout: currentLayout, appDelegate: appDelegate)
+        cellView.identifier = identifier
         return cellView
     }
     

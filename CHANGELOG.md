@@ -5,13 +5,18 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.5] - Unreleased
+## [2.1.5] - 2026-06-09
 
 ### Added
+- **Homebrew Tap Trust Support**: Added seamless handling for untrusted third-party taps by injecting `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` in all executed subprocesses and automatically calling `brew trust --cask <cask>` prior to installation.
 
 ### Changed
+- **Cell Reuse for Repository Table**: Refactored the repository popover list to use real `NSTableView` cell recycling (`reconfigure(with:)`). This significantly reduces CPU overhead, view allocations, and layout passes when scrolling lists with hundreds of repositories.
 
 ### Fixed
+- **Residual Memory Leaks**: Mitigated a residual memory leak of ~6 MB/day by invalidating and recreating the `URLSession` after each refresh cycle, clearing `NSTextStorage` WebKit cache buffers, and purging `URLCache` when closing Release Notes.
+- **Table Cell Blanking on Scroll**: Fixed an issue where recycled rows appeared blank by surgically removing custom size constraints while preserving internal `NSStackView` and label intrinsic constraints.
+- **Release Notes Popover Float on Scroll**: Fixed a cell-reuse bug where the release notes popover would remain visible and anchor to a newly recycled row during scroll by closing it when the corresponding cell is repurposed.
 
 ## [2.1.4] - 2026-05-31
 
