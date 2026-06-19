@@ -446,8 +446,6 @@ class RepoMenuItemView: NSView {
     // MARK: - Layout: Cards (two-line)
     
     private func setupCardsView(data: RepoDisplayData) {
-        let showDot = ConfigManager.shared.config.showNewIndicator ?? false
-        
         // Line 1: [●?] bold name + version pill
         titleLabel.stringValue = data.formattedName
         titleLabel.font = .boldSystemFont(ofSize: baseFontSize)
@@ -464,15 +462,6 @@ class RepoMenuItemView: NSView {
             // SF Symbol warning replaces the freshness dot
             let warningView = makeWarningView(pointSize: baseFontSize - 3, tooltip: data.errorMessage)
             topRowViews.append(warningView)
-        } else if showDot {
-            dotLabel.stringValue = "●"
-            dotLabel.font = .systemFont(ofSize: 8)
-            dotLabel.textColor = data.freshnessColor
-            dotLabel.alignment = .center
-            dotLabel.translatesAutoresizingMaskIntoConstraints = false
-            dotLabel.setContentHuggingPriority(.required, for: .horizontal)
-            dotLabel.widthAnchor.constraint(equalToConstant: 12).isActive = true
-            topRowViews.append(dotLabel)
         }
         topRowViews.append(contentsOf: [titleLabel, versionLabel])
         
@@ -494,7 +483,9 @@ class RepoMenuItemView: NSView {
         }
         subtitleLabel.toolTip = nil
         subtitleLabel.font = .systemFont(ofSize: baseFontSize - 2)
-        subtitleLabel.textColor = .secondaryLabelColor
+        let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? false
+        let isOlderThan90 = data.ageSeconds.isInfinite || (data.ageSeconds / 86400.0) > 90.0
+        subtitleLabel.textColor = (showNewIndicator && !isOlderThan90) ? data.freshnessColor : .tertiaryLabelColor
         subtitleLabel.lineBreakMode = .byTruncatingTail
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
         
@@ -545,6 +536,7 @@ class RepoMenuItemView: NSView {
         versionLabel.isBezeled = false
         versionLabel.drawsBackground = false
         versionLabel.backgroundColor = .clear
+        versionLabel.isHidden = false
 
         if data.errorMessage != nil {
             if let ver = data.version {
@@ -560,6 +552,7 @@ class RepoMenuItemView: NSView {
                 versionLabel.setContentHuggingPriority(.required, for: .horizontal)
             } else {
                 versionLabel.stringValue = ""
+                versionLabel.isHidden = true
             }
         } else if let ver = data.version {
             versionLabel.stringValue = "\(padding)\(ver)\(padding)"
@@ -579,6 +572,9 @@ class RepoMenuItemView: NSView {
             versionLabel.stringValue = Translations.get("loading")
             versionLabel.font = .systemFont(ofSize: baseFontSize - 3)
             versionLabel.textColor = .secondaryLabelColor
+        } else {
+            versionLabel.stringValue = ""
+            versionLabel.isHidden = true
         }
     }
     
@@ -825,7 +821,15 @@ class RepoMenuItemView: NSView {
         let btnHover: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
         
         applyOwnerDimming(to: titleLabel, baseColor: mainColor, highlighted: highlighted)
-        applyOwnerDimming(to: subtitleLabel, baseColor: secondaryColor, highlighted: highlighted)
+        
+        if layoutMode == "cards" {
+            let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? false
+            let isOlderThan90 = displayData.ageSeconds.isInfinite || (displayData.ageSeconds / 86400.0) > 90.0
+            let ageColor = highlighted ? .selectedMenuItemTextColor : ((showNewIndicator && !isOlderThan90) ? displayData.freshnessColor : .tertiaryLabelColor)
+            applyOwnerDimming(to: subtitleLabel, baseColor: ageColor, highlighted: highlighted)
+        } else {
+            applyOwnerDimming(to: subtitleLabel, baseColor: secondaryColor, highlighted: highlighted)
+        }
         
         // Version pill: white text in cards (inverts on highlight), secondary elsewhere
         versionLabel.textColor = (layoutMode == "cards") ? (highlighted ? mainColor : .white) : secondaryColor

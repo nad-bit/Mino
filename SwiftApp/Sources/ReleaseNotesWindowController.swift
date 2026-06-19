@@ -74,6 +74,7 @@ class ClickableTagPill: ClickableTextField {
 class ReleaseNotesViewController: NSViewController {
     private var textView: NSTextView!
     private var titleLabel: NSTextField!
+    private var descriptionLabel: NSTextField!
     private var versionLabel: ClickableTextField!
     private var tagsFooterView: WrappingTagsView!
     private(set) var currentRepoName: String?
@@ -107,7 +108,7 @@ class ReleaseNotesViewController: NSViewController {
             view.widthAnchor.constraint(equalToConstant: Constants.notesWindowWidth)
         ])
         
-        // --- 1. Header (Title + Version) ---
+        // --- 1. Header (Title + Description + Version) ---
         titleLabel = NSTextField(labelWithString: "")
         titleLabel.font = .systemFont(ofSize: 24, weight: .bold)
         titleLabel.alignment = .center
@@ -115,6 +116,23 @@ class ReleaseNotesViewController: NSViewController {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         mainStack.addArrangedSubview(titleLabel)
         titleLabel.widthAnchor.constraint(equalTo: mainStack.widthAnchor, constant: -48).isActive = true
+        
+        descriptionLabel = NSTextField(labelWithString: "")
+        descriptionLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        descriptionLabel.textColor = .secondaryLabelColor
+        descriptionLabel.alignment = .center
+        descriptionLabel.lineBreakMode = .byWordWrapping
+        descriptionLabel.maximumNumberOfLines = 0
+        // Without preferredMaxLayoutWidth the label reports an infinite single-line
+        // intrinsic size, which widens the window instead of wrapping.
+        descriptionLabel.preferredMaxLayoutWidth = Constants.notesWindowWidth - 48
+        descriptionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
+        descriptionLabel.isHidden = true
+        mainStack.addArrangedSubview(descriptionLabel)
+        descriptionLabel.widthAnchor.constraint(equalTo: mainStack.widthAnchor, constant: -48).isActive = true
+        // Reduce spacing between title and description for visual grouping
+        mainStack.setCustomSpacing(4, after: titleLabel)
         
         versionLabel = ClickableTextField(labelWithString: "")
         versionLabel.font = .systemFont(ofSize: 12, weight: .medium)
@@ -244,6 +262,18 @@ class ReleaseNotesViewController: NSViewController {
         attrString.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: attrString.length))
         attrString.addAttribute(.font, value: NSFont.systemFont(ofSize: titleFontSize, weight: .bold), range: NSRange(location: 0, length: attrString.length))
         titleLabel.attributedStringValue = attrString
+        
+        // --- DESCRIPTION (About) ---
+        if let configRepo = ConfigManager.shared.config.repos.first(where: { $0.name == info.name }),
+           let desc = configRepo.repoDescription,
+           !desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            descriptionLabel.stringValue = desc
+            descriptionLabel.font = .systemFont(ofSize: 13 + (offset * 0.5), weight: .regular)
+            descriptionLabel.isHidden = false
+        } else {
+            descriptionLabel.stringValue = ""
+            descriptionLabel.isHidden = true
+        }
         
         // --- METADATA PILL ---
         let releasesURLString = "https://github.com/\(info.name)/releases"
@@ -489,24 +519,40 @@ class WrappingTagsView: NSView {
         let availableWidth = bounds.width
         var currentX: CGFloat = 0
         var currentY: CGFloat = 0
-        var currentRowHeight: CGFloat = 0
+        
+        var rows: [[NSView]] = []
+        var currentRow: [NSView] = []
         
         for view in subviews {
             let bWidth = view.frame.width
-            let bHeight = view.frame.height
-            
             if currentX + bWidth > availableWidth && currentX > 0 {
-                currentX = 0
-                currentY += currentRowHeight + 6.0
-                currentRowHeight = 0
+                rows.append(currentRow)
+                currentRow = [view]
+                currentX = bWidth + 6.0
+            } else {
+                currentRow.append(view)
+                currentX += bWidth + 6.0
             }
-            
-            view.setFrameOrigin(NSPoint(x: currentX, y: currentY))
-            currentX += bWidth + 6.0
-            currentRowHeight = max(currentRowHeight, bHeight)
+        }
+        if !currentRow.isEmpty {
+            rows.append(currentRow)
         }
         
-        let newHeight = subviews.isEmpty ? 0 : currentY + currentRowHeight
+        for row in rows {
+            let rowWidth = row.reduce(0.0) { $0 + $1.frame.width } + CGFloat(max(0, row.count - 1)) * 6.0
+            let startX = max(0, (availableWidth - rowWidth) / 2)
+            
+            var xOffset = startX
+            var maxVal: CGFloat = 0
+            for view in row {
+                view.setFrameOrigin(NSPoint(x: xOffset, y: currentY))
+                xOffset += view.frame.width + 6.0
+                maxVal = max(maxVal, view.frame.height)
+            }
+            currentY += maxVal + 6.0
+        }
+        
+        let newHeight = subviews.isEmpty ? 0 : currentY - 6.0
         if newHeight != cachedHeight {
             cachedHeight = newHeight
             invalidateIntrinsicContentSize()

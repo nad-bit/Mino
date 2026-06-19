@@ -13,6 +13,7 @@ struct RepoConfig: Codable, Equatable {
     var source: String // "manual" or "brew"
     var cask: String?
     var tags: [String]?
+    var repoDescription: String?
     var isFavorite: Bool?
 }
 

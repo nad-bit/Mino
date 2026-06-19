@@ -126,8 +126,6 @@ class RefreshCoordinator {
             }
             
             // All fetches done, safely update the UI properties from within the MainActor Context
-            var newCaskVersionsDetected = false
-            var manualReposToDiscoverCask: [String] = []
             var hasFreshUpdates = false
             let lastNotifiedVersions = UserDefaults.standard.dictionary(forKey: "LastNotifiedVersions") as? [String: String] ?? [:]
             var updatedNotifiedVersions = lastNotifiedVersions
@@ -146,22 +144,6 @@ class RefreshCoordinator {
                     }
                 }
 
-                if let oldInfo = delegate.repoCache[repo], let newVersion = info.version, let oldVersion = oldInfo.version {
-                    if newVersion != oldVersion {
-                        if let repoConf = ConfigManager.shared.config.repos.first(where: { $0.name == repo }) {
-                            if repoConf.cask != nil {
-                                newCaskVersionsDetected = true
-                            } else if repoConf.source == "manual" && HomebrewManager.shared.brewPath != nil {
-                                manualReposToDiscoverCask.append(repo)
-                            }
-                        }
-                    }
-                } else if delegate.repoCache[repo] == nil && info.version != nil {
-                    // Newly added repo fetched its first version
-                    if ConfigManager.shared.config.repos.first(where: { $0.name == repo })?.cask != nil {
-                        newCaskVersionsDetected = true
-                    }
-                }
                 if info.error != nil {
                     // Update only checking error, but preserve version/date/body
                     if var existingInfo = delegate.repoCache[repo] {
@@ -183,38 +165,6 @@ class RefreshCoordinator {
                 UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
                 delegate.updateStatusIcon(hasUpdates: true)
             }
-
-            if newCaskVersionsDetected {
-                Task { let _ = await HomebrewManager.shared.runBrewUpdate() }
-            }
-            
-            // --- Event-driven Cask Discovery ---
-            // For manual repos that just received a version update, attempt to find
-            // their Homebrew cask using local brew calls (no bulk JSON download needed).
-            if !manualReposToDiscoverCask.isEmpty {
-                Task {
-                    var didDiscover = false
-                    for repoName in manualReposToDiscoverCask {
-                        if let cask = await HomebrewManager.shared.findCaskForRepo(repoName: repoName) {
-                            await MainActor.run {
-                                if let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
-                                    ConfigManager.shared.config.repos[index].source = "brew"
-                                    ConfigManager.shared.config.repos[index].cask = cask
-                                    didDiscover = true
-                                    print("Auto-discovered cask '\(cask)' for updated repo '\(repoName)'")
-                                }
-                            }
-                        }
-                    }
-                    if didDiscover {
-                        await MainActor.run {
-                            ConfigManager.shared.saveConfig()
-                            delegate.rebuildMenu(preserveScroll: true)
-                        }
-                    }
-                }
-            }
-            // ------------------------------------
             
             // Ensure the "Refreshing..." status remains visible for at least 1 second 
             // to provide consistent visual feedback even for very fast updates.
@@ -237,26 +187,30 @@ class RefreshCoordinator {
         }
     }
     
-    // MARK: - Tag Backfill
+    // MARK: - Tag & Description Backfill
     
-    /// Silently fetches topics for legacy repositories to enable zero-configuration hashtag searching
+    /// Silently fetches topics and description for legacy repositories
+    /// to enable zero-configuration hashtag searching and About display in Notes.
     func startTagBackfillSequence() {
         Task { [weak self] in
             guard let self = self, let delegate = self.delegate else { return }
             
             let reposToUpdate = ConfigManager.shared.config.repos.compactMap { repo -> String? in
-                return repo.tags == nil ? repo.name : nil
+                return (repo.tags == nil || repo.repoDescription == nil) ? repo.name : nil
             }
             
             guard !reposToUpdate.isEmpty else { return }
             
             var didUpdateAny = false
             for repoName in reposToUpdate {
-                let fetchedTags = await GitHubAPI.shared.fetchRepoTags(repo: repoName)
+                let result = await GitHubAPI.shared.fetchRepoTags(repo: repoName)
                 
                 await MainActor.run {
                     if let currentIndex = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
-                        ConfigManager.shared.config.repos[currentIndex].tags = fetchedTags ?? []
+                        ConfigManager.shared.config.repos[currentIndex].tags = result.tags ?? []
+                        if let desc = result.description {
+                            ConfigManager.shared.config.repos[currentIndex].repoDescription = desc
+                        }
                         didUpdateAny = true
                     }
                 }

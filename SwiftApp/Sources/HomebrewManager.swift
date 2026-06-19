@@ -108,6 +108,12 @@ class HomebrewManager {
                 process.standardOutput = pipeOut
                 let pipeErr = Pipe()
                 process.standardError = pipeErr
+                // Force stdin to /dev/null so sudo can never prompt via /dev/tty.
+                // Without this, if the app has a controlling terminal, sudo writes
+                // "Password:" directly to /dev/tty (bypassing our pipes) and blocks
+                // indefinitely. With /dev/null, sudo immediately fails with a
+                // detectable error message on stderr.
+                process.standardInput = FileHandle.nullDevice
                 
                 var allOutput = ""
                 let outputLock = NSLock()
@@ -128,7 +134,10 @@ class HomebrewManager {
                         let currentOutput = allOutput
                         outputLock.unlock()
                         
-                        if currentOutput.contains("password:") || currentOutput.contains("sudo") {
+                        // Covers: classic "password:", "sudo:", "no tty present",
+                        // "a password is required", "sorry, try again" (bad pwd)
+                        let sudoPatterns = ["password:", "sudo:", "no tty", "a password is required", "sorry, try again"]
+                        if sudoPatterns.contains(where: { currentOutput.contains($0) }) {
                             requiresSudo = true
                             if process.isRunning {
                                 process.terminate()

@@ -347,14 +347,14 @@ class RepoCoordinator {
             }
             return false
         } else {
-            let fetchedTags = await GitHubAPI.shared.fetchRepoTags(repo: repoName)
+            let repoMeta = await GitHubAPI.shared.fetchRepoTags(repo: repoName)
             
             // Re-check for duplicates after async fetch to prevent race conditions (e.g. CMD+Z during fetch)
             if ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == repoName.lowercased() }) {
                 return true
             }
             
-            let newRepo = RepoConfig(name: repoName, source: source, cask: cask, tags: fetchedTags ?? [])
+            let newRepo = RepoConfig(name: repoName, source: source, cask: cask, tags: repoMeta.tags ?? [], repoDescription: repoMeta.description)
             ConfigManager.shared.config.repos.append(newRepo)
             ConfigManager.shared.saveConfig()
             

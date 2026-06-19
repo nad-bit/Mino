@@ -19,6 +19,10 @@ class HeaderMenuItemView: NSView {
     
     private let appDelegate: AppDelegate
     
+    private var baseFontSize: CGFloat {
+        return ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+    }
+    
     private var lastHighlightState = false
     private var isRefreshingState = false
     
@@ -93,7 +97,7 @@ class HeaderMenuItemView: NSView {
         quickAddIcon.translatesAutoresizingMaskIntoConstraints = false
         
         // Quick Add Label (Clipboard)
-        quickAddLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .medium)
+        quickAddLabel.font = .systemFont(ofSize: baseFontSize, weight: .medium)
         quickAddLabel.textColor = .secondaryLabelColor
         quickAddLabel.alignment = .center
         quickAddLabel.lineBreakMode = .byTruncatingMiddle
@@ -197,13 +201,13 @@ class HeaderMenuItemView: NSView {
         
         if isProcessingQuickAdd {
             if appDelegate.quickAddingRepo != nil {
-                quickAddLabel.font = .systemFont(ofSize: baseFontSize - 2, weight: .semibold)
+                quickAddLabel.font = .systemFont(ofSize: baseFontSize, weight: .semibold)
             } else {
-                let baseFont = NSFont.systemFont(ofSize: baseFontSize - 2, weight: .semibold)
+                let baseFont = NSFont.systemFont(ofSize: baseFontSize, weight: .semibold)
                 quickAddLabel.font = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
             }
         } else {
-            quickAddLabel.font = .systemFont(ofSize: baseFontSize - 2, weight: .medium)
+            quickAddLabel.font = .systemFont(ofSize: baseFontSize, weight: .medium)
         }
     }
     
@@ -223,19 +227,19 @@ class HeaderMenuItemView: NSView {
                 if let adding = appDelegate.quickAddingRepo {
                     quickAddLabel.stringValue = Translations.get("addingRepo").format(with: ["repo": adding])
                     quickAddLabel.textColor = .systemOrange // Orange for additions
-                    quickAddLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .semibold)
+                    quickAddLabel.font = .systemFont(ofSize: baseFontSize, weight: .semibold)
                 } else {
                     // Global full refresh status - Blue & Italic to differentiate
                     quickAddLabel.stringValue = Translations.get("refreshing")
                     quickAddLabel.textColor = .controlAccentColor
-                    let baseFont = NSFont.systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .semibold)
+                    let baseFont = NSFont.systemFont(ofSize: baseFontSize, weight: .semibold)
                     quickAddLabel.font = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
                 }
                 isProcessingQuickAdd = true
             } else if let r = repo {
                 quickAddLabel.stringValue = Translations.get("quickAddHead").format(with: ["repo": r])
-                quickAddLabel.textColor = .secondaryLabelColor
-                quickAddLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .medium)
+                quickAddLabel.textColor = .systemGreen
+                quickAddLabel.font = .systemFont(ofSize: baseFontSize, weight: .medium)
             }
             
             quickAddStack.isHidden = false
@@ -314,16 +318,16 @@ class HeaderMenuItemView: NSView {
         if isProcessingQuickAdd {
             if appDelegate.quickAddingRepo != nil {
                 quickAddLabel.textColor = .systemOrange
-                quickAddLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .semibold)
+                quickAddLabel.font = .systemFont(ofSize: baseFontSize, weight: .semibold)
             } else {
                 // Global refresh style
                 quickAddLabel.textColor = .controlAccentColor
-                let baseFont = NSFont.systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .semibold)
+                let baseFont = NSFont.systemFont(ofSize: baseFontSize, weight: .semibold)
                 quickAddLabel.font = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
             }
         } else {
-            quickAddLabel.textColor = baseSecondary
-            quickAddLabel.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .medium)
+            quickAddLabel.textColor = highlighted ? .selectedMenuItemTextColor : .systemGreen
+            quickAddLabel.font = .systemFont(ofSize: baseFontSize, weight: .medium)
         }
         
         quickAddIcon.contentTintColor = baseSecondary

@@ -14,7 +14,7 @@ class GitHubAPI {
     private static func makeConfiguration() -> URLSessionConfiguration {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = Constants.httpRequestTimeoutSeconds
-        config.timeoutIntervalForResource = Constants.httpRequestTimeoutSeconds * 2
+        config.timeoutIntervalForResource = Constants.httpRequestTimeoutSeconds
         config.httpAdditionalHeaders = ["User-Agent": Constants.userAgent]
         config.urlCache = nil
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -287,9 +287,11 @@ class GitHubAPI {
         return false
     }
     
-    /// Fetches the repository's native topics (tags) from GitHub to enable hashtag filtering.
-    func fetchRepoTags(repo: String) async -> [String]? {
-        guard let url = URL(string: "\(Constants.githubAPIBaseURL)/repos/\(repo)") else { return nil }
+    /// Fetches the repository's native topics (tags) and description from GitHub.
+    /// Both fields come from the same `/repos/{owner}/{repo}` endpoint, so a
+    /// single call populates hashtag filtering and the About line in Notes.
+    func fetchRepoTags(repo: String) async -> (tags: [String]?, description: String?) {
+        guard let url = URL(string: "\(Constants.githubAPIBaseURL)/repos/\(repo)") else { return (nil, nil) }
         var request = URLRequest(url: url)
         
         // Custom accept header was historically needed for topics, still recommended by GitHub API spec
@@ -302,11 +304,13 @@ class GitHubAPI {
             let (data, response) = try await session.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
                 let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                return json?["topics"] as? [String]
+                let topics = json?["topics"] as? [String]
+                let description = json?["description"] as? String
+                return (topics, description)
             }
         } catch {
             print("Failed to fetch topics for \(repo): \(error)")
         }
-        return nil
+        return (nil, nil)
     }
 }

@@ -5,6 +5,23 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.6] - 2026-06-19
+
+### Added
+- **Repository Description (About) in Notes**: Displays the repository description (About) between the repository name and the version pill in the Release Notes window, with automatic wrapping.
+- **Dynamic Quick Add Font Size**: Quick Add text now scales with the font size setting from Preferences.
+
+### Changed
+- **Centered Tags in Notes**: The tags footer at the bottom of the Release Notes window is now horizontally centered.
+- **Cards Layout Age Text Coloring**: Removed the colored dot in the Cards layout and instead colored the repository age text using the freshness color.
+- **Improved Contrast & Tone Separation**: Applied `.tertiaryLabelColor` for repositories older than 90 days or when "Indicar novedades" is disabled, distinguishing the age text from the owner name prefix.
+- **Optimized Refresh Process**: Removed redundant `brew update` calls after refreshes and deactivated periodic cask discovery for manual repositories (retained only on addition).
+
+### Fixed
+- **Refresh Timeout Errors**: Increased HTTP request timeout from 10s to 30s to prevent "The request timed out" failures with large repository lists under concurrent requests.
+- **Sudo / Password Prompts in Installer**: Added proper interception of password/sudo prompts for packages requiring authentication during installation.
+- **Empty Version Pill in Error State**: Hides the version label when a repository has an error and no version info is available, avoiding an empty or compacted pill layout in Cards view.
+
 ## [2.1.5] - 2026-06-09
 
 ### Added

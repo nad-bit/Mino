@@ -9,7 +9,7 @@ enum Constants {
     
     // Performance Constants
     static let threadPoolMaxWorkers: Int = 5
-    static let httpRequestTimeoutSeconds: TimeInterval = 10
+    static let httpRequestTimeoutSeconds: TimeInterval = 30
     static let httpMaxRetries: Int = 3
     
     // UI Constants
@@ -20,7 +20,7 @@ enum Constants {
     static let menuMaxWidth: CGFloat = 512.0
     static let menuMaxHeight: CGFloat = 688.0
     static let notesWindowWidth: CGFloat = 640.0
-    static let notesWindowHeight: CGFloat = 540.0
+    static let notesWindowHeight: CGFloat = 580.0
     static let tagCloudMaxTags: Int = 27
     static let menuBaseFontSize: CGFloat = 16.0
     static let menuFontSizeMin: CGFloat = 11.0
