@@ -143,7 +143,11 @@ Configuration is stored in:
 
 ## Keyboard Shortcuts
 
-Mino is designed for power users. Use these shortcuts while the main menu is open:
+Mino is designed for power users.
+
+- **Global Hotkey**: Press **`Ctrl + Alt + M`** (customizable in Preferences) to open or close the main menu from anywhere on your Mac.
+
+Use these shortcuts while the main menu is open:
 
 | Shortcut | Action |
 |----------|--------|

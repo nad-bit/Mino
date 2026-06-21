@@ -31,7 +31,7 @@ class MenuActionButton: NSButton {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         self.wantsLayer = true
-        self.layer?.cornerRadius = 6
+        self.layer?.cornerRadius = 4
         self.layer?.masksToBounds = true
     }
     
@@ -190,7 +190,7 @@ class RepoMenuItemView: NSView {
            popover.isShown,
            let vc = popover.contentViewController as? ReleaseNotesViewController,
            vc.currentRepoName == self.repoName {
-            popover.performClose(nil)
+            popover.close()
             // Purge WebKit's internal URL cache that accumulates when parsing
             // HTML release notes via NSAttributedString(data:options:documentType:.html)
             URLCache.shared.removeAllCachedResponses()
@@ -371,7 +371,7 @@ class RepoMenuItemView: NSView {
         
         // Ensure buttons don't exceed row height
         btn.translatesAutoresizingMaskIntoConstraints = false
-        let btnHeight = (layoutMode == "cards") ? baseFontSize + 22 : baseFontSize + 8
+        let btnHeight = (layoutMode == "cards") ? baseFontSize + 18 : baseFontSize + 4
         btn.widthAnchor.constraint(equalToConstant: btnHeight + 4).isActive = true
         btn.heightAnchor.constraint(equalToConstant: btnHeight).isActive = true
     }

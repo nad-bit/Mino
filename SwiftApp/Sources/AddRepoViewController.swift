@@ -176,7 +176,7 @@ class AddRepoViewController: NSViewController, NSTextFieldDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             guard self != nil else { return }
             if let delegate = NSApp.delegate as? AppDelegate {
-                delegate.addRepoPopover?.performClose(nil)
+                delegate.addRepoPopover?.close()
             }
         }
     }
@@ -239,6 +239,12 @@ class AddRepoViewController: NSViewController, NSTextFieldDelegate {
         eyeImageView.contentTintColor = .systemRed
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.eyeImageView.contentTintColor = Utils.appIconColor
+        }
+    }
+    
+    override func cancelOperation(_ sender: Any?) {
+        if let popover = (NSApp.delegate as? AppDelegate)?.addRepoPopover {
+            popover.close()
         }
     }
 }

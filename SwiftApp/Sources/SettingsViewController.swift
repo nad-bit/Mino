@@ -1,10 +1,14 @@
 import Cocoa
 
+class SettingsView: NSView {
+    override var acceptsFirstResponder: Bool { true }
+}
+
 @MainActor
 class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindowDelegate {
     
     let tokenStatusLabel = NSTextField(labelWithString: "")
-    private let tokenBadge = NSView()
+    private let tokenBadge = RateLimitBadge()
     let tokenConnectBtn = NSButton(title: Translations.get("connectGitHub"), target: nil, action: nil)
     let tokenDeleteBtn = NSButton(title: Translations.get("deleteToken"), target: nil, action: nil)
     private var oauthWindowController: OAuthWindowController?
@@ -14,6 +18,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     var initialIntervalHours: Int = 1
     
     let loginSwitch = NSSwitch()
+    let shortcutBtn = ShortcutRecorderButton()
     private let ownerCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let ownerLabel = NSTextField(labelWithString: "")
     private let newIndicatorLabel = NSTextField(labelWithString: "")
@@ -33,7 +38,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     private var generalSaveWorkItem: DispatchWorkItem?
 
     override func loadView() {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 100))
+        let view = SettingsView(frame: NSRect(x: 0, y: 0, width: 480, height: 100))
         self.view = view
         setupUI()
     }
@@ -42,6 +47,11 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         super.viewDidLoad()
         loadCurrentSettings()
         NotificationCenter.default.addObserver(self, selector: #selector(configDidUpdate), name: Notification.Name("ConfigChanged"), object: nil)
+    }
+    
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        self.view.window?.makeFirstResponder(self.view)
     }
     
     deinit {
@@ -86,6 +96,10 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         
         // --- 1. Token Section ---
         let tokenStack = createInnerStack()
+        
+        tokenBadge.onHoverEntered = { [weak self] in
+            self?.updateRateLimitToolTip()
+        }
         
         tokenStatusLabel.textColor = .secondaryLabelColor
         tokenStatusLabel.font = .systemFont(ofSize: 10, weight: .bold)
@@ -199,6 +213,18 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         
         formStack.addArrangedSubview(createGroupBox(for: intervalStack))
         
+        // --- 3.5. Shortcut Section ---
+        let shortcutStack = createInnerStack()
+        let shortcutLabel = NSTextField(labelWithString: Translations.get("shortcutLabel"))
+        shortcutLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        
+        shortcutBtn.onShortcutChanged = { keyCode, modifiers in
+            GlobalHotkeyManager.shared.register(keyCode: keyCode, modifiers: modifiers)
+        }
+        
+        addSettingsRow(to: shortcutStack, label: shortcutLabel, controls: [shortcutBtn])
+        formStack.addArrangedSubview(createGroupBox(for: shortcutStack))
+        
         // --- 4. Startup ---
         let startupStack = createInnerStack()
         let loginLabel = NSTextField(labelWithString: Translations.get("startAtLogin"))
@@ -268,6 +294,9 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         // Load Start at Login
         loginSwitch.state = isLoginItem() ? .on : .off
         
+        // Load Shortcut
+        shortcutBtn.updateDisplay()
+        
         // Load Owner
         ownerCheckbox.state = ConfigManager.shared.config.showOwner ? .on : .off
         
@@ -290,6 +319,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         updateIndicatorDaysLabel()
         
         updatePreferredContentSize()
+        updateRateLimitToolTip()
     }
     
     @objc private func intervalChanged(_ sender: NSSlider) {
@@ -632,5 +662,82 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
             try? FileManager.default.createDirectory(at: launchAgentPath.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? plistContent.write(to: launchAgentPath, atomically: true, encoding: .utf8)
         }
+    }
+    
+    private func updateRateLimitToolTip() {
+        guard let url = URL(string: "\(Constants.githubAPIBaseURL)/rate_limit") else { return }
+        var request = URLRequest(url: url)
+        
+        let hasToken = ConfigManager.shared.token != nil && !ConfigManager.shared.token!.isEmpty
+        if hasToken, let token = ConfigManager.shared.token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        Task {
+            do {
+                let (data, response) = try await GitHubAPI.shared.session.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
+                
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let resources = json["resources"] as? [String: Any],
+                   let core = resources["core"] as? [String: Any],
+                   let limit = core["limit"] as? Int,
+                   let remaining = core["remaining"] as? Int,
+                   let resetEpoch = core["reset"] as? TimeInterval {
+                    
+                    let resetDate = Date(timeIntervalSince1970: resetEpoch)
+                    let formatter = DateFormatter()
+                    formatter.dateStyle = .none
+                    formatter.timeStyle = .short
+                    let timeString = formatter.string(from: resetDate)
+                    
+                    let minutesRemaining = max(0, Int(resetDate.timeIntervalSinceNow / 60))
+                    
+                    let title = Translations.get("rateLimitTitle")
+                    let status = Translations.get(hasToken ? "rateLimitStatusAuth" : "rateLimitStatusPublic")
+                    let remainingText = Translations.get("rateLimitRemaining").format(with: ["remaining": "\(remaining)", "limit": "\(limit)"])
+                    let resetText = Translations.get("rateLimitReset").format(with: ["minutes": "\(minutesRemaining)", "time": timeString])
+                    let tip = hasToken ? "" : Translations.get("rateLimitTip")
+                    
+                    let tooltipText = """
+                    \(title)
+                    \(status)
+                    \(remainingText)
+                    \(resetText)\(tip)
+                    """
+                    
+                    await MainActor.run {
+                        self.tokenBadge.toolTip = tooltipText
+                        self.tokenStatusLabel.toolTip = tooltipText
+                    }
+                }
+            } catch {
+                print("Error al consultar el rate limit de GitHub: \(error)")
+            }
+        }
+    }
+    
+    override func cancelOperation(_ sender: Any?) {
+        if let popover = (NSApp.delegate as? AppDelegate)?.settingsPopover {
+            popover.close()
+        }
+    }
+}
+
+// MARK: - RateLimitBadge
+class RateLimitBadge: NSView {
+    var onHoverEntered: (() -> Void)?
+    private var trackingArea: NSTrackingArea?
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let old = trackingArea { removeTrackingArea(old) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+    
+    override func mouseEntered(with event: NSEvent) {
+        onHoverEntered?()
     }
 }

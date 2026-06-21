@@ -70,8 +70,11 @@ class ClickableTagPill: ClickableTextField {
         }
     }
 }
+class ReleaseNotesView: NSView {
+    override var acceptsFirstResponder: Bool { true }
+}
 
-class ReleaseNotesViewController: NSViewController {
+class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
     private var textView: NSTextView!
     private var titleLabel: NSTextField!
     private var descriptionLabel: NSTextField!
@@ -89,7 +92,7 @@ class ReleaseNotesViewController: NSViewController {
     }
     
     override func loadView() {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: Constants.notesWindowWidth, height: Constants.notesWindowHeight))
+        let view = ReleaseNotesView(frame: NSRect(x: 0, y: 0, width: Constants.notesWindowWidth, height: Constants.notesWindowHeight))
         self.view = view
         
         let mainStack = NSStackView()
@@ -170,6 +173,7 @@ class ReleaseNotesViewController: NSViewController {
         scrollView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         
         textView = NSTextView()
+        textView.delegate = self
         textView.isEditable = false
         textView.drawsBackground = false
         textView.textColor = .labelColor
@@ -192,7 +196,7 @@ class ReleaseNotesViewController: NSViewController {
             if let appDelegate = NSApp.delegate as? AppDelegate {
                 // If it's a popover, close it
                 if let window = self.view.window, let popover = window.value(forKey: "popover") as? NSPopover {
-                    popover.performClose(nil)
+                    popover.close()
                 } else {
                     self.view.window?.close()
                 }
@@ -212,6 +216,11 @@ class ReleaseNotesViewController: NSViewController {
         }
         
         self.preferredContentSize = NSSize(width: Constants.notesWindowWidth, height: Constants.notesWindowHeight)
+    }
+    
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        self.view.window?.makeFirstResponder(self.view)
     }
     
     @objc func openReleases() {
@@ -466,6 +475,18 @@ class ReleaseNotesViewController: NSViewController {
         }
         
         textView.scrollToBeginningOfDocument(nil)
+    }
+    
+    // MARK: - NSTextViewDelegate
+    
+    func textView(_ view: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
+        return nil
+    }
+    
+    override func cancelOperation(_ sender: Any?) {
+        if let popover = (NSApp.delegate as? AppDelegate)?.releaseNotesPopover {
+            popover.close()
+        }
     }
 }
 

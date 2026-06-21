@@ -2,8 +2,8 @@
 set -e
 
 APP_NAME="Mino"
-VERSION="2.1.6"
-BUILD_NUMBER="315"
+VERSION="2.1.8"
+BUILD_NUMBER="316"
 BUILD_DIR="build"
 
 echo "🧹 Cleaning previous build..."
@@ -174,7 +174,7 @@ cask "mino" do
   desc "A lightweight, native macOS menu bar app to track GitHub releases with Homebrew integration"
   homepage "https://github.com/nad-bit/Mino"
 
-  depends_on macos: ">= :monterey"
+  depends_on macos: :monterey
 
   app "Mino.app"
 end

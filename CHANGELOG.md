@@ -5,6 +5,28 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.8] - 2026-06-21
+
+### Added
+- **Customizable Global Hotkey**: Added support for custom global keyboard shortcuts via a recorder button in Preferences, setting `Ctrl + Alt + M` as the default and migrating previous configurations automatically.
+
+### Fixed
+- **Escape Key Dismissal**: Fixed focus handling in Settings and About windows where Escape would fail to close the window on first open due to delayed activation resetting the first responder.
+- **Keyboard List Navigation**: Refactored keyboard list selection to track the row index instead of cell view references, eliminating navigation jumping and highlight loss when scrolling past visible items.
+- **Stationary Mouse Selection Hijack**: Locked hover selection changes unless the mouse cursor physically moves, preventing list scrolls from triggering row highlights under a stationary cursor.
+- **Menu Shortcut Conflicts**: Isolated command key combinations so registering a custom hotkey containing modifier keys (e.g. `CMD`) does not trigger app command shortcuts.
+- **Action Button Focus Rings**: Corrected action button height offsets to prevent selection focus rings from being clipped by the table cell boundaries.
+- **Quick Add Priority**: Cleared active table highlights when closing the main menu so that pressing Enter immediately upon reopening triggers Quick Add if a valid repository is on the clipboard.
+- **Quick Add Highlight & Navigation**: Enforced mutual exclusion between the repository list highlight and the Quick Add header highlight. Integrated keyboard arrow navigation (Up/Down) to seamlessly move focus between the list and the Quick Add header.
+
+## [2.1.7] - 2026-06-19
+
+### Added
+- **API Rate Limit Tooltips**: Added a dynamic multiline tooltip to the GitHub connection status badge in Preferences, displaying current API request quotas (remaining/total), reset countdown time, and connection type.
+
+### Fixed
+- **Stuck Release Notes Context Menu**: Fixed an issue where right-clicking on the release notes body would display the system's text context menu, which would remain floating on screen and fail to dismiss when clicking outside or switching applications.
+
 ## [2.1.6] - 2026-06-19
 
 ### Added

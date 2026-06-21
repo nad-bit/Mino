@@ -123,7 +123,7 @@ class FooterMenuItemView: NSView {
     
     @objc private func quitClicked() {
         appDelegate.animateStatusIcon(with: .scale)
-        appDelegate.mainPopover?.performClose(nil)
+        appDelegate.mainPopover?.close()
         self.appDelegate.quitApp(self)
     }
     

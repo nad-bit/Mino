@@ -27,7 +27,7 @@ class RepoCoordinator {
         UserDefaults.standard.set(notifiedVersions, forKey: "LastNotifiedVersions")
         
         if let vc = delegate.releaseNotesPopover?.contentViewController as? ReleaseNotesViewController, vc.currentRepoName == repoName {
-            delegate.releaseNotesPopover?.performClose(nil)
+            delegate.releaseNotesPopover?.close()
         }
         
         ConfigManager.shared.saveConfig()
@@ -105,12 +105,11 @@ class RepoCoordinator {
     @objc func handleShowNotes(for repoName: String, relativeTo view: NSView) {
         guard let delegate = delegate else { return }
         
-        // Toggle: If the notes popover is already open for this exact repo, close it.
         if let popover = delegate.releaseNotesPopover,
            popover.isShown,
            let vc = popover.contentViewController as? ReleaseNotesViewController,
            vc.currentRepoName == repoName {
-            popover.performClose(nil)
+            popover.close()
             // Purge WebKit's internal URL cache that accumulates when parsing
             // HTML release notes via NSAttributedString(data:options:documentType:.html)
             URLCache.shared.removeAllCachedResponses()
@@ -266,7 +265,7 @@ class RepoCoordinator {
         
         if let popover = delegate.addRepoPopover, let vc = popover.contentViewController as? AddRepoViewController {
             if popover.isShown {
-                popover.performClose(nil)
+                popover.close()
             } else if let btn = delegate.statusItem.button {
                 popover.show(relativeTo: btn.bounds, of: btn, preferredEdge: .minY)
                 // Focus slightly delayed for NSPopover reliability

@@ -23,7 +23,7 @@ class HeaderMenuItemView: NSView {
         return ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
     }
     
-    private var lastHighlightState = false
+    internal var lastHighlightState = false
     private var isRefreshingState = false
     
     // Constraints for dynamic swapping
@@ -388,6 +388,7 @@ class HeaderMenuItemView: NSView {
     override func mouseEntered(with event: NSEvent) {
         super.mouseEntered(with: event)
         menuDidChangeHighlight(highlightedItem: self)
+        appDelegate.mainPopoverVC.clearHighlight()
     }
     
     override func mouseExited(with event: NSEvent) {

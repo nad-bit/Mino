@@ -25,6 +25,8 @@ class MainPopoverViewController: NSViewController {
     // Centralized Mouse Tracking
     private var mouseMonitor: Any?
     internal var currentlyHighlightedRow: RepoMenuItemView?
+    internal var currentlyHighlightedRowIndex: Int?
+    private var lastMousePosition: NSPoint = .zero
     
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
@@ -132,6 +134,11 @@ class MainPopoverViewController: NSViewController {
             self?.updateHighlightUnderMouse()
             return event
         }
+        
+        // Force initial update to highlight whatever is under the mouse initially
+        DispatchQueue.main.async { [weak self] in
+            self?.updateHighlightUnderMouse(force: true)
+        }
     }
     
     func updateFavoriteState(for repoName: String, isFavorite: Bool) {
@@ -158,28 +165,42 @@ class MainPopoverViewController: NSViewController {
         }
     }
     
-    func updateHighlightUnderMouse() {
+    func updateHighlightUnderMouse(force: Bool = false) {
         guard let window = view.window else { return }
         let mouseLocation = window.mouseLocationOutsideOfEventStream
-        let locationInTable = tableView.convert(mouseLocation, from: nil)
-        let row = tableView.row(at: locationInTable)
         
+        if !force && mouseLocation == lastMousePosition {
+            return
+        }
+        lastMousePosition = mouseLocation
+        
+        let locationInTable = tableView.convert(mouseLocation, from: nil)
+        let isInsideTable = tableView.bounds.contains(locationInTable)
+        
+        guard isInsideTable else { return }
+        
+        let row = tableView.row(at: locationInTable)
         var hitView: RepoMenuItemView? = nil
         if row >= 0, let view = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? RepoMenuItemView {
             hitView = view
         }
         
         if hitView !== currentlyHighlightedRow {
+            headerView?.menuDidChangeHighlight(highlightedItem: nil)
             currentlyHighlightedRow?.clearKeyboardFocus()
             currentlyHighlightedRow?.setHighlighted(false)
             currentlyHighlightedRow = hitView
             currentlyHighlightedRow?.setHighlighted(true)
+            currentlyHighlightedRowIndex = row >= 0 ? row : nil
         }
     }
     
     func clearHighlight() {
+        currentlyHighlightedRow?.clearKeyboardFocus()
         currentlyHighlightedRow?.setHighlighted(false)
         currentlyHighlightedRow = nil
+        currentlyHighlightedRowIndex = nil
+        headerView?.menuDidChangeHighlight(highlightedItem: nil)
     }
     
     func rebuildMenu(preserveScroll: Bool = false) {
@@ -405,7 +426,7 @@ class MainPopoverViewController: NSViewController {
         }
         
         // Ensure highlights update correctly as items move under a stationary mouse
-        updateHighlightUnderMouse()
+        updateHighlightUnderMouse(force: true)
     }
     
     func updatePreferredContentSize() {
@@ -457,26 +478,85 @@ class MainPopoverViewController: NSViewController {
         let total = tableRepos.count
         guard total > 0 else { return }
         
-        let currentIndex: Int
-        if let current = currentlyHighlightedRow {
-            currentIndex = tableView.row(for: current)
+        let hasQuickAdd = (headerView?.quickAddRepoStr != nil)
+        
+        if let currentIdx = currentlyHighlightedRowIndex {
+            let nextIndex = currentIdx + direction
+            if nextIndex < 0 {
+                // Moving up from index 0
+                if hasQuickAdd {
+                    // Highlight the header instead!
+                    clearHighlight()
+                    headerView?.menuDidChangeHighlight(highlightedItem: headerView)
+                } else {
+                    // Stay at row 0 (do nothing)
+                }
+            } else if nextIndex >= total {
+                // Stay at total - 1 (do nothing)
+            } else {
+                // Move to nextIndex
+                headerView?.menuDidChangeHighlight(highlightedItem: nil)
+                
+                if let prevView = tableView.view(atColumn: 0, row: currentIdx, makeIfNecessary: false) as? RepoMenuItemView {
+                    prevView.clearKeyboardFocus()
+                    prevView.setHighlighted(false)
+                }
+                
+                currentlyHighlightedRowIndex = nextIndex
+                tableView.scrollRowToVisible(nextIndex)
+                
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    guard self.currentlyHighlightedRowIndex == nextIndex else { return }
+                    
+                    if let nextView = self.tableView.view(atColumn: 0, row: nextIndex, makeIfNecessary: true) as? RepoMenuItemView {
+                        self.currentlyHighlightedRow?.clearKeyboardFocus()
+                        self.currentlyHighlightedRow?.setHighlighted(false)
+                        self.currentlyHighlightedRow = nextView
+                        nextView.setHighlighted(true)
+                    }
+                }
+            }
         } else {
-            currentIndex = direction > 0 ? -1 : total
-        }
-        
-        var nextIndex = currentIndex + direction
-        if nextIndex < 0 { nextIndex = 0 }
-        if nextIndex >= total { nextIndex = total - 1 }
-        
-        if nextIndex != currentIndex {
-            tableView.scrollRowToVisible(nextIndex)
-            
-            // Give layout a tiny moment to ensure the view at nextIndex is instantiated if it was off-screen
-            DispatchQueue.main.async {
-                if let nextView = self.tableView.view(atColumn: 0, row: nextIndex, makeIfNecessary: true) as? RepoMenuItemView {
-                    self.currentlyHighlightedRow?.setHighlighted(false)
-                    self.currentlyHighlightedRow = nextView
-                    self.currentlyHighlightedRow?.setHighlighted(true)
+            // No highlighted row currently
+            if hasQuickAdd && headerView?.lastHighlightState == true {
+                // If the header was highlighted
+                if direction > 0 {
+                    // Moving down from header -> highlight row 0
+                    headerView?.menuDidChangeHighlight(highlightedItem: nil)
+                    currentlyHighlightedRowIndex = 0
+                    tableView.scrollRowToVisible(0)
+                    
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self = self else { return }
+                        guard self.currentlyHighlightedRowIndex == 0 else { return }
+                        
+                        if let nextView = self.tableView.view(atColumn: 0, row: 0, makeIfNecessary: true) as? RepoMenuItemView {
+                            self.currentlyHighlightedRow?.clearKeyboardFocus()
+                            self.currentlyHighlightedRow?.setHighlighted(false)
+                            self.currentlyHighlightedRow = nextView
+                            nextView.setHighlighted(true)
+                        }
+                    }
+                } else {
+                    // Moving up from header -> do nothing
+                }
+            } else {
+                // Nothing highlighted yet (e.g. initial state)
+                let startIdx = direction > 0 ? 0 : total - 1
+                currentlyHighlightedRowIndex = startIdx
+                tableView.scrollRowToVisible(startIdx)
+                
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    guard self.currentlyHighlightedRowIndex == startIdx else { return }
+                    
+                    if let nextView = self.tableView.view(atColumn: 0, row: startIdx, makeIfNecessary: true) as? RepoMenuItemView {
+                        self.currentlyHighlightedRow?.clearKeyboardFocus()
+                        self.currentlyHighlightedRow?.setHighlighted(false)
+                        self.currentlyHighlightedRow = nextView
+                        nextView.setHighlighted(true)
+                    }
                 }
             }
         }
@@ -487,7 +567,8 @@ class MainPopoverViewController: NSViewController {
     }
     
     func triggerActionOnHighlighted(_ action: RepoAction) {
-        guard let row = currentlyHighlightedRow else { return }
+        guard let idx = currentlyHighlightedRowIndex,
+              let row = tableView.view(atColumn: 0, row: idx, makeIfNecessary: false) as? RepoMenuItemView else { return }
         
         switch action {
         case .open:
@@ -511,7 +592,8 @@ class MainPopoverViewController: NSViewController {
     /// Moves the keyboard focus ring across the action buttons of the highlighted row.
     /// direction: -1 for left, +1 for right
     func moveButtonFocus(direction: Int) {
-        guard let row = currentlyHighlightedRow else { return }
+        guard let idx = currentlyHighlightedRowIndex,
+              let row = tableView.view(atColumn: 0, row: idx, makeIfNecessary: false) as? RepoMenuItemView else { return }
         let buttons = row.actionButtons
         guard !buttons.isEmpty else { return }
         
@@ -536,7 +618,9 @@ class MainPopoverViewController: NSViewController {
     /// Triggers the currently focused button on the highlighted row.
     /// Returns true if an action was triggered.
     func triggerFocusedButton() -> Bool {
-        guard let row = currentlyHighlightedRow, row.focusedButtonIndex != nil else {
+        guard let idx = currentlyHighlightedRowIndex,
+              let row = tableView.view(atColumn: 0, row: idx, makeIfNecessary: false) as? RepoMenuItemView,
+              row.focusedButtonIndex != nil else {
             return false
         }
         row.triggerFocusedAction()
@@ -545,7 +629,10 @@ class MainPopoverViewController: NSViewController {
     
     /// Clears button focus on the current row (used when switching rows with ↑↓).
     func clearButtonFocus() {
-        currentlyHighlightedRow?.clearKeyboardFocus()
+        if let idx = currentlyHighlightedRowIndex,
+           let row = tableView.view(atColumn: 0, row: idx, makeIfNecessary: false) as? RepoMenuItemView {
+            row.clearKeyboardFocus()
+        }
     }
 }
 
@@ -565,13 +652,22 @@ extension MainPopoverViewController: NSTableViewDataSource, NSTableViewDelegate 
         // the current visual configuration, avoiding stale constraint/sizing issues.
         let identifier = NSUserInterfaceItemIdentifier("RepoRow-\(currentLayout)-\(fontSize)")
         
-        if let cellView = tableView.makeView(withIdentifier: identifier, owner: self) as? RepoMenuItemView {
-            cellView.reconfigure(with: data)
-            return cellView
+        let cellView: RepoMenuItemView
+        if let reused = tableView.makeView(withIdentifier: identifier, owner: self) as? RepoMenuItemView {
+            reused.reconfigure(with: data)
+            cellView = reused
+        } else {
+            cellView = RepoMenuItemView(repoName: data.repoName, displayData: data, layout: currentLayout, appDelegate: appDelegate)
+            cellView.identifier = identifier
         }
         
-        let cellView = RepoMenuItemView(repoName: data.repoName, displayData: data, layout: currentLayout, appDelegate: appDelegate)
-        cellView.identifier = identifier
+        if let highlightedIndex = currentlyHighlightedRowIndex, highlightedIndex == row {
+            cellView.setHighlighted(true)
+            currentlyHighlightedRow = cellView
+        } else {
+            cellView.setHighlighted(false)
+        }
+        
         return cellView
     }
     

@@ -107,6 +107,11 @@ class AboutViewController: NSViewController {
         self.preferredContentSize = self.view.fittingSize
     }
     
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        self.view.window?.makeFirstResponder(self.view)
+    }
+    
     @objc private func openGitHub() {
         if let url = URL(string: "https://github.com/nad-bit/Mino") {
             NSWorkspace.shared.open(url)
@@ -142,5 +147,11 @@ class AboutViewController: NSViewController {
         ])
         
         return container
+    }
+    
+    override func cancelOperation(_ sender: Any?) {
+        if let popover = (NSApp.delegate as? AppDelegate)?.aboutPopover {
+            popover.close()
+        }
     }
 }

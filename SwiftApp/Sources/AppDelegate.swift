@@ -60,10 +60,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             }
         }
         
-        if popoverToKeep != releaseNotesPopover { releaseNotesPopover?.performClose(nil) }
-        if popoverToKeep != settingsPopover { settingsPopover?.performClose(nil) }
-        if popoverToKeep != aboutPopover { aboutPopover?.performClose(nil) }
-        if popoverToKeep != addRepoPopover { addRepoPopover?.performClose(nil) }
+        if popoverToKeep != releaseNotesPopover { releaseNotesPopover?.close() }
+        if popoverToKeep != settingsPopover { settingsPopover?.close() }
+        if popoverToKeep != aboutPopover { aboutPopover?.close() }
+        if popoverToKeep != addRepoPopover { addRepoPopover?.close() }
     }
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
@@ -143,6 +143,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         }
         
         NotificationCenter.default.addObserver(self, selector: #selector(configDidUpdate), name: Notification.Name("ConfigChanged"), object: nil)
+        
+        // Setup Global Hotkey
+        GlobalHotkeyManager.shared.onHotkeyTriggered = { [weak self] in
+            self?.togglePopover(nil)
+        }
+        
+        var savedKeyCode = UserDefaults.standard.integer(forKey: "MinoShortcutKeyCode")
+        var savedModifiers = UserDefaults.standard.integer(forKey: "MinoShortcutModifiers")
+        
+        // Migrate old default (CTRL + ALT + CMD + M) to new default (CTRL + ALT + M)
+        let oldModifiers = Int(NSEvent.ModifierFlags([.control, .option, .command]).rawValue)
+        if savedKeyCode == 46 && savedModifiers == oldModifiers {
+            savedKeyCode = 46
+            savedModifiers = Int(NSEvent.ModifierFlags([.control, .option]).rawValue)
+            UserDefaults.standard.set(savedKeyCode, forKey: "MinoShortcutKeyCode")
+            UserDefaults.standard.set(savedModifiers, forKey: "MinoShortcutModifiers")
+        }
+        
+        // Default shortcut: CTRL + ALT + M (46)
+        if savedKeyCode == 0 && UserDefaults.standard.object(forKey: "MinoShortcutKeyCode") == nil {
+            savedKeyCode = 46
+            savedModifiers = Int(NSEvent.ModifierFlags([.control, .option]).rawValue)
+            UserDefaults.standard.set(savedKeyCode, forKey: "MinoShortcutKeyCode")
+            UserDefaults.standard.set(savedModifiers, forKey: "MinoShortcutModifiers")
+        }
+        
+        if savedKeyCode > 0 {
+            let modifiers = NSEvent.ModifierFlags(rawValue: UInt(savedModifiers))
+            GlobalHotkeyManager.shared.register(keyCode: savedKeyCode, modifiers: modifiers)
+        }
     }
     
     @objc private func configDidUpdate() {
@@ -163,6 +193,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     
     func applicationWillTerminate(_ aNotification: Notification) {
         refreshCoordinator.countdownTimer?.invalidate()
+        GlobalHotkeyManager.shared.unregister()
     }
     
     @objc func togglePopover(_ sender: Any?) {
@@ -172,13 +203,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             return
         }
         
-        if addRepoPopover?.isShown == true {
-            addRepoPopover?.performClose(sender)
-            return
-        }
+        let anyPopoverShown = (mainPopover?.isShown == true) ||
+                              (settingsPopover?.isShown == true) ||
+                              (releaseNotesPopover?.isShown == true) ||
+                              (aboutPopover?.isShown == true) ||
+                              (addRepoPopover?.isShown == true)
         
-        if mainPopover?.isShown == true {
-            mainPopover?.performClose(sender)
+        if anyPopoverShown {
+            mainPopover?.close()
+            settingsPopover?.close()
+            releaseNotesPopover?.close()
+            aboutPopover?.close()
+            addRepoPopover?.close()
         } else {
             if let button = statusItem.button {
                 refreshQuickAddState()
@@ -214,7 +250,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         guard let popover = aboutPopover else { return }
         
         if popover.isShown {
-            popover.performClose(nil)
+            popover.close()
         } else {
             if let btn = statusItem.button {
                 popover.show(relativeTo: btn.bounds, of: btn, preferredEdge: .minY)
@@ -223,7 +259,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
                 // This ensures the popover can become key and thus handle 'transient' dismissal correctly.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     NSApp.activate(ignoringOtherApps: true)
-                    popover.contentViewController?.view.window?.makeKeyAndOrderFront(nil)
+                    if let window = popover.contentViewController?.view.window {
+                        window.makeKeyAndOrderFront(nil)
+                        window.makeFirstResponder(popover.contentViewController?.view)
+                    }
                 }
             }
         }
@@ -283,7 +322,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     }
     
     func performAfterPopoverClose(_ action: @escaping () -> Void) {
-        mainPopover?.performClose(nil)
+        mainPopover?.close()
         action()
     }
     
@@ -328,7 +367,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         guard let popover = settingsPopover else { return }
         
         if popover.isShown {
-            popover.performClose(sender)
+            popover.close()
         } else {
             // Prevent immediate reopening if closed by transient behavior (clicking the button itself)
             if let lastClose = lastSettingsCloseTime, Date().timeIntervalSince(lastClose) < 0.2 {
@@ -344,6 +383,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
                 popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minX)
             } else if let btn = statusItem.button {
                 popover.show(relativeTo: btn.bounds, of: btn, preferredEdge: .minY)
+            }
+            
+            // CRITICAL: Delaying activation and key state slightly to allow the click event to finish.
+            // This ensures the popover can become key and thus handle 'transient' dismissal correctly.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                NSApp.activate(ignoringOtherApps: true)
+                if let window = popover.contentViewController?.view.window {
+                    window.makeKeyAndOrderFront(nil)
+                    window.makeFirstResponder(popover.contentViewController?.view)
+                }
             }
         }
     }
@@ -501,6 +550,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         
         if popover == mainPopover {
             popoverIsOpen = false
+            mainPopoverVC.clearHighlight()
             
             // Mark visible versions as seen ONLY if the popover was open for a reasonable time (0.8s)
             // to avoid accidental 'marking as seen' on double-clicks or very fast interactions.
@@ -562,7 +612,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         }
         
         // 2. Global App Shortcuts (CMD + ...)
-        if event.modifierFlags.contains(.command) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if modifiers == .command {
             switch event.charactersIgnoringModifiers {
             case ",":
                 openSettingsWindow(footerView)
