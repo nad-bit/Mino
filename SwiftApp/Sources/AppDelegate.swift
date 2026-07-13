@@ -615,6 +615,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if modifiers == .command {
             switch event.charactersIgnoringModifiers {
+            case "s": // CMD+S -> Toggle favorite
+                mainPopoverVC.triggerActionOnHighlighted(.favorite)
+                return true
             case ",":
                 openSettingsWindow(footerView)
                 return true

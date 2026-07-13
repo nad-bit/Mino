@@ -93,6 +93,8 @@ class HomebrewManager {
     }
     
     func installCask(cask: String) async -> (success: Bool, message: String) {
+        _ = await runBrewUpdate()
+        
         // If it's a tap cask, trust it first so it's also trusted permanently in the user's terminal
         if cask.contains("/") {
             _ = await trustCask(cask: cask)

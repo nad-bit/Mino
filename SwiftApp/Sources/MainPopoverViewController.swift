@@ -251,7 +251,6 @@ class MainPopoverViewController: NSViewController {
             appDelegate.footerView = fv
         }
         footerView?.updateFontSize()
-        footerView?.updateRepoCount()
         footerView?.updateTimeText(appDelegate.getRefreshTitle(), isRefreshing: appDelegate.isRefreshing)
         
         // 4. Get and Sort Data
@@ -271,6 +270,13 @@ class MainPopoverViewController: NSViewController {
             let name = repo.name.lowercased()
             let tags = repo.tags?.map { $0.lowercased() } ?? []
             return name.contains(lowerQuery) || tags.contains(where: { $0.contains(lowerQuery) })
+        }
+        
+        let isSearching = !lowerQuery.isEmpty
+        if isSearching {
+            footerView?.updateRepoCount(filteredCount: filteredRepos.count, totalCount: config.repos.count)
+        } else {
+            footerView?.updateRepoCount()
         }
         
         // OPTIMIZATION: Pre-calculate sort keys to avoid expensive date parsing inside the sort closure
@@ -563,7 +569,7 @@ class MainPopoverViewController: NSViewController {
     }
     
     enum RepoAction {
-        case open, install, notes, delete, copy
+        case open, install, notes, delete, copy, favorite
     }
     
     func triggerActionOnHighlighted(_ action: RepoAction) {
@@ -584,6 +590,8 @@ class MainPopoverViewController: NSViewController {
             let url = "https://github.com/\(repoName)"
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(url, forType: .string)
+        case .favorite:
+            row.toggleFavorite()
         }
     }
     
@@ -696,4 +704,14 @@ class MainPopoverView: NSView {
         }
         return super.performKeyEquivalent(with: event)
     }
+}
+
+extension MainPopoverViewController: NSWindowDelegate {
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        if let window = view.window {
+            window.delegate = self
+        }
+    }
+    
 }
