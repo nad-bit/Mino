@@ -1,7 +1,7 @@
 import Cocoa
 import QuartzCore
 
-class AddRepoViewController: NSViewController, NSTextFieldDelegate {
+class AddRepoViewController: NSViewController, NSTextFieldDelegate, NSWindowDelegate {
     private var inputField: NSTextField!
     private var eyeImageView: NSImageView!
     private var clipboardTimer: Timer?
@@ -107,7 +107,10 @@ class AddRepoViewController: NSViewController, NSTextFieldDelegate {
     override func viewDidAppear() {
         super.viewDidAppear()
         // Ensure focus and scroll reset are applied after the window is fully on screen
-        view.window?.makeFirstResponder(inputField)
+        if let window = view.window {
+            window.delegate = self
+            window.makeFirstResponder(inputField)
+        }
     }
     
     override func viewWillDisappear() {
@@ -247,4 +250,5 @@ class AddRepoViewController: NSViewController, NSTextFieldDelegate {
             popover.close()
         }
     }
+    
 }

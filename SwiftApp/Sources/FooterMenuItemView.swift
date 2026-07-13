@@ -98,12 +98,17 @@ class FooterMenuItemView: NSView {
     }
     
     /// Refreshes the repo count label from the current config.
-    func updateRepoCount() {
-        let count = ConfigManager.shared.config.repos.count
-        if count == 1 {
-            repoCountLabel.stringValue = Translations.get("repoCountSingular")
+    func updateRepoCount(filteredCount: Int? = nil, totalCount: Int? = nil) {
+        if let filtered = filteredCount, let total = totalCount {
+            let template = Translations.get("repoCount")
+            repoCountLabel.stringValue = template.format(with: ["count": "\(filtered)/\(total)"])
         } else {
-            repoCountLabel.stringValue = Translations.get("repoCount").format(with: ["count": "\(count)"])
+            let count = ConfigManager.shared.config.repos.count
+            if count == 1 {
+                repoCountLabel.stringValue = Translations.get("repoCountSingular")
+            } else {
+                repoCountLabel.stringValue = Translations.get("repoCount").format(with: ["count": "\(count)"])
+            }
         }
     }
     

@@ -5,6 +5,16 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.9] - 2026-07-13
+
+### Added
+- **Search Matches Counter**: Shows the number of filtered results in the search bar (e.g., "32/400 Repositories").
+- **CMD + S Shortcut**: Added keyboard shortcut `CMD + S` to quickly toggle repositories as favorites.
+- **Homebrew Update Cask Step**: Integrated automatic `brew update` execution before installing any cask.
+
+### Changed
+- **Cards Layout Label Styling**: Applied `.secondaryLabelColor` to the date for repositories older than 90 days or when the "Indicate Novelties" feature is disabled. Owner labels now consistently use `.tertiaryLabelColor` across all layouts (including error states).
+
 ## [2.1.8] - 2026-06-21
 
 ### Added

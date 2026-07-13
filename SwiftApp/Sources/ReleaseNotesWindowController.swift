@@ -319,7 +319,13 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         // Let markdown natively handle spacing after lists
         
         // 1. Heuristic HTML Detection
-        let hasHTML = bodyText.contains("<div") || bodyText.contains("<img") || bodyText.contains("<h") || bodyText.contains("<p>") || bodyText.contains("<ul") || bodyText.contains("<li") || bodyText.contains("<strong")
+        var hasHTML = bodyText.contains("<div") || bodyText.contains("<img") || bodyText.contains("<h") || bodyText.contains("<p>") || bodyText.contains("<ul") || bodyText.contains("<li") || bodyText.contains("<strong") || bodyText.contains("<table")
+        
+        let tablePattern = "\\|[\\s:-]*-[\\s:-]*\\|"
+        if bodyText.range(of: tablePattern, options: .regularExpression) != nil {
+            bodyText = Utils.convertMarkdownToHTML(bodyText)
+            hasHTML = true
+        }
         
         // 1b. Extract explicit HTML image dimensions because macOS TextKit ignores width/height HTML attributes
         var explicitImageSizes: [CGSize?] = []

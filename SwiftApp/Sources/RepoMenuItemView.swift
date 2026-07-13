@@ -485,7 +485,7 @@ class RepoMenuItemView: NSView {
         subtitleLabel.font = .systemFont(ofSize: baseFontSize - 2)
         let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? false
         let isOlderThan90 = data.ageSeconds.isInfinite || (data.ageSeconds / 86400.0) > 90.0
-        subtitleLabel.textColor = (showNewIndicator && !isOlderThan90) ? data.freshnessColor : .tertiaryLabelColor
+        subtitleLabel.textColor = (showNewIndicator && !isOlderThan90 && data.errorMessage == nil) ? data.freshnessColor : .secondaryLabelColor
         subtitleLabel.lineBreakMode = .byTruncatingTail
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
         
@@ -825,7 +825,7 @@ class RepoMenuItemView: NSView {
         if layoutMode == "cards" {
             let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? false
             let isOlderThan90 = displayData.ageSeconds.isInfinite || (displayData.ageSeconds / 86400.0) > 90.0
-            let ageColor = highlighted ? .selectedMenuItemTextColor : ((showNewIndicator && !isOlderThan90) ? displayData.freshnessColor : .tertiaryLabelColor)
+            let ageColor = highlighted ? .selectedMenuItemTextColor : ((showNewIndicator && !isOlderThan90 && displayData.errorMessage == nil) ? displayData.freshnessColor : .secondaryLabelColor)
             applyOwnerDimming(to: subtitleLabel, baseColor: ageColor, highlighted: highlighted)
         } else {
             applyOwnerDimming(to: subtitleLabel, baseColor: secondaryColor, highlighted: highlighted)
@@ -874,7 +874,7 @@ class RepoMenuItemView: NSView {
         // Dim "owner/" prefix in lighter weight when showing full owner/repo name
         if label === titleLabel, let slashIndex = text.firstIndex(of: "/") {
             let prefixNSRange = NSRange(text.startIndex...slashIndex, in: text)
-            let ownerColor = highlighted ? baseColor.withAlphaComponent(0.6) : NSColor.secondaryLabelColor
+            let ownerColor = highlighted ? baseColor.withAlphaComponent(0.6) : NSColor.tertiaryLabelColor
             attrStr.addAttribute(.foregroundColor, value: ownerColor, range: prefixNSRange)
             
             if let currentFont = label.font {
@@ -939,6 +939,10 @@ class RepoMenuItemView: NSView {
     
     // Right click: toggle favorite (via AppDelegate to ensure DataSource sync)
     override func rightMouseUp(with event: NSEvent) {
+        toggleFavorite()
+    }
+    
+    func toggleFavorite() {
         appDelegate.handleToggleFavorite(for: repoName)
     }
     
