@@ -50,6 +50,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     var refreshCoordinator: RefreshCoordinator!
     var repoCoordinator: RepoCoordinator!
     
+    // Beer Handle (ASA)
+    var beerHandle: BeerHandlePanel?
+    private var beerHandleShowWorkItem: DispatchWorkItem?
+    
 
     
     func hideInformationalWindows(except popoverToKeep: NSPopover? = nil) {
@@ -400,6 +404,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     func updateStatusIcon(hasUpdates: Bool) {
         // Show or hide the red pupil overlay
         statusIndicatorDot.isHidden = !hasUpdates
+        
+        // Sync beer handle visibility with the Red Eye state
+        updateBeerHandleVisibility()
     }
     
     // MARK: - Search Filtering Logic
@@ -424,7 +431,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         popularTagsCache = counts.sorted { a, b in
             if a.value != b.value { return a.value > b.value }
             return a.key.lowercased() < b.key.lowercased()
-        }.prefix(Constants.tagCloudMaxTags).map { 
+        }.map { 
             let clean = $0.key.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
             return "#\(clean)"
         }
@@ -531,12 +538,146 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         }
     }
     
+    // MARK: - Beer Handle (ASA)
+    
+    /// Central method to show/hide the beer handle based on current state.
+    /// The handle is visible only when ALL of these are true:
+    /// 1. beerHandleEnabled is true in Constants
+    /// 2. HasUnreadPulse is true (Red Eye is active)
+    /// 3. The main popover is open
+    /// 4. There are visible repos (scroll area has content)
+    func updateBeerHandleVisibility() {
+        // Cancel any pending debounced show
+        beerHandleShowWorkItem?.cancel()
+        beerHandleShowWorkItem = nil
+        
+        guard Constants.beerHandleEnabled else {
+            beerHandle?.hide()
+            return
+        }
+        
+        // Hide handle if any secondary popover (Settings, Release Notes, About, Add Repo) is currently visible
+        let secondaryPopoverShown = (settingsPopover?.isShown == true) ||
+                                    (releaseNotesPopover?.isShown == true) ||
+                                    (aboutPopover?.isShown == true) ||
+                                    (addRepoPopover?.isShown == true)
+        
+        let hasUnread = UserDefaults.standard.bool(forKey: "HasUnreadPulse")
+        let basicConditionsMet = hasUnread && popoverIsOpen && !secondaryPopoverShown
+        
+        guard basicConditionsMet else {
+            beerHandle?.hideAnimated()
+            return
+        }
+        
+        // Check scroll area height IMMEDIATELY — no delay
+        let scrollHeight = mainPopoverVC.currentScrollAreaHeight
+        let effectiveHeight = scrollHeight - (Constants.beerHandleVerticalInset * 2)
+        
+        guard effectiveHeight >= Constants.beerHandleMinHeight else {
+            // Immediately hide without any debounce delay if menu height reduced below minimum
+            beerHandle?.hide()
+            return
+        }
+        
+        // If the handle is ALREADY visible, reposition it immediately without debounce
+        // so it resizes/repositions smoothly as search query or menu content changes
+        if beerHandle?.isCurrentlyVisible == true,
+           let popoverWindow = mainPopover?.contentViewController?.view.window {
+            let scrollAreaFrame = mainPopoverVC.scrollAreaFrameInScreenCoordinates
+            let positioned = beerHandle?.positionRelativeTo(
+                popoverWindow: popoverWindow,
+                scrollAreaFrame: scrollAreaFrame,
+                scrollAreaHeight: scrollHeight
+            ) ?? false
+            
+            if !positioned {
+                beerHandle?.hide()
+            }
+            return
+        }
+        
+        // Debounce only the initial show (when handle is not yet visible)
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.showBeerHandleNow()
+        }
+        beerHandleShowWorkItem = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + Constants.beerHandleShowDebounce,
+            execute: workItem
+        )
+    }
+    
+    /// Actually show and position the beer handle. Called after debounce.
+    private func showBeerHandleNow() {
+        guard Constants.beerHandleEnabled else {
+            beerHandle?.hide()
+            return
+        }
+        
+        // Re-verify that no secondary popovers are open and main popover is still open with pulse
+        let secondaryPopoverShown = (settingsPopover?.isShown == true) ||
+                                    (releaseNotesPopover?.isShown == true) ||
+                                    (aboutPopover?.isShown == true) ||
+                                    (addRepoPopover?.isShown == true)
+        
+        let hasUnread = UserDefaults.standard.bool(forKey: "HasUnreadPulse")
+        guard hasUnread && popoverIsOpen && !secondaryPopoverShown else {
+            beerHandle?.hideAnimated()
+            return
+        }
+        
+        // Get scroll area height from the popover VC
+        let scrollHeight = mainPopoverVC.currentScrollAreaHeight
+        let effectiveHeight = scrollHeight - (Constants.beerHandleVerticalInset * 2)
+        
+        guard effectiveHeight >= Constants.beerHandleMinHeight else {
+            beerHandle?.hideAnimated()
+            return
+        }
+        
+        // Create handle lazily
+        if beerHandle == nil {
+            beerHandle = BeerHandlePanel()
+        }
+        
+        // Position relative to the popover window
+        // IMPORTANT: Do NOT use addChildWindow — it breaks NSPopover's
+        // transient behavior (click-outside-to-close). Instead, we manage
+        // the handle's lifecycle and z-order independently.
+        if let popoverWindow = mainPopover?.contentViewController?.view.window {
+            let scrollAreaFrame = mainPopoverVC.scrollAreaFrameInScreenCoordinates
+            let positioned = beerHandle?.positionRelativeTo(
+                popoverWindow: popoverWindow,
+                scrollAreaFrame: scrollAreaFrame,
+                scrollAreaHeight: scrollHeight
+            ) ?? false
+            
+            // Only show if positioning succeeded (height was sufficient)
+            if positioned {
+                beerHandle?.showAnimated(relativeTo: popoverWindow)
+            }
+        }
+    }
+    
     // MARK: - NSPopoverDelegate
     
     func popoverWillShow(_ notification: Notification) {
-        if let popover = notification.object as? NSPopover, popover == mainPopover {
+        guard let popover = notification.object as? NSPopover else { return }
+        
+        if popover == mainPopover {
             popoverIsOpen = true
             lastMainPopoverOpenTime = Date()
+            
+            // Show beer handle after a brief delay to let the popover window settle
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.updateBeerHandleVisibility()
+            }
+        } else {
+            // Secondary popover (Settings, Release Notes, About, Add Repo) opening -> cancel pending show and hide handle immediately
+            beerHandleShowWorkItem?.cancel()
+            beerHandleShowWorkItem = nil
+            beerHandle?.hide()
         }
     }
     
@@ -545,12 +686,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         
         if popover == settingsPopover {
             lastSettingsCloseTime = Date()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.updateBeerHandleVisibility()
+            }
+            return
+        }
+        
+        if popover == releaseNotesPopover || popover == aboutPopover || popover == addRepoPopover {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.updateBeerHandleVisibility()
+            }
             return
         }
         
         if popover == mainPopover {
             popoverIsOpen = false
             mainPopoverVC.clearHighlight()
+            
+            // Hide beer handle immediately when popover closes
+            beerHandle?.hide()
             
             // Mark visible versions as seen ONLY if the popover was open for a reasonable time (0.8s)
             // to avoid accidental 'marking as seen' on double-clicks or very fast interactions.

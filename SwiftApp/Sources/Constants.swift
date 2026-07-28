@@ -1,5 +1,15 @@
 import Foundation
 
+enum BeerHandleDesign {
+    case curved      // Classic beer mug D-shaped handle
+    case rectangular // Simple rectangular handle with rounded corners
+}
+
+enum BeerHandleAnimation {
+    case fade   // Simple fade in/out
+    case slide  // Slide in from the right edge
+}
+
 enum Constants {
     // Timing Constants
     static let defaultRefreshIntervalMinutes: Int = 360  // 6 hours
@@ -27,6 +37,19 @@ enum Constants {
     static let menuFontSizeMax: CGFloat = 21.0
     static let popoverAnimates: Bool = false
     static let defaultAnimationDuration: TimeInterval = 0.15
+    
+    // Beer Handle (ASA) Constants
+    static let beerHandleEnabled: Bool = true          // Master toggle for the handle
+    static let beerHandleDesign: BeerHandleDesign = .curved  // .curved (D shape) or .rectangular
+    static let beerHandleAnimation: BeerHandleAnimation = .slide // .fade or .slide
+    static let beerHandleWidth: CGFloat = menuMaxWidth / 4 // Extends 1/4 of menu width to the right
+    static let beerHandleThickness: CGFloat = menuHeaderFooterHeight // Tube thickness = header/footer height
+    static let beerHandleMinHeight: CGFloat = menuMaxHeight - 108 // Hide if menu shorter than its max height 2*beerHandleVerticalInset + 2*menuHeaderFooterHeight
+    static let beerHandleGapFromMenu: CGFloat = 1.0   // Horizontal gap between popover edge and handle
+    static let beerHandleVerticalInset: CGFloat = 54.0 // Inset from top/bottom of the scroll area (menuHeaderFooterHeight = 54.0)
+    static let beerHandleCornerRadius: CGFloat = 14.0  // Corner radius for rectangular design
+    static let beerHandleAnimationDuration: TimeInterval = 0.25
+    static let beerHandleShowDebounce: TimeInterval = 0.3 // Debounce delay before showing the handle
     
     // System Constants
     static let launchAgentLabel = "com.nad.mino"

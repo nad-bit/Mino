@@ -5,6 +5,20 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-07-28
+
+### Added
+- **Beer Mug Handle ("ASA")**: Added decorative beer mug handle synchronized with the main popover, with auto-debounce and immediate hide on height reduction.
+- **Notes Card Containers**: Encapsulated release notes header and footer in styled card containers matching the Preferences window design.
+- **Dynamic Tag Cloud Capacity**: Removed fixed tag limits to display as many tags as fit dynamically within the popover.
+
+### Fixed
+- **Release Notes Image Visualization**: Fixed local image rendering for PNG, JPG, and SVG assets by bypassing WebKit file:// restrictions and directly injecting pre-loaded NSImages into text attachments.
+- **3rd-Party CDN Authentication Rejection**: Scoped `Authorization: Bearer` headers strictly to GitHub domains, resolving image download blocks on external CDNs.
+- **Duplicate API Rate Limits**: Cached release bodies during initial repo refresh, preventing duplicate API requests on release notes open.
+- **Markdown & HTML Formatting**: Fixed release notes formatting so headers, bullet lists, links, tables, and images render with proper structure instead of collapsing into a single paragraph.
+- **Release Notes Link Interactivity**: Made links in release notes 100% clickable to open in default web browser while preserving standard arrow cursor over plain text (eliminating text selection I-beam).
+
 ## [2.1.9] - 2026-07-13
 
 ### Added

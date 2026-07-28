@@ -74,8 +74,18 @@ class Utils {
     static let appIconColor: NSColor = AppPersonality.color
     
     static func convertMarkdownToHTML(_ markdown: String) -> String {
-        // CSS styles for table rendering
-        let css = "<style>table { border-collapse: collapse; width: 100%; margin: 12px 0; } th, td { border: 1px solid rgba(128,128,128,0.3); padding: 6px 10px; text-align: left; } th { background-color: rgba(128,128,128,0.15); font-weight: bold; }</style>"
+        // CSS styles for rendering elements with tight, compact spacing
+        let css = """
+        <style>
+          h1, h2, h3, h4, h5, h6 { margin-top: 12px; margin-bottom: 3px; font-weight: bold; }
+          ul, ol { margin-top: 2px; margin-bottom: 6px; padding-left: 18px; }
+          li { margin-top: 1px; margin-bottom: 2px; }
+          p { margin-top: 3px; margin-bottom: 4px; }
+          table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+          th, td { border: 1px solid rgba(128,128,128,0.3); padding: 5px 8px; text-align: left; }
+          th { background-color: rgba(128,128,128,0.15); font-weight: bold; }
+        </style>
+        """
         
         var body = css
         let lines = markdown.components(separatedBy: .newlines)
@@ -232,11 +242,19 @@ class Utils {
                 continue
             }
             
+            // Preserve raw HTML tags (e.g. <img src="..." />, <div align="center">, etc.)
+            if trimmedLine.hasPrefix("<") {
+                closeListIfNeeded()
+                closeTableIfNeeded()
+                body += "\(trimmedLine)\n"
+                i += 1
+                continue
+            }
+            
             // Empty lines
             if trimmedLine.isEmpty {
                 closeListIfNeeded()
                 closeTableIfNeeded()
-                body += "<p></p>\n"
                 i += 1
                 continue
             }

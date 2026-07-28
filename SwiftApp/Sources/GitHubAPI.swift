@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 class GitHubAPI {
     static let shared = GitHubAPI()
@@ -6,6 +7,110 @@ class GitHubAPI {
     /// reuse the same cache-disabled, timeout-configured session
     /// instead of falling back to URLSession.shared.
     private(set) var session: URLSession
+    
+    // MARK: - Image Cache & Fetching
+    
+    private let ramImageCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 30
+        cache.totalCostLimit = 50 * 1024 * 1024 // 50 MB RAM limit
+        return cache
+    }()
+    
+    private var diskCacheDirectory: URL? = {
+        let fileManager = FileManager.default
+        if let cacheDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            let releaseImagesDir = cacheDir.appendingPathComponent("com.nad.mino/ReleaseImages", isDirectory: true)
+            try? fileManager.createDirectory(at: releaseImagesDir, withIntermediateDirectories: true)
+            return releaseImagesDir
+        }
+        return nil
+    }()
+    
+    private func diskCacheURL(for urlString: String) -> URL? {
+        guard let dir = diskCacheDirectory else { return nil }
+        let hash = abs(urlString.utf8.reduce(5381) { ($0 << 5) &+ $0 &+ Int($1) })
+        let rawExt = (urlString as NSString).pathExtension.lowercased()
+        let cleanExt = rawExt.components(separatedBy: "?").first ?? ""
+        let ext = (cleanExt.isEmpty || cleanExt.count > 4) ? "png" : cleanExt
+        let safeName = "\(hash).\(ext)"
+        return dir.appendingPathComponent(safeName)
+    }
+    
+    /// Synchronously checks RAM and Disk cache for an image.
+    /// Returns the NSImage if cached, or nil if network download is required.
+    func getCachedImage(from urlString: String) -> NSImage? {
+        let key = urlString as NSString
+        if let cached = ramImageCache.object(forKey: key) {
+            return cached
+        }
+        if let fileURL = diskCacheURL(for: urlString),
+           let data = try? Data(contentsOf: fileURL),
+           let image = NSImage(data: data) {
+            let cost = Int(image.size.width * image.size.height * 4)
+            ramImageCache.setObject(image, forKey: key, cost: cost)
+            return image
+        }
+        return nil
+    }
+    
+    /// Fetches an image (with authentication) and saves it to local disk cache,
+    /// returning the file:// URL so WebKit/Cocoa HTML parsers can render it natively from disk.
+    func fetchLocalImageURL(from urlString: String) async -> URL? {
+        let key = urlString as NSString
+        guard let fileURL = diskCacheURL(for: urlString) else { return nil }
+        
+        // 1. If file already exists on disk and is a valid image
+        if FileManager.default.fileExists(atPath: fileURL.path),
+           let data = try? Data(contentsOf: fileURL),
+           let image = NSImage(data: data) {
+            let cost = Int(image.size.width * image.size.height * 4)
+            ramImageCache.setObject(image, forKey: key, cost: cost)
+            return fileURL
+        }
+        
+        // 2. Download asynchronously with authentication headers (only for GitHub domains)
+        guard let url = URL(string: urlString) else { return nil }
+        
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15.0
+        request.setValue(Constants.userAgent, forHTTPHeaderField: "User-Agent")
+        
+        if let host = url.host?.lowercased(),
+           (host.contains("github.com") || host.contains("githubusercontent.com")),
+           let token = ConfigManager.shared.token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
+                  let image = NSImage(data: data) else {
+                return nil
+            }
+            
+            // Save to Disk cache
+            try? data.write(to: fileURL, options: .atomic)
+            
+            // Save to RAM cache
+            let cost = Int(image.size.width * image.size.height * 4)
+            ramImageCache.setObject(image, forKey: key, cost: cost)
+            
+            return fileURL
+        } catch {
+            return nil
+        }
+    }
+    
+    /// Fetches an image asynchronously using authenticated requests when available,
+    /// leveraging a 2-tier cache (RAM NSCache + Disk Cache).
+    func fetchImage(from urlString: String) async -> NSImage? {
+        if let localURL = await fetchLocalImageURL(from: urlString),
+           let data = try? Data(contentsOf: localURL) {
+            return NSImage(data: data)
+        }
+        return nil
+    }
     
     private init() {
         self.session = URLSession(configuration: GitHubAPI.makeConfiguration())
@@ -93,9 +198,10 @@ class GitHubAPI {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let version = json?["tag_name"] as? String
         let date = json?["published_at"] as? String
+        let body = json?["body"] as? String
         
         if version != nil && date != nil {
-            return RepoInfo(name: repo, version: version, date: date)
+            return RepoInfo(name: repo, version: version, date: date, body: body)
         } else {
             throw URLError(.cannotParseResponse)
         }
@@ -125,17 +231,20 @@ class GitHubAPI {
             throw NSError(domain: "GitHubAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
         }
         
-        let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-        guard let firstCommit = jsonArray?.first,
-              let sha = firstCommit["sha"] as? String,
-              let commitInfo = firstCommit["commit"] as? [String: Any],
-              let authorInfo = commitInfo["author"] as? [String: Any],
-              let date = authorInfo["date"] as? String else {
+        let json = try JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+        let firstCommit = json?.first
+        let sha = firstCommit?["sha"] as? String
+        let shortVersion = sha != nil ? String(sha!.prefix(7)) : nil
+        let commitObj = firstCommit?["commit"] as? [String: Any]
+        let committer = commitObj?["committer"] as? [String: Any]
+        let date = committer?["date"] as? String
+        let commitMsg = commitObj?["message"] as? String
+        
+        if shortVersion != nil && date != nil {
+            return RepoInfo(name: repo, version: shortVersion, date: date, body: commitMsg)
+        } else {
             throw URLError(.cannotParseResponse)
         }
-        
-        let shortSha = String(sha.prefix(7))
-        return RepoInfo(name: repo, version: shortSha, date: date)
     }
     
     /// Fetches the commit message associated with a tag.
@@ -201,7 +310,7 @@ class GitHubAPI {
     /// Returns the body text, an error message for display, or nil if no content found.
     func fetchReleaseBody(repo: String, version: String? = nil) async -> String? {
         var headers: [String: String] = [
-            "Accept": "application/vnd.github.html+json"
+            "Accept": "application/vnd.github.v3+json"
         ]
         if let token = ConfigManager.shared.token {
             headers["Authorization"] = "Bearer \(token)"

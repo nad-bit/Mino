@@ -123,6 +123,7 @@ class RepoCoordinator {
             popover.contentViewController = ReleaseNotesViewController()
             popover.behavior = .transient
             popover.animates = Constants.popoverAnimates
+            popover.delegate = delegate
             delegate.releaseNotesPopover = popover
         }
         
@@ -132,21 +133,21 @@ class RepoCoordinator {
         // Forzar la carga de la vista antes de acceder a los outlets
         _ = vc.view
         
-        // Show immediately with loading state, then fetch body on demand
+        // Show notes popover
         vc.loadNotes(for: info)
         popover.contentSize = vc.preferredContentSize
         popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minX)
         
-        // Fetch the release body asynchronously (pinned to the cached version)
-        Task {
-            let body = await GitHubAPI.shared.fetchReleaseBody(repo: repoName, version: info.version)
-            await MainActor.run {
-                // Only update if the popover is still showing the same repo
-                guard popover.isShown,
-                      vc.currentRepoName == repoName else { return }
-                var updatedInfo = info
-                updatedInfo.body = body ?? ""
-                vc.loadNotes(for: updatedInfo)
+        // Fetch the release body asynchronously ONLY if not already cached in info
+        if info.body == nil {
+            Task {
+                let body = await GitHubAPI.shared.fetchReleaseBody(repo: repoName, version: info.version)
+                await MainActor.run {
+                    guard popover.isShown, vc.currentRepoName == repoName else { return }
+                    var updatedInfo = info
+                    updatedInfo.body = body ?? ""
+                    vc.loadNotes(for: updatedInfo)
+                }
             }
         }
     }
@@ -235,6 +236,7 @@ class RepoCoordinator {
         popover.contentViewController = vc
         popover.behavior = .applicationDefined 
         popover.animates = Constants.popoverAnimates
+        popover.delegate = delegate
         delegate.addRepoPopover = popover
         
         vc.completionHandler = { [weak delegate] repoName, source, cask, completion in

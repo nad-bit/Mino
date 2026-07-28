@@ -107,6 +107,8 @@ class NoSearchResultsView: NSView {
             var currentRowStack = createRowStack()
             var currentRowWidth: CGFloat = 0
             let tagSpacing: CGFloat = 8.0
+            let approxRowHeight: CGFloat = 28.0
+            let maxAllowedTagCloudHeight = Constants.menuMaxHeight - 80.0
             
             for tag in suggestedTags {
                 let btn = getOrCreateButton(title: tag, fontSize: baseFontSize - 1)
@@ -116,6 +118,14 @@ class NoSearchResultsView: NSView {
                 // Check if it fits in current row
                 if currentRowWidth + btnWidth > availableWidth && currentRowWidth > 0 {
                     mainStack.addArrangedSubview(currentRowStack)
+                    
+                    // Stop adding rows if we reach the maximum menu height limit
+                    let currentHeight = CGFloat(mainStack.arrangedSubviews.count) * approxRowHeight
+                    if currentHeight + approxRowHeight > maxAllowedTagCloudHeight {
+                        currentRowStack = createRowStack()
+                        break
+                    }
+                    
                     currentRowStack = createRowStack()
                     currentRowWidth = 0
                 }

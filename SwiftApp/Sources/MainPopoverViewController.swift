@@ -462,6 +462,30 @@ class MainPopoverViewController: NSViewController {
         if let nrv = noSearchResultsView {
             nrv.targetWidth = targetWidth
         }
+        
+        // Notify the beer handle to reposition after size changes (e.g. search filtering)
+        DispatchQueue.main.async { [weak self] in
+            self?.appDelegate?.updateBeerHandleVisibility()
+        }
+    }
+    
+    // MARK: - Beer Handle Support
+    
+    /// The current visible height of the scroll area (repos section).
+    /// Returns 0 if there are no repos visible.
+    var currentScrollAreaHeight: CGFloat {
+        guard !tableRepos.isEmpty else { return 0 }
+        if let heightConstraint = scrollView.constraints.first(where: { $0.firstAttribute == .height }) {
+            return heightConstraint.constant
+        }
+        return scrollView.frame.height
+    }
+    
+    /// The frame of the scroll area in screen coordinates, for positioning the beer handle.
+    var scrollAreaFrameInScreenCoordinates: NSRect {
+        guard let window = scrollView.window else { return .zero }
+        let frameInWindow = scrollView.convert(scrollView.bounds, to: nil)
+        return window.convertToScreen(frameInWindow)
     }
     
     private var lastTargetWidth: CGFloat?
