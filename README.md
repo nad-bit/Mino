@@ -11,8 +11,7 @@
 </div>
 
 
-<img width="1920" height="1080" alt="Mino" src="https://github.com/user-attachments/assets/284d7dcf-6a15-4037-9840-ff27c30588d8" />
-
+<img width="1920" height="1080" alt="Mino" src="https://github.com/user-attachments/assets/4a2e592b-2fa5-4f56-9d26-47ecdb94c430" />
 
 
 ## Features
