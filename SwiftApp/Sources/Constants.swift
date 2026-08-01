@@ -44,9 +44,9 @@ enum Constants {
     static let beerHandleAnimation: BeerHandleAnimation = .slide // .fade or .slide
     static let beerHandleWidth: CGFloat = menuMaxWidth / 4 // Extends 1/4 of menu width to the right
     static let beerHandleThickness: CGFloat = menuHeaderFooterHeight // Tube thickness = header/footer height
-    static let beerHandleMinHeight: CGFloat = menuMaxHeight - 108 // Hide if menu shorter than its max height 2*beerHandleVerticalInset + 2*menuHeaderFooterHeight
+    static let beerHandleMinHeight: CGFloat = menuMaxHeight - (2*menuHeaderFooterHeight) // Hide if menu shorter than its max height (2 * header+footer)
     static let beerHandleGapFromMenu: CGFloat = 1.0   // Horizontal gap between popover edge and handle
-    static let beerHandleVerticalInset: CGFloat = 54.0 // Inset from top/bottom of the scroll area (menuHeaderFooterHeight = 54.0)
+    static let beerHandleVerticalInset: CGFloat = menuHeaderFooterHeight // Inset from top/bottom of the scroll area (menuHeaderFooterHeight = 54.0)
     static let beerHandleCornerRadius: CGFloat = 14.0  // Corner radius for rectangular design
     static let beerHandleAnimationDuration: TimeInterval = 0.25
     static let beerHandleShowDebounce: TimeInterval = 0.3 // Debounce delay before showing the handle

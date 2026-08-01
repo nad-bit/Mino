@@ -54,6 +54,13 @@ class GitHubAPI {
         return nil
     }
     
+    /// Synchronously returns local disk cache file URL if cached, nil otherwise.
+    func getCachedLocalImageURL(from urlString: String) -> URL? {
+        guard let fileURL = diskCacheURL(for: urlString),
+              FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+        return fileURL
+    }
+    
     /// Fetches an image (with authentication) and saves it to local disk cache,
     /// returning the file:// URL so WebKit/Cocoa HTML parsers can render it natively from disk.
     func fetchLocalImageURL(from urlString: String) async -> URL? {

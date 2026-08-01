@@ -212,7 +212,8 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         textView.isSelectable = true
         textView.drawsBackground = false
         textView.textColor = .labelColor
-        textView.textContainerInset = NSSize(width: 24, height: 10)
+        textView.textContainerInset = NSSize(width: 0, height: 10)
+        textView.textContainer?.lineFragmentPadding = 0
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
@@ -498,6 +499,33 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             }
         }
         
+        if hasHTML {
+            // Sanitize remote image URLs in processedText to prevent NSAttributedString (WebKit)
+            // from issuing synchronous blocking HTTP network requests on the main UI thread.
+            let remoteImgPattern = "(<img[^>]+src=[\"'])(https?://[^\"']+)([\"'])"
+            if let regex = try? NSRegularExpression(pattern: remoteImgPattern, options: .caseInsensitive) {
+                let matches = regex.matches(in: processedText, options: [], range: NSRange(location: 0, length: processedText.utf16.count))
+                for match in matches.reversed() {
+                    guard let fullRange = Range(match.range, in: processedText),
+                          let prefixRange = Range(match.range(at: 1), in: processedText),
+                          let urlRange = Range(match.range(at: 2), in: processedText),
+                          let suffixRange = Range(match.range(at: 3), in: processedText) else { continue }
+                    
+                    let originalURLStr = String(processedText[urlRange])
+                    let prefix = String(processedText[prefixRange])
+                    let suffix = String(processedText[suffixRange])
+                    
+                    var replacementSrc = "about:blank"
+                    if let localURL = GitHubAPI.shared.getCachedLocalImageURL(from: originalURLStr) {
+                        replacementSrc = localURL.absoluteString
+                    }
+                    
+                    let replacement = "\(prefix)\(replacementSrc)\(suffix)"
+                    processedText.replaceSubrange(fullRange, with: replacement)
+                }
+            }
+        }
+        
         if hasHTML, let htmlData = processedText.data(using: .utf8) {
             let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
                 .documentType: NSAttributedString.DocumentType.html,
@@ -653,8 +681,24 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
 }
 
 /// Custom NSTextView subclass that allows clicking on links and showing pointing-hand cursor over links,
-/// while keeping standard arrow cursor (no text selection I-beam line) over plain text.
+/// while keeping standard arrow cursor (no text selection I-beam line) over plain text,
+/// and providing asymmetrical left/right insets to achieve perfect text symmetry while keeping
+/// the vertical scrollbar flush against the right window edge.
 class ReleaseNotesTextView: NSTextView {
+    private let customLeftInset: CGFloat = 20.0
+    private let customRightInset: CGFloat = 5.0
+    
+    override var textContainerOrigin: NSPoint {
+        return NSPoint(x: customLeftInset, y: textContainerInset.height)
+    }
+    
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        if let container = textContainer {
+            container.containerSize = NSSize(width: max(0, newSize.width - customLeftInset - customRightInset), height: .greatestFiniteMagnitude)
+        }
+    }
+    
     override func resetCursorRects() {
         discardCursorRects()
         addCursorRect(bounds, cursor: .arrow)

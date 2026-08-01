@@ -5,6 +5,20 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-08-01
+
+### Added
+- **Last Refresh Tooltip**: Added a localized tooltip to the repository count label in the footer showing the date and time of the last repository refresh across all 11 supported languages.
+- **Persistent Refresh Timestamp**: Persisted `lastRefreshTime` in `UserDefaults` so the last update date and time is retained across application restarts.
+
+### Fixed
+- **Synchronous Network UI Freeze**: Resolved a 60+ second main-thread freeze when opening release notes containing remote images (`<img src="https://...">`) by sanitizing remote image URLs before `NSAttributedString` creation, reducing render time from 63.1s to 0.06s.
+- **HTML Comments Stripping**: Fixed blank release notes rendering for releases containing unclosed or inline HTML comments (e.g. Sparkle signatures `<!-- sparkle-sign-warning:...-->`).
+- **Inline HTML Tags Rendering**: Preserved valid inline HTML tags (such as `<p align="center">`) so raw HTML element tags render as formatted HTML rather than escaped plain text entities.
+
+### Changed
+- **Release Notes Layout Symmetry**: Re-aligned release notes body text with custom asymmetrical text insets, achieving 20 pt left/right text margins while keeping the vertical scrollbar flush against the right window edge.
+
 ## [2.2.0] - 2026-07-28
 
 ### Added

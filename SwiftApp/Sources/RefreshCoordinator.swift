@@ -7,7 +7,14 @@ class RefreshCoordinator {
     
     weak var delegate: AppDelegate?
     
-    var lastRefreshTime: Date = Date.distantPast
+    var lastRefreshTime: Date {
+        get {
+            return UserDefaults.standard.object(forKey: "LastRefreshDate") as? Date ?? Date.distantPast
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "LastRefreshDate")
+        }
+    }
     var countdownTimer: Timer?
     var isRefreshing = false
     

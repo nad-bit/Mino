@@ -117,6 +117,7 @@ Accessible via the **Preferences** menu item:
 | **New Release Indicator** | Toggle the ● freshness dot (Columns/Cards) or dynamic pill color (Tags) and configure threshold (1-30 days) |
 | **Show Owner Name** | Toggle `owner/` prefix in repo names |
 | **Refresh Interval** | Slider: 1-24 hours between auto-checks |
+| **Global Hotkey** | Set global hotkey to open/close the menu |
 | **Start at Login** | Toggle macOS LaunchAgent |
 
 ### System Permissions
@@ -155,6 +156,7 @@ Use these shortcuts while the main menu is open:
 | `CMD + N` | Open new "Multi-Hunt" window |
 | `CMD + F` | Focus Search field |
 | `CMD + I` | Show Release Notes for selected repo |
+| `CMD + S` | Mark or unmark selected repo as Starred |
 | `CMD + Z` | Undo last repository deletion |
 | `CMD + B` | Install or update the focused repo |
 | `CMD + Q` | Quit Mino |

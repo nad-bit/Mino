@@ -97,7 +97,7 @@ class FooterMenuItemView: NSView {
         repoCountLabel.font = .systemFont(ofSize: baseFontSize - 2)
     }
     
-    /// Refreshes the repo count label from the current config.
+    /// Refreshes the repo count label from the current config and updates the last refresh tooltip.
     func updateRepoCount(filteredCount: Int? = nil, totalCount: Int? = nil) {
         if let filtered = filteredCount, let total = totalCount {
             let template = Translations.get("repoCount")
@@ -109,6 +109,18 @@ class FooterMenuItemView: NSView {
             } else {
                 repoCountLabel.stringValue = Translations.get("repoCount").format(with: ["count": "\(count)"])
             }
+        }
+        updateLastRefreshTooltip()
+    }
+    
+    /// Updates the tooltip of the repo count label with the last refresh date & time.
+    func updateLastRefreshTooltip(lastRefreshDate: Date? = nil) {
+        let date = lastRefreshDate ?? appDelegate.refreshCoordinator.lastRefreshTime
+        if date == Date.distantPast {
+            repoCountLabel.toolTip = Translations.get("lastUpdateNever")
+        } else {
+            let timeStr = DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
+            repoCountLabel.toolTip = Translations.get("lastUpdate").format(with: ["time": timeStr])
         }
     }
     
@@ -124,6 +136,7 @@ class FooterMenuItemView: NSView {
         }
         refreshBtn.baseColor = isRefreshing ? .tertiaryLabelColor : .secondaryLabelColor
         refreshBtn.needsDisplay = true
+        updateLastRefreshTooltip()
     }
     
     @objc private func quitClicked() {

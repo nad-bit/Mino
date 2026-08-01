@@ -74,6 +74,13 @@ class Utils {
     static let appIconColor: NSColor = AppPersonality.color
     
     static func convertMarkdownToHTML(_ markdown: String) -> String {
+        // Strip HTML comments (such as Sparkle signature warnings) to prevent unclosed comments from breaking HTML parsing
+        var cleanedMarkdown = markdown
+        let commentPattern = "<!--[\\s\\S]*?-->"
+        if let regex = try? NSRegularExpression(pattern: commentPattern) {
+            cleanedMarkdown = regex.stringByReplacingMatches(in: cleanedMarkdown, options: [], range: NSRange(location: 0, length: cleanedMarkdown.utf16.count), withTemplate: "")
+        }
+        
         // CSS styles for rendering elements with tight, compact spacing
         let css = """
         <style>
@@ -88,7 +95,7 @@ class Utils {
         """
         
         var body = css
-        let lines = markdown.components(separatedBy: .newlines)
+        let lines = cleanedMarkdown.components(separatedBy: .newlines)
         var inCodeBlock = false
         var inList = false
         var inOrderedList = false
@@ -242,7 +249,7 @@ class Utils {
                 continue
             }
             
-            // Preserve raw HTML tags (e.g. <img src="..." />, <div align="center">, etc.)
+            // Preserve raw HTML tags (e.g. <img src="..." />, <div align="center">, <p align="center">, etc.)
             if trimmedLine.hasPrefix("<") {
                 closeListIfNeeded()
                 closeTableIfNeeded()
@@ -285,7 +292,7 @@ class Utils {
     }
     
     private static func processInlineMarkdown(_ text: String) -> String {
-        var result = text.escapingHTML()
+        var result = text
         
         // Convert links: [text](url) -> <a href="url">text</a>
         let linkPattern = "\\[([^\\]]*?)\\]\\(([^\\)]*?)\\)"
@@ -316,7 +323,7 @@ class Utils {
         }
         
         // Convert italic: *text* -> <em>text</em>
-        let italicPattern = "\\*(.*?)\\*"
+        let italicPattern = "(?<!\\*)\\*(?!\\*)(.*?)(?<!\\*)\\*(?!\\*)"
         if let regex = try? NSRegularExpression(pattern: italicPattern) {
             let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
             for match in matches.reversed() {
@@ -335,7 +342,7 @@ class Utils {
             for match in matches.reversed() {
                 guard let textRange = Range(match.range(at: 1), in: result),
                       let fullRange = Range(match.range(at: 0), in: result) else { continue }
-                let codeText = String(result[textRange])
+                let codeText = String(result[textRange]).escapingHTML()
                 let replacement = "<code>\(codeText)</code>"
                 result.replaceSubrange(fullRange, with: replacement)
             }
