@@ -5,6 +5,28 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-08-03
+
+### Added
+- **In-App Release Asset Downloads**: Integrated native downloading of release binaries (DMGs, PKGs, source zip/tar.gz archives) directly within the application without opening a browser.
+- **Segmented Control Navigation**: Replaced static release version pill with a 2-segment `NSSegmentedControl` ("Notas" / "Archivos"), granting 100% full height to both release notes and asset downloads.
+- **HUDPanel Download Progress**: Added real-time progress HUD with live download speed (`MB/s`), file size, percentage bar, and auto-dismiss completion state.
+- **Automatic Duplicate Filename Handling**: Appends macOS-style numerical suffixes (`filename (1).ext`) when downloading to prevent overwriting existing files in the download directory.
+- **SF Symbol HUD Icons**: Added contextual SF Symbols (`shippingbox`, `arrow.down.circle`, `checkmark.circle.fill`, `exclamationmark.triangle.fill`) across Homebrew installation and download HUD states.
+
+### Fixed
+- **Large Asset Download Timeouts**: Resolved network timeout errors on large file downloads by isolating download tasks into a dedicated `URLSession` with 1-hour resource timeouts.
+- **Streamed Progress Bar Reporting**: Replaced `URLSession.download(for:)` with `URLSession.bytes(for:)` chunk streaming, restoring real-time progress updates.
+- **HUDPanel Text Layout & Multi-line Wrapping**: Fixed element clipping by enabling multi-line text wrapping for long Homebrew messages and middle-truncation for long filenames.
+- **Stable Progress Text Formatting**: Formatted byte counts with fixed 2-decimal precision (`String(format: "%.2f MB")`) and 150ms UI update throttling to eliminate text width jumps.
+- **Full-Width Asset Container Alignment**: Pinned asset stack container width to the scroll view content view, aligning file size labels and download icons flush to the right window margin.
+- **Right-Edge Scrollbar Alignment**: Pinned asset scroll view directly to window bounds, placing vertical scrollbars flush against the right window edge matching release notes.
+- **Stationary Mouse Hover Highlights**: Fixed sticky row highlights during asset list scrolling by observing scroll bounds changes and validating cursor coordinates.
+- **NSTextView Convergence Warnings & Auto Layout Crashes**: Eliminated `NSTextView` layout convergence warnings and Auto Layout view hierarchy crash exceptions during popover initialization.
+
+### Changed
+- **Configurable Download Location**: Defaults to `~/Desktop` and configurable via `download_path` in `repos.json` / `AppConfig`.
+
 ## [2.2.1] - 2026-08-01
 
 ### Added

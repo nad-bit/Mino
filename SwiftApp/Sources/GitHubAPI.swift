@@ -206,12 +206,37 @@ class GitHubAPI {
         let version = json?["tag_name"] as? String
         let date = json?["published_at"] as? String
         let body = json?["body"] as? String
+        let assets = json != nil ? GitHubAPI.parseReleaseAssets(from: json!, repo: repo, tag: version) : nil
         
         if version != nil && date != nil {
-            return RepoInfo(name: repo, version: version, date: date, body: body)
+            return RepoInfo(name: repo, version: version, date: date, body: body, assets: assets)
         } else {
             throw URLError(.cannotParseResponse)
         }
+    }
+    
+    static func parseReleaseAssets(from json: [String: Any], repo: String, tag: String?) -> [ReleaseAsset] {
+        var result: [ReleaseAsset] = []
+        
+        // 1. User-uploaded release assets
+        if let assetsArray = json["assets"] as? [[String: Any]] {
+            for assetDict in assetsArray {
+                guard let name = assetDict["name"] as? String,
+                      let downloadURL = assetDict["browser_download_url"] as? String else { continue }
+                let size = assetDict["size"] as? Int64
+                result.append(ReleaseAsset(name: name, size: size, downloadURL: downloadURL, isSourceArchive: false))
+            }
+        }
+        
+        // 2. GitHub auto-generated Source Code archives (zip & tar.gz)
+        let tagOrHead = tag ?? json["tag_name"] as? String ?? "HEAD"
+        let zipURL = json["zipball_url"] as? String ?? "https://github.com/\(repo)/archive/refs/tags/\(tagOrHead).zip"
+        let tarURL = json["tarball_url"] as? String ?? "https://github.com/\(repo)/archive/refs/tags/\(tagOrHead).tar.gz"
+        
+        result.append(ReleaseAsset(name: "Source code (zip)", size: nil, downloadURL: zipURL, isSourceArchive: true))
+        result.append(ReleaseAsset(name: "Source code (tar.gz)", size: nil, downloadURL: tarURL, isSourceArchive: true))
+        
+        return result
     }
     
     private func fetchCommits(repo: String, headers: [String: String]) async throws -> RepoInfo {
@@ -383,6 +408,129 @@ class GitHubAPI {
         }
         
         return nil
+    }
+    
+    /// Fetches release body AND parsed release assets in a single network request.
+    func fetchReleaseDetails(repo: String, version: String? = nil) async -> (body: String?, assets: [ReleaseAsset]?) {
+        var headers: [String: String] = [
+            "Accept": "application/vnd.github.v3+json"
+        ]
+        if let token = ConfigManager.shared.token {
+            headers["Authorization"] = "Bearer \(token)"
+        }
+        
+        if let tag = version {
+            let endpoint = "\(Constants.githubAPIBaseURL)/repos/\(repo)/releases/tags/\(tag)"
+            if let url = URL(string: endpoint) {
+                var request = URLRequest(url: url)
+                headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+                
+                if let (data, response) = try? await session.data(for: request),
+                   let httpResponse = response as? HTTPURLResponse {
+                    
+                    if httpResponse.statusCode == 403 {
+                        return (Translations.get("apiRateLimit"), nil)
+                    } else if httpResponse.statusCode == 429 {
+                        return (Translations.get("apiTooManyRequests"), nil)
+                    }
+                    
+                    if httpResponse.statusCode == 200,
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        let assets = GitHubAPI.parseReleaseAssets(from: json, repo: repo, tag: tag)
+                        let rawBody = json["body_html"] as? String ?? json["body"] as? String
+                        if let body = rawBody, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            return (body, assets)
+                        }
+                        
+                        if let tagName = json["tag_name"] as? String {
+                            let msg = try? await fetchTagCommitMessage(repo: repo, tag: tagName, headers: headers)
+                            return (msg, assets)
+                        }
+                        return (nil, assets)
+                    }
+                }
+            }
+        }
+        
+        let fallbackBody = await fetchReleaseBody(repo: repo, version: version)
+        return (fallbackBody, nil)
+    }
+    
+    /// Downloads a release asset to destinationURL reporting progress callbacks (bytesReceived, totalBytes).
+    func downloadAsset(urlString: String, destinationURL: URL, progress: @escaping (Int64, Int64) -> Void) async throws {
+        guard let url = URL(string: urlString) else {
+            throw URLError(.badURL)
+        }
+        
+        var request = URLRequest(url: url)
+        request.setValue(Constants.userAgent, forHTTPHeaderField: "User-Agent")
+        
+        if let host = url.host?.lowercased(),
+           (host.contains("github.com") || host.contains("githubusercontent.com")),
+           let token = ConfigManager.shared.token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        // Dedicated session with generous timeouts for large file downloads
+        let dlConfig = URLSessionConfiguration.default
+        dlConfig.timeoutIntervalForRequest = 300
+        dlConfig.timeoutIntervalForResource = 3600
+        dlConfig.httpAdditionalHeaders = ["User-Agent": Constants.userAgent]
+        let dlSession = URLSession(configuration: dlConfig)
+        defer { dlSession.finishTasksAndInvalidate() }
+        
+        let (bytes, response) = try await dlSession.bytes(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 500
+            throw NSError(domain: "DownloadError", code: code, userInfo: [NSLocalizedDescriptionKey: "HTTP \(code)"])
+        }
+        
+        let totalBytes = httpResponse.expectedContentLength // -1 if unknown
+        
+        let fileManager = FileManager.default
+        let parentDir = destinationURL.deletingLastPathComponent()
+        try? fileManager.createDirectory(at: parentDir, withIntermediateDirectories: true)
+        
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+        
+        let tempURL = parentDir.appendingPathComponent(".download_\(UUID().uuidString).tmp")
+        fileManager.createFile(atPath: tempURL.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: tempURL)
+        
+        defer {
+            try? handle.close()
+            if fileManager.fileExists(atPath: tempURL.path) {
+                try? fileManager.removeItem(at: tempURL)
+            }
+        }
+        
+        var receivedBytes: Int64 = 0
+        let bufferSize = 65_536
+        var buffer = Data()
+        buffer.reserveCapacity(bufferSize)
+        
+        for try await byte in bytes {
+            buffer.append(byte)
+            if buffer.count >= bufferSize {
+                handle.write(buffer)
+                receivedBytes += Int64(buffer.count)
+                buffer.removeAll(keepingCapacity: true)
+                progress(receivedBytes, totalBytes)
+            }
+        }
+        
+        // Flush remaining bytes
+        if !buffer.isEmpty {
+            handle.write(buffer)
+            receivedBytes += Int64(buffer.count)
+        }
+        
+        try handle.close()
+        progress(receivedBytes, totalBytes > 0 ? totalBytes : receivedBytes)
+        
+        try fileManager.moveItem(at: tempURL, to: destinationURL)
     }
     
     func validateToken(_ token: String) async -> Bool {

@@ -40,6 +40,14 @@ class ConfigManager {
             saveConfig()
         }
         
+        if self.config.downloadPath == nil {
+            self.config.downloadPath = "~/Desktop"
+            saveConfig()
+        } else {
+            // Save config to ensure download_path is persisted to disk if missing in file
+            saveConfig()
+        }
+        
         // Load token from Keychain
         self.token = getTokenFromKeychain()
     }

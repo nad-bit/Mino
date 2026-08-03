@@ -1,11 +1,19 @@
 import Foundation
 
+struct ReleaseAsset: Codable, Equatable {
+    var name: String
+    var size: Int64?
+    var downloadURL: String
+    var isSourceArchive: Bool
+}
+
 struct RepoInfo: Codable, Equatable {
     var name: String
     var version: String?
     var date: String?
     var body: String?
     var error: String?
+    var assets: [ReleaseAsset]?
 }
 
 struct RepoConfig: Codable, Equatable {
@@ -27,6 +35,7 @@ struct AppConfig: Codable {
     var newIndicatorDays: Int?
     var menuLayout: String? // "columns" | "cards" | "tags"
     var menuFontSize: CGFloat?
+    var downloadPath: String?
     
     enum CodingKeys: String, CodingKey {
         case repos
@@ -37,6 +46,7 @@ struct AppConfig: Codable {
         case newIndicatorDays = "new_indicator_days"
         case menuLayout = "menu_layout"
         case menuFontSize = "menu_font_size"
+        case downloadPath = "download_path"
     }
     
     // Legacy key for migration from is_compact_mode
@@ -54,6 +64,7 @@ struct AppConfig: Codable {
         newIndicatorDays = try container.decodeIfPresent(Int.self, forKey: .newIndicatorDays)
         menuLayout = try container.decodeIfPresent(String.self, forKey: .menuLayout)
         menuFontSize = try container.decodeIfPresent(CGFloat.self, forKey: .menuFontSize)
+        downloadPath = (try container.decodeIfPresent(String.self, forKey: .downloadPath)) ?? "~/Desktop"
         
         // Migration: convert legacy is_compact_mode → menuFontSize
         if menuFontSize == nil {
@@ -93,5 +104,6 @@ struct AppConfig: Codable {
         self.newIndicatorDays = 7
         self.menuLayout = "cards"
         self.menuFontSize = Constants.menuBaseFontSize
+        self.downloadPath = "~/Desktop"
     }
 }

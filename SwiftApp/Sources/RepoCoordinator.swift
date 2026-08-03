@@ -138,14 +138,16 @@ class RepoCoordinator {
         popover.contentSize = vc.preferredContentSize
         popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minX)
         
-        // Fetch the release body asynchronously ONLY if not already cached in info
+        // Fetch the release body & assets asynchronously ONLY if not already cached in info
         if info.body == nil {
             Task {
-                let body = await GitHubAPI.shared.fetchReleaseBody(repo: repoName, version: info.version)
+                let details = await GitHubAPI.shared.fetchReleaseDetails(repo: repoName, version: info.version)
                 await MainActor.run {
                     guard popover.isShown, vc.currentRepoName == repoName else { return }
                     var updatedInfo = info
-                    updatedInfo.body = body ?? ""
+                    updatedInfo.body = details.body ?? ""
+                    updatedInfo.assets = details.assets
+                    delegate.repoCache[repoName] = updatedInfo
                     vc.loadNotes(for: updatedInfo)
                 }
             }
@@ -157,8 +159,9 @@ class RepoCoordinator {
     @objc func handleInstallBrewCask(for caskName: String) {
         guard let delegate = delegate else { return }
         
-        // Show indefinite persistent installing notification while Brew works
-        HUDPanel.shared.show(title: Translations.get("installingTitle"), subtitle: Translations.get("installingMsg").format(with: ["cask_name": caskName]), duration: nil)
+        // Show installing notification with package icon while Brew works
+        let brewImage = NSImage(systemSymbolName: "shippingbox", accessibilityDescription: nil)
+        HUDPanel.shared.show(title: Translations.get("installingTitle"), subtitle: Translations.get("installingMsg").format(with: ["cask_name": caskName]), image: brewImage, duration: nil)
         
         Task { [weak delegate] in
             guard let delegate = delegate else { return }
@@ -166,7 +169,10 @@ class RepoCoordinator {
             
             if result.success {
                 let msgId = result.message == "alreadyInstalled" ? "alreadyInstalled" : "installComplete"
-                delegate.sendNotification(title: "Mino", subtitle: Translations.get(msgId).format(with: ["cask_name": caskName]))
+                let subtitle = Translations.get(msgId).format(with: ["cask_name": caskName])
+                await MainActor.run {
+                    HUDPanel.shared.showCompletion(title: Translations.get("installingTitle"), subtitle: subtitle, isSuccess: true)
+                }
                 
                 // Reveal in Finder
                 self.revealCaskInFinder(caskName: caskName)
@@ -190,12 +196,14 @@ class RepoCoordinator {
                                     lowerMsg.contains("returned error: 503")
                 
                 if isDownloadError {
-                    delegate.sendNotification(title: Translations.get("brewDownloadErrorTitle"), 
-                                            subtitle: Translations.get("brewDownloadErrorMsg"))
+                    await MainActor.run {
+                        HUDPanel.shared.showCompletion(title: Translations.get("brewDownloadErrorTitle"), subtitle: Translations.get("brewDownloadErrorMsg"), isSuccess: false)
+                    }
                 } else {
-                    delegate.sendNotification(title: Translations.get("error"), 
-                                            subtitle: Translations.get("installFailed").format(with: ["cask_name": caskName]), 
-                                            message: String(result.message.prefix(100)))
+                    let subtitle = Translations.get("installFailed").format(with: ["cask_name": caskName])
+                    await MainActor.run {
+                        HUDPanel.shared.showCompletion(title: Translations.get("error"), subtitle: subtitle, isSuccess: false)
+                    }
                 }
             }
         }

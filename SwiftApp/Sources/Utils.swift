@@ -73,17 +73,24 @@ class Utils {
     
     static let appIconColor: NSColor = AppPersonality.color
     
+    private static let commentRegex = try? NSRegularExpression(pattern: "<!--[\\s\\S]*?-->")
+    private static let orderedListRegex = try? NSRegularExpression(pattern: "^\\d+\\.\\s+(.*)")
+    private static let linkRegex = try? NSRegularExpression(pattern: "\\[([^\\]]*?)\\]\\(([^\\)]*?)\\)")
+    private static let boldRegex = try? NSRegularExpression(pattern: "\\*\\*(.*?)\\*\\*")
+    private static let italicRegex = try? NSRegularExpression(pattern: "(?<!\\*)\\*(?!\\*)(.*?)(?<!\\*)\\*(?!\\*)")
+    private static let inlineCodeRegex = try? NSRegularExpression(pattern: "`(.*?)`")
+
     static func convertMarkdownToHTML(_ markdown: String) -> String {
         // Strip HTML comments (such as Sparkle signature warnings) to prevent unclosed comments from breaking HTML parsing
         var cleanedMarkdown = markdown
-        let commentPattern = "<!--[\\s\\S]*?-->"
-        if let regex = try? NSRegularExpression(pattern: commentPattern) {
+        if let regex = commentRegex {
             cleanedMarkdown = regex.stringByReplacingMatches(in: cleanedMarkdown, options: [], range: NSRange(location: 0, length: cleanedMarkdown.utf16.count), withTemplate: "")
         }
         
         // CSS styles for rendering elements with tight, compact spacing
         let css = """
         <style>
+          body { margin: 0; padding: 0; }
           h1, h2, h3, h4, h5, h6 { margin-top: 12px; margin-bottom: 3px; font-weight: bold; }
           ul, ol { margin-top: 2px; margin-bottom: 6px; padding-left: 18px; }
           li { margin-top: 1px; margin-bottom: 2px; }
@@ -233,8 +240,7 @@ class Utils {
             }
             
             // Ordered Lists
-            let orderedListPattern = "^\\d+\\.\\s+(.*)"
-            if let regex = try? NSRegularExpression(pattern: orderedListPattern),
+            if let regex = orderedListRegex,
                let match = regex.firstMatch(in: trimmedLine, options: [], range: NSRange(location: 0, length: trimmedLine.utf16.count)) {
                 closeTableIfNeeded()
                 if !inOrderedList {
@@ -295,8 +301,7 @@ class Utils {
         var result = text
         
         // Convert links: [text](url) -> <a href="url">text</a>
-        let linkPattern = "\\[([^\\]]*?)\\]\\(([^\\)]*?)\\)"
-        if let regex = try? NSRegularExpression(pattern: linkPattern) {
+        if let regex = linkRegex {
             let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
             for match in matches.reversed() {
                 guard let textRange = Range(match.range(at: 1), in: result),
@@ -310,8 +315,7 @@ class Utils {
         }
         
         // Convert bold: **text** -> <strong>text</strong>
-        let boldPattern = "\\*\\*(.*?)\\*\\*"
-        if let regex = try? NSRegularExpression(pattern: boldPattern) {
+        if let regex = boldRegex {
             let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
             for match in matches.reversed() {
                 guard let textRange = Range(match.range(at: 1), in: result),
@@ -323,8 +327,7 @@ class Utils {
         }
         
         // Convert italic: *text* -> <em>text</em>
-        let italicPattern = "(?<!\\*)\\*(?!\\*)(.*?)(?<!\\*)\\*(?!\\*)"
-        if let regex = try? NSRegularExpression(pattern: italicPattern) {
+        if let regex = italicRegex {
             let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
             for match in matches.reversed() {
                 guard let textRange = Range(match.range(at: 1), in: result),
@@ -336,8 +339,7 @@ class Utils {
         }
         
         // Convert inline code: `code` -> <code>code</code>
-        let codePattern = "`(.*?)`"
-        if let regex = try? NSRegularExpression(pattern: codePattern) {
+        if let regex = inlineCodeRegex {
             let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
             for match in matches.reversed() {
                 guard let textRange = Range(match.range(at: 1), in: result),

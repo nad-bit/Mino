@@ -12,7 +12,7 @@ class ResponsiveImageAttachment: NSTextAttachment {
         
         // Use textContainer width, fallback to the line fragment width
         let containerWidth = textContainer?.size.width ?? lineFrag.width
-        let maxWidth = max(containerWidth - 10, 0)
+        let maxWidth = max(containerWidth, 0)
         
         if maxWidth > 0 && baseSize.width > maxWidth {
             let ratio = maxWidth / baseSize.width
@@ -70,6 +70,62 @@ class ClickableTagPill: ClickableTextField {
         }
     }
 }
+class ClickableAssetRow: NSView {
+    var onClick: (() -> Void)?
+    private var trackingArea: NSTrackingArea?
+    
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 8
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+        layer?.cornerRadius = 8
+    }
+    
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let old = trackingArea { removeTrackingArea(old) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+    
+    override func mouseEntered(with event: NSEvent) {
+        updateHoverState()
+    }
+    
+    override func mouseExited(with event: NSEvent) {
+        setHighlighted(false)
+    }
+    
+    override func mouseDown(with event: NSEvent) {
+        onClick?()
+    }
+    
+    func updateHoverState() {
+        guard let window = window else {
+            setHighlighted(false)
+            return
+        }
+        let mouseLocation = window.mouseLocationOutsideOfEventStream
+        let localPoint = convert(mouseLocation, from: nil)
+        let isHover = bounds.contains(localPoint)
+        setHighlighted(isHover)
+    }
+    
+    private func setHighlighted(_ highlight: Bool) {
+        layer?.backgroundColor = highlight ? NSColor.textColor.withAlphaComponent(0.08).cgColor : nil
+    }
+}
+
 class ReleaseNotesView: NSView {
     override var acceptsFirstResponder: Bool { true }
 }
@@ -78,10 +134,13 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
     private var textView: NSTextView!
     private var titleLabel: NSTextField!
     private var descriptionLabel: NSTextField!
-    private var versionLabel: ClickableTextField!
+    private var modeSegmentedControl: NSSegmentedControl!
     private var tagsFooterView: WrappingTagsView!
     private var headerBox: NSBox!
     private var footerBox: NSBox!
+    private var assetsBox: NSBox!
+    private var assetsContainerView: NSStackView!
+    private var assetsScrollView: NSScrollView!
     private(set) var currentRepoName: String?
     private var repoReleasesURL: URL?
     
@@ -170,28 +229,12 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         mainStack.addArrangedSubview(headerBox)
         headerBox.widthAnchor.constraint(equalTo: mainStack.widthAnchor, constant: -40).isActive = true
         
-        // --- Version Tag Pill (outside the header box) ---
-        versionLabel = ClickableTextField(labelWithString: "")
-        versionLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        versionLabel.textColor = .white
-        versionLabel.backgroundColor = NSColor.controlAccentColor
-        versionLabel.drawsBackground = true
-        versionLabel.isBordered = false
-        versionLabel.alignment = .center
-        versionLabel.wantsLayer = true
-        versionLabel.layer?.cornerRadius = 10
-        versionLabel.layer?.masksToBounds = true
-        versionLabel.translatesAutoresizingMaskIntoConstraints = false
-        mainStack.addArrangedSubview(versionLabel)
-        
-        let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(versionPillClicked))
-        versionLabel.addGestureRecognizer(clickGesture)
-        versionLabel.toolTip = Translations.get("openReleases")
-        
-        versionLabel.onHover = { [weak self] (isHovered: Bool) in
-            guard let self = self else { return }
-            self.versionLabel.backgroundColor = isHovered ? NSColor.controlAccentColor.withAlphaComponent(0.8) : NSColor.controlAccentColor
-        }
+        // --- Segmented Navigation Control (Notas / Archivos) ---
+        modeSegmentedControl = NSSegmentedControl(labels: [Translations.get("tabNotes"), Translations.get("tabAssets")], trackingMode: .selectOne, target: self, action: #selector(segmentChanged(_:)))
+        modeSegmentedControl.selectedSegment = 0
+        modeSegmentedControl.controlSize = .regular
+        modeSegmentedControl.translatesAutoresizingMaskIntoConstraints = false
+        mainStack.addArrangedSubview(modeSegmentedControl)
         
         // --- 2. Body (ScrollView + TextView) ---
         let scrollView = NSScrollView()
@@ -212,14 +255,41 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         textView.isSelectable = true
         textView.drawsBackground = false
         textView.textColor = .labelColor
-        textView.textContainerInset = NSSize(width: 0, height: 10)
+        textView.textContainerInset = NSSize(width: 20, height: 10)
         textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
         scrollView.documentView = textView
         
-        // --- 3. Footer Card (Tags inside box) ---
+        // --- 3. Assets Body (Full height list of release assets, right-edge scrollbar) ---
+        assetsContainerView = NSStackView()
+        assetsContainerView.orientation = .vertical
+        assetsContainerView.alignment = .centerX
+        assetsContainerView.spacing = 6
+        assetsContainerView.edgeInsets = NSEdgeInsets(top: 8, left: 20, bottom: 8, right: 20)
+        assetsContainerView.translatesAutoresizingMaskIntoConstraints = false
+        
+        assetsScrollView = NSScrollView()
+        assetsScrollView.translatesAutoresizingMaskIntoConstraints = false
+        assetsScrollView.hasVerticalScroller = true
+        assetsScrollView.borderType = .noBorder
+        assetsScrollView.drawsBackground = false
+        assetsScrollView.documentView = assetsContainerView
+        
+        mainStack.addArrangedSubview(assetsScrollView)
+        assetsScrollView.widthAnchor.constraint(equalTo: mainStack.widthAnchor).isActive = true
+        assetsContainerView.widthAnchor.constraint(equalTo: assetsScrollView.contentView.widthAnchor).isActive = true
+        assetsScrollView.setContentHuggingPriority(.defaultLow, for: .vertical)
+        assetsScrollView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        assetsScrollView.isHidden = true
+        
+        // Listen to scroll bounds changes to fix stationary mouse hover highlight
+        assetsScrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(assetsScrollViewDidScroll(_:)), name: NSView.boundsDidChangeNotification, object: assetsScrollView.contentView)
+        
+        // --- 4. Footer Card (Tags inside box) ---
         tagsFooterView = WrappingTagsView()
         tagsFooterView.translatesAutoresizingMaskIntoConstraints = false
         
@@ -267,17 +337,34 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         NSWorkspace.shared.open(url)
     }
     
-    @objc private func versionPillClicked() {
-        openReleases()
+    @objc private func segmentChanged(_ sender: NSSegmentedControl) {
+        let showNotes = sender.selectedSegment == 0
+        if let scrollView = textView.enclosingScrollView {
+            scrollView.isHidden = !showNotes
+        }
+        assetsScrollView.isHidden = showNotes
     }
     
-    func isPointInVersionPill(_ pointInWindow: NSPoint) -> Bool {
-        let pointInView = self.view.convert(pointInWindow, from: nil)
-        return versionLabel.frame.contains(pointInView)
+    @objc private func assetsScrollViewDidScroll(_ notification: Notification) {
+        for view in assetsContainerView.arrangedSubviews {
+            if let row = view as? ClickableAssetRow {
+                row.updateHoverState()
+            }
+        }
     }
     
     func loadNotes(for info: RepoInfo) {
         self.currentRepoName = info.name
+        
+        // Reset navigation segment to 0 ("Notas")
+        modeSegmentedControl.selectedSegment = 0
+        if let scrollView = textView.enclosingScrollView {
+            scrollView.isHidden = false
+        }
+        assetsScrollView.isHidden = true
+        
+        let hasAssets = info.assets != nil && !info.assets!.isEmpty
+        modeSegmentedControl.setEnabled(hasAssets, forSegment: 1)
         
         // Release previous content's image attachments and WebKit buffers
         // before loading new content to prevent accumulation across repos.
@@ -322,13 +409,8 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             descriptionLabel.isHidden = true
         }
         
-        // --- METADATA PILL ---
         let releasesURLString = "https://github.com/\(info.name)/releases"
         repoReleasesURL = URL(string: releasesURLString)
-        let versionText = "  \(info.version ?? "N/A")  "
-        versionLabel.stringValue = versionText
-        versionLabel.font = .systemFont(ofSize: 12 + offset, weight: .medium)
-        versionLabel.isHidden = (info.version == nil || info.version == "N/A")
         
         // --- FOOTER TAGS (Omni-Search Visuals) ---
         if let configRepo = ConfigManager.shared.config.repos.first(where: { $0.name == info.name }), let tags = configRepo.tags, !tags.isEmpty {
@@ -340,6 +422,9 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             tagsFooterView.isHidden = true
             footerBox.isHidden = true
         }
+        
+        // --- ASSETS CARD ---
+        populateAssetsCard(assets: info.assets)
         
         // --- TEXT BODY (Markdown & HTML) ---
         let isLoading = info.body == nil && info.error == nil
@@ -353,9 +438,6 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             rawBody = Translations.get("noNotes")
         }
         rawBody = rawBody.replacingOccurrences(of: "\r\n", with: "\n")
-        
-        // Render initial body (immediate text display, images may be missing)
-        renderNotesBody(bodyText: rawBody, info: info, preloadedImages: [:])
         
         // Extract all image URLs (Markdown ![alt](url) and HTML <img>)
         // We collect them IN ORDER so the index matches the attachment order
@@ -550,6 +632,9 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                     bodyStyle.lineSpacing = 3.0
                     bodyStyle.paragraphSpacing = 6.0
                     bodyStyle.paragraphSpacingBefore = 2.0
+                    bodyStyle.headIndent = 0
+                    bodyStyle.firstLineHeadIndent = 0
+                    bodyStyle.tailIndent = 0
                     bodyStyle.textLists = []
                     htmlAttrStr.addAttribute(.paragraphStyle, value: bodyStyle, range: range)
                 }
@@ -649,6 +734,220 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         textView.scrollToBeginningOfDocument(nil)
     }
     
+    // MARK: - Assets Card & Downloading
+    
+    private func getDownloadDirectory() -> URL {
+        if let customPath = ConfigManager.shared.config.downloadPath, !customPath.isEmpty {
+            let expanded = (customPath as NSString).expandingTildeInPath
+            let url = URL(fileURLWithPath: expanded)
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                return url
+            }
+        }
+        return FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+    }
+    
+    private func populateAssetsCard(assets: [ReleaseAsset]?) {
+        assetsContainerView.subviews.forEach { $0.removeFromSuperview() }
+        
+        guard let assets = assets, !assets.isEmpty else {
+            return
+        }
+        
+        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        let offset = baseFontSize - 13.0
+        
+        for asset in assets {
+            let row = ClickableAssetRow(frame: .zero)
+            row.translatesAutoresizingMaskIntoConstraints = false
+            assetsContainerView.addArrangedSubview(row)
+            
+            let rowStack = NSStackView()
+            rowStack.orientation = .horizontal
+            rowStack.alignment = .centerY
+            rowStack.spacing = 10
+            rowStack.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+            rowStack.translatesAutoresizingMaskIntoConstraints = false
+            row.addSubview(rowStack)
+            
+            NSLayoutConstraint.activate([
+                rowStack.topAnchor.constraint(equalTo: row.topAnchor),
+                rowStack.bottomAnchor.constraint(equalTo: row.bottomAnchor),
+                rowStack.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+                rowStack.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+                row.widthAnchor.constraint(equalTo: assetsContainerView.widthAnchor, constant: -40)
+            ])
+            
+            // Icon
+            let iconView = NSImageView()
+            let symbolName: String
+            let ext = (asset.name as NSString).pathExtension.lowercased()
+            if asset.isSourceArchive {
+                symbolName = "doc.zipper"
+            } else if ext == "dmg" || ext == "pkg" {
+                symbolName = "shippingbox.fill"
+            } else if ext == "zip" || ext == "gz" || ext == "tar" {
+                symbolName = "doc.zipper"
+            } else {
+                symbolName = "arrow.down.circle.fill"
+            }
+            if let img = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) {
+                iconView.image = img
+                iconView.contentTintColor = .controlAccentColor
+            }
+            iconView.translatesAutoresizingMaskIntoConstraints = false
+            iconView.widthAnchor.constraint(equalToConstant: 20).isActive = true
+            iconView.heightAnchor.constraint(equalToConstant: 20).isActive = true
+            rowStack.addArrangedSubview(iconView)
+            
+            // Filename
+            let nameLabel = NSTextField(labelWithString: asset.name)
+            nameLabel.font = .systemFont(ofSize: 13 + (offset * 0.5), weight: .medium)
+            nameLabel.lineBreakMode = .byTruncatingMiddle
+            nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            rowStack.addArrangedSubview(nameLabel)
+            
+            // Flexible Horizontal Spacer (pushes size and download icon to the far right edge)
+            let spacer = NSView()
+            spacer.translatesAutoresizingMaskIntoConstraints = false
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            rowStack.addArrangedSubview(spacer)
+            
+            // Size Label
+            let sizeText: String
+            if let s = asset.size, s > 0 {
+                sizeText = ByteCountFormatter.string(fromByteCount: s, countStyle: .file)
+            } else if asset.isSourceArchive {
+                sizeText = "Source"
+            } else {
+                sizeText = ""
+            }
+            let sizeLabel = NSTextField(labelWithString: sizeText)
+            sizeLabel.font = .systemFont(ofSize: 12 + (offset * 0.5), weight: .regular)
+            sizeLabel.textColor = .secondaryLabelColor
+            sizeLabel.setContentHuggingPriority(.required, for: .horizontal)
+            rowStack.addArrangedSubview(sizeLabel)
+            
+            // Download Arrow Icon
+            let dlIcon = NSImageView()
+            if let img = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil) {
+                dlIcon.image = img
+                dlIcon.contentTintColor = .secondaryLabelColor
+            }
+            dlIcon.translatesAutoresizingMaskIntoConstraints = false
+            dlIcon.widthAnchor.constraint(equalToConstant: 16).isActive = true
+            dlIcon.heightAnchor.constraint(equalToConstant: 16).isActive = true
+            dlIcon.setContentHuggingPriority(.required, for: .horizontal)
+            rowStack.addArrangedSubview(dlIcon)
+            
+            let assetToDownload = asset
+            row.onClick = { [weak self] in
+                self?.downloadAssetClicked(assetToDownload)
+            }
+        }
+    }
+    
+    private func downloadAssetClicked(_ asset: ReleaseAsset) {
+        let destDir = getDownloadDirectory()
+        
+        var fileName = asset.name
+        if asset.isSourceArchive {
+            let repoClean = (currentRepoName ?? "source").replacingOccurrences(of: "/", with: "-")
+            let ext = asset.name.contains("zip") ? "zip" : "tar.gz"
+            fileName = "\(repoClean)-source.\(ext)"
+        }
+        
+        // Avoid overwriting: add " (1)", " (2)" etc. like macOS
+        let destURL = uniqueDestination(for: fileName, in: destDir)
+        fileName = destURL.lastPathComponent
+        
+        let dlImage = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+        HUDPanel.shared.showProgress(title: fileName, image: dlImage, progress: 0.0)
+        
+        let startTime = Date()
+        var lastUIUpdate = Date.distantPast
+        
+        Task {
+            do {
+                try await GitHubAPI.shared.downloadAsset(urlString: asset.downloadURL, destinationURL: destURL) { received, total in
+                    let now = Date()
+                    let sinceLastUI = now.timeIntervalSince(lastUIUpdate)
+                    let isFinished = total > 0 && received >= total
+                    
+                    guard sinceLastUI >= 0.15 || isFinished else { return }
+                    lastUIUpdate = now
+                    
+                    let elapsed = now.timeIntervalSince(startTime)
+                    let progressRatio = total > 0 ? Double(received) / Double(total) : 0.0
+                    let receivedStr = self.formatBytes(received)
+                    
+                    var sub: String
+                    if total > 0 {
+                        let totalStr = self.formatBytes(total)
+                        let speedBps = elapsed > 0 ? Double(received) / elapsed : 0
+                        let speedStr = self.formatBytes(Int64(speedBps))
+                        sub = "\(receivedStr) / \(totalStr)  ·  \(speedStr)/s"
+                    } else {
+                        sub = receivedStr
+                    }
+                    
+                    Task { @MainActor in
+                        HUDPanel.shared.updateProgress(subtitle: sub, progress: progressRatio)
+                    }
+                }
+                
+                await MainActor.run {
+                    HUDPanel.shared.showCompletion(title: fileName, subtitle: "✓", isSuccess: true)
+                    NSWorkspace.shared.selectFile(destURL.path, inFileViewerRootedAtPath: destDir.path)
+                }
+            } catch {
+                await MainActor.run {
+                    let failTitle = Translations.get("downloadFailed").format(with: ["filename": fileName])
+                    HUDPanel.shared.showCompletion(title: failTitle, subtitle: error.localizedDescription, isSuccess: false)
+                }
+            }
+        }
+    }
+    
+    /// Formats bytes with fixed 2-decimal precision to avoid text width jumps (e.g. "12.50 MB" not "12.5 MB").
+    private func formatBytes(_ bytes: Int64) -> String {
+        let b = Double(bytes)
+        if b >= 1_000_000_000 {
+            return String(format: "%.2f GB", b / 1_000_000_000)
+        } else if b >= 1_000_000 {
+            return String(format: "%.2f MB", b / 1_000_000)
+        } else if b >= 1_000 {
+            return String(format: "%.0f KB", b / 1_000)
+        } else {
+            return "\(bytes) bytes"
+        }
+    }
+    
+    /// Returns a unique file URL, appending " (1)", " (2)" etc. if the file already exists.
+    private func uniqueDestination(for fileName: String, in directory: URL) -> URL {
+        let url = directory.appendingPathComponent(fileName)
+        guard FileManager.default.fileExists(atPath: url.path) else { return url }
+        
+        let name = (fileName as NSString).deletingPathExtension
+        let ext = (fileName as NSString).pathExtension
+        
+        var counter = 1
+        while true {
+            let candidate: URL
+            if ext.isEmpty {
+                candidate = directory.appendingPathComponent("\(name) (\(counter))")
+            } else {
+                candidate = directory.appendingPathComponent("\(name) (\(counter)).\(ext)")
+            }
+            if !FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+            counter += 1
+        }
+    }
+    
     // MARK: - NSTextViewDelegate
     
     func textView(_ view: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
@@ -685,35 +984,9 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
 /// and providing asymmetrical left/right insets to achieve perfect text symmetry while keeping
 /// the vertical scrollbar flush against the right window edge.
 class ReleaseNotesTextView: NSTextView {
-    private let customLeftInset: CGFloat = 20.0
-    private let customRightInset: CGFloat = 5.0
-    
-    override var textContainerOrigin: NSPoint {
-        return NSPoint(x: customLeftInset, y: textContainerInset.height)
-    }
-    
-    override func setFrameSize(_ newSize: NSSize) {
-        super.setFrameSize(newSize)
-        if let container = textContainer {
-            container.containerSize = NSSize(width: max(0, newSize.width - customLeftInset - customRightInset), height: .greatestFiniteMagnitude)
-        }
-    }
-    
     override func resetCursorRects() {
         discardCursorRects()
         addCursorRect(bounds, cursor: .arrow)
-        
-        guard let layoutManager = layoutManager, let textContainer = textContainer, let storage = textStorage else { return }
-        let fullRange = NSRange(location: 0, length: storage.length)
-        storage.enumerateAttribute(.link, in: fullRange, options: []) { value, range, stop in
-            if value != nil {
-                let glyphRange = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-                let rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-                let origin = textContainerOrigin
-                let linkRect = rect.offsetBy(dx: origin.x, dy: origin.y)
-                addCursorRect(linkRect, cursor: .pointingHand)
-            }
-        }
     }
 }
 
