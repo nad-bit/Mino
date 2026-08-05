@@ -2,8 +2,8 @@
 set -e
 
 APP_NAME="Mino"
-VERSION="2.2.2"
-BUILD_NUMBER="320"
+VERSION="2.2.3"
+BUILD_NUMBER="321"
 BUILD_DIR="build"
 
 echo "🧹 Cleaning previous build..."
@@ -52,6 +52,17 @@ function create_app_structure() {
     <string>12.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>mino</string>
+            </array>
+            <key>CFBundleURLName</key>
+            <string>com.nad.mino.url</string>
+        </dict>
+    </array>
 </dict>
 </plist>
 EOF

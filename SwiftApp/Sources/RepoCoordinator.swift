@@ -318,7 +318,8 @@ class RepoCoordinator {
             } else {
                 // If no brew, we can't do anything with a single name
                 await MainActor.run {
-                    delegate?.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoNotFound"))
+                    HUDPanel.shared.showCompletion(title: Translations.get("error"), subtitle: Translations.get("repoNotFound"), isSuccess: false)
+                    delegate?.animateStatusIcon(with: .wiggle)
                 }
                 return false
             }
@@ -341,7 +342,8 @@ class RepoCoordinator {
                     return true
                 } else {
                     await MainActor.run {
-                        delegate.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoExists"))
+                        HUDPanel.shared.showCompletion(title: Translations.get("error"), subtitle: Translations.get("repoExists"), isSuccess: false)
+                        delegate.animateStatusIcon(with: .wiggle)
                     }
                     return false
                 }
@@ -352,7 +354,8 @@ class RepoCoordinator {
         let info = await GitHubAPI.shared.fetchRepoInfo(repo: repoName)
         if let errorMsg = info.error {
             await MainActor.run {
-                delegate.sendNotification(title: Translations.get("error"), subtitle: errorMsg)
+                HUDPanel.shared.showCompletion(title: Translations.get("error"), subtitle: errorMsg, isSuccess: false)
+                delegate.animateStatusIcon(with: .wiggle)
             }
             return false
         } else {
@@ -372,6 +375,7 @@ class RepoCoordinator {
                 delegate.updatePopularTagsCache()
                 delegate.rebuildMenu()
                 delegate.animateStatusIcon(with: .bounce)
+                HUDPanel.shared.showCompletion(title: Translations.get("add"), subtitle: repoName, isSuccess: true)
                 
                 UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
                 delegate.updateStatusIcon(hasUpdates: true)
@@ -386,7 +390,8 @@ class RepoCoordinator {
         // Early check: if any repo already has this cask, show duplicate message
         if ConfigManager.shared.config.repos.contains(where: { $0.cask?.lowercased() == caskName.lowercased() }) {
             await MainActor.run {
-                delegate.sendNotification(title: Translations.get("error"), subtitle: Translations.get("repoExists"))
+                HUDPanel.shared.showCompletion(title: Translations.get("error"), subtitle: Translations.get("repoExists"), isSuccess: false)
+                delegate.animateStatusIcon(with: .wiggle)
             }
             return false
         }
@@ -406,7 +411,8 @@ class RepoCoordinator {
                     } else {
                         msg = Translations.get("brewRepoNotFound").format(with: ["app_name": caskName])
                     }
-                    delegate.sendNotification(title: Translations.get("brewErrorTitle"), subtitle: msg)
+                    HUDPanel.shared.showCompletion(title: Translations.get("brewErrorTitle"), subtitle: msg, isSuccess: false)
+                    delegate.animateStatusIcon(with: .wiggle)
                 }
                 return false
             }
@@ -439,14 +445,16 @@ class RepoCoordinator {
                     return await addRepo(repoName: r, source: "brew", cask: caskName)
                 } else {
                     await MainActor.run {
-                        delegate.sendNotification(title: Translations.get("brewErrorTitle"), subtitle: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
+                        HUDPanel.shared.showCompletion(title: Translations.get("brewErrorTitle"), subtitle: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]), isSuccess: false)
+                        delegate.animateStatusIcon(with: .wiggle)
                     }
                     return false
                 }
             }
         } catch {
             await MainActor.run {
-                delegate.sendNotification(title: Translations.get("brewErrorTitle"), subtitle: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]))
+                HUDPanel.shared.showCompletion(title: Translations.get("brewErrorTitle"), subtitle: Translations.get("brewRepoNotFound").format(with: ["app_name": caskName]), isSuccess: false)
+                delegate.animateStatusIcon(with: .wiggle)
             }
         }
         return false

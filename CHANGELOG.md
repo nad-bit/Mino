@@ -5,6 +5,17 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3] - 2026-08-05
+
+### Added
+- **Custom URL Scheme (`mino://`)**: Added support for external automation tools (PopClip, Alfred, Raycast, Shortcuts, terminal scripts) to trigger repository additions via `mino://add/<owner/repo>`, `mino://add/<cask>` or full GitHub URLs.
+- **Success & Completion HUDPanels**: Unified repository addition feedback with styled HUDPanels featuring success (`checkmark.circle.fill`) and error (`exclamationmark.triangle.fill`) SF Symbol icons.
+- **Complete i18n Localization Coverage**: Added missing asset and tab translation strings across 9 languages (fr, de, it, pt, zh, hi, ar, ru, ja).
+
+### Fixed
+- **Timer Refresh Drift**: Fixed accumulated drift in automatic refresh cycles by capturing `lastRefreshTime` at the start of refresh trigger execution rather than after network requests complete.
+- **Release Notes & Assets Container Margin Symmetry**: Centered release notes text/images/tables and asset rows with uniform 25px container margins and vertical scroller width compensation.
+
 ## [2.2.2] - 2026-08-03
 
 ### Added

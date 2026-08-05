@@ -85,6 +85,10 @@ class RefreshCoordinator {
         if isRefreshing { return }
         isRefreshing = true
         
+        // Record the refresh timestamp NOW (at trigger time) so the next cycle
+        // is anchored to this exact moment, eliminating accumulated drift.
+        self.lastRefreshTime = Date()
+        
         delegate.footerView?.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
         delegate.refreshQuickAddState()
         delegate.animateStatusIcon(with: .rotate)
@@ -181,7 +185,6 @@ class RefreshCoordinator {
             }
             
             self.isRefreshing = false
-            self.lastRefreshTime = Date()
             
             // Release accumulated HTTP connection pools, TLS session tickets,
             // and internal Foundation caches that grow over days of continuous use.

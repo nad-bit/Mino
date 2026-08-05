@@ -176,6 +176,13 @@ class HUDPanel: NSPanel {
         subtitleLabel.stringValue = subtitle
         subtitleLabel.isHidden = subtitle.isEmpty
         
+        // Ensure the panel is visible and positioned even when called standalone
+        // (not preceded by showProgress).
+        self.center()
+        self.alphaValue = 1.0
+        self.orderFrontRegardless()
+        presentationToken = UUID()
+        
         hideTimer?.invalidate()
         let newTimer = Timer(timeInterval: duration, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in

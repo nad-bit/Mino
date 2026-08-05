@@ -177,6 +177,43 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             let modifiers = NSEvent.ModifierFlags(rawValue: UInt(savedModifiers))
             GlobalHotkeyManager.shared.register(keyCode: savedKeyCode, modifiers: modifiers)
         }
+        
+        // Register URL Scheme Handler (mino://)
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleURLEvent(_:withReply:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
+    }
+    
+    @objc private func handleURLEvent(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+        guard let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
+              let url = URL(string: urlString) else { return }
+        
+        guard url.scheme?.lowercased() == "mino" else { return }
+        
+        // Handle formats: mino://add/<target> or mino://<target>
+        var rawTarget = ""
+        if url.host?.lowercased() == "add" {
+            rawTarget = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        } else if let host = url.host, !host.isEmpty {
+            rawTarget = host + url.path
+        } else {
+            rawTarget = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        }
+        
+        // Clean up URL prefix if someone passes https://github.com/... or github.com/...
+        rawTarget = rawTarget.replacingOccurrences(of: "https://github.com/", with: "", options: .caseInsensitive)
+        rawTarget = rawTarget.replacingOccurrences(of: "http://github.com/", with: "", options: .caseInsensitive)
+        rawTarget = rawTarget.replacingOccurrences(of: "github.com/", with: "", options: .caseInsensitive)
+        rawTarget = rawTarget.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard !rawTarget.isEmpty else { return }
+        
+        Task {
+            _ = await self.repoCoordinator.addRepoSmart(repoName: rawTarget)
+        }
     }
     
     @objc private func configDidUpdate() {

@@ -82,6 +82,12 @@ Click the `(+)` button in the menu to open the floating Window.
 - Go to your browser, copy a URL (`CMD+C`). Watch Mino automatically catch the link. Click the Add button.
 - The window remains open and the text field clears. Cycle through your browser tabs, copying and adding rapidly.
 
+**Automation & URL Scheme (`mino://`):**
+Integrate Mino with macOS Shortcuts, PopClip, Alfred, Raycast, or custom scripts:
+- `mino://add/owner/repo` (e.g. `mino://add/nad-bit/mino`)
+- `mino://add/cask_name` (e.g. `mino://add/firefox`)
+- `mino://add/https://github.com/owner/repo`
+
 **Standard Manual Input:**
 - Enter `owner/repo` format (e.g., `microsoft/vscode`).
 - Enter a Homebrew **Cask name** (e.g., `lulu` or `stats`) to automatically resolve and track its GitHub repository. No prefixes required.

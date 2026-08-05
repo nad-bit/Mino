@@ -255,7 +255,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         textView.isSelectable = true
         textView.drawsBackground = false
         textView.textColor = .labelColor
-        textView.textContainerInset = NSSize(width: 20, height: 10)
+        textView.textContainerInset = NSSize(width: 25, height: 10)
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
         textView.isVerticallyResizable = true
@@ -268,7 +268,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         assetsContainerView.orientation = .vertical
         assetsContainerView.alignment = .centerX
         assetsContainerView.spacing = 6
-        assetsContainerView.edgeInsets = NSEdgeInsets(top: 8, left: 20, bottom: 8, right: 20)
+        assetsContainerView.edgeInsets = NSEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         assetsContainerView.translatesAutoresizingMaskIntoConstraints = false
         
         assetsScrollView = NSScrollView()
@@ -776,7 +776,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                 rowStack.bottomAnchor.constraint(equalTo: row.bottomAnchor),
                 rowStack.leadingAnchor.constraint(equalTo: row.leadingAnchor),
                 rowStack.trailingAnchor.constraint(equalTo: row.trailingAnchor),
-                row.widthAnchor.constraint(equalTo: assetsContainerView.widthAnchor, constant: -40)
+                row.widthAnchor.constraint(equalTo: assetsContainerView.widthAnchor, constant: -50)
             ])
             
             // Icon
@@ -987,6 +987,17 @@ class ReleaseNotesTextView: NSTextView {
     override func resetCursorRects() {
         discardCursorRects()
         addCursorRect(bounds, cursor: .arrow)
+    }
+    
+    /// Shifts the text container origin to the right by half the scroller width
+    /// so that text, images, and tables appear visually centered between the
+    /// header/footer cards, regardless of the scroller style (overlay or legacy).
+    override var textContainerOrigin: NSPoint {
+        var origin = super.textContainerOrigin
+        if let scroller = enclosingScrollView?.verticalScroller {
+            origin.x += scroller.frame.width / 2.0
+        }
+        return origin
     }
 }
 
