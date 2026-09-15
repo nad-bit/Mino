@@ -117,10 +117,19 @@ class FooterMenuItemView: NSView {
     func updateLastRefreshTooltip(lastRefreshDate: Date? = nil) {
         let date = lastRefreshDate ?? appDelegate.refreshCoordinator.lastRefreshTime
         if date == Date.distantPast {
-            repoCountLabel.toolTip = Translations.get("lastUpdateNever")
+            let tip = Translations.get("lastUpdateNever")
+            repoCountLabel.toolTip = tip
+            self.toolTip = tip
         } else {
-            let timeStr = DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
-            repoCountLabel.toolTip = Translations.get("lastUpdate").format(with: ["time": timeStr])
+            let timeStr: String
+            if Calendar.current.isDateInToday(date) {
+                timeStr = DateFormatter.localizedString(from: date, dateStyle: .none, timeStyle: .short)
+            } else {
+                timeStr = DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
+            }
+            let tip = Translations.get("lastUpdate").format(with: ["time": timeStr])
+            repoCountLabel.toolTip = tip
+            self.toolTip = tip
         }
     }
     

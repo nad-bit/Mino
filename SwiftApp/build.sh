@@ -2,18 +2,24 @@
 set -e
 
 APP_NAME="Mino"
-VERSION="2.2.3"
-BUILD_NUMBER="321"
+VERSION="2.2.4"
+BUILD_NUMBER="324"
 BUILD_DIR="build"
 
+if [ "$1" == "--test" ]; then
+    echo "🧪 Running verification tests..."
+    swift Tests/AuditValidationTests.swift
+    exit 0
+fi
+
 echo "🧹 Cleaning previous build..."
-if [ "$1" != "--release" ]; then
+if [ "$1" != "--release" ] && [ "$1" != "--publish-tap" ]; then
     rm -rf "$BUILD_DIR"
     mkdir -p "$BUILD_DIR"
 else
     echo "⏩ Release flag detected. Skipping clean..."
     if [ ! -d "$BUILD_DIR" ]; then
-        echo "❌ Error: Build directory not found. Run without --release first."
+        echo "❌ Error: Build directory not found. Run without flags first."
         exit 1
     fi
 fi
@@ -100,6 +106,9 @@ if [ "$1" != "--release" ]; then
     else
         echo "⚠️  Warning: global icon.png generation failed."
     fi
+
+    echo "🧪 Running validation tests..."
+    swift Tests/AuditValidationTests.swift
 
     echo "📝 Creating App Structures..."
     create_app_structure "$APP_ARM64"
@@ -195,7 +204,7 @@ echo "✅ Generated mino.rb in build/ directory."
 echo "⚠️  CRITICAL: When uploading to your tap repository, ensure this file is placed in a 'Casks' directory (i.e., Casks/mino.rb)"
 
 # --- Auto-Push to Homebrew Tap ---
-if [ "$1" == "--release" ]; then
+if [ "$1" == "--release" ] || [ "$1" == "--publish-tap" ]; then
     echo -e "\n☁️  Updating Homebrew Tap repository..."
     TAP_REPO="https://github.com/nad-bit/homebrew-tap.git"
     TAP_CLONE_DIR="/tmp/homebrew-tap-mino"
@@ -228,5 +237,5 @@ if [ "$1" == "--release" ]; then
          echo "⚠️  Could not clone Homebrew Tap. You may not have SSH access configured for this repo."
     fi
 else
-    echo -e "\n⏩ Skipping Homebrew Tap update. Use './build.sh --release' to push to the tap."
+    echo -e "\n⏩ Skipping Homebrew Tap update. Use './build.sh --publish-tap' to push to the tap."
 fi

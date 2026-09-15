@@ -593,7 +593,7 @@ class MainPopoverViewController: NSViewController {
     }
     
     enum RepoAction {
-        case open, install, notes, delete, copy, favorite
+        case open, install, notes, delete, copy, favorite, refresh
     }
     
     func triggerActionOnHighlighted(_ action: RepoAction) {
@@ -616,6 +616,8 @@ class MainPopoverViewController: NSViewController {
             NSPasteboard.general.setString(url, forType: .string)
         case .favorite:
             row.toggleFavorite()
+        case .refresh:
+            row.refreshClicked()
         }
     }
     

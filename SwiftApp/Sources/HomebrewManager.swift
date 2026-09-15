@@ -17,10 +17,7 @@ class HomebrewManager {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
-        
-        var env = ProcessInfo.processInfo.environment
-        env["HOMEBREW_NO_REQUIRE_TAP_TRUST"] = "1"
-        process.environment = env
+        process.environment = ProcessInfo.processInfo.environment
         return process
     }
     

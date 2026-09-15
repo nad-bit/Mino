@@ -100,6 +100,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         tokenBadge.onHoverEntered = { [weak self] in
             self?.updateRateLimitToolTip()
         }
+        NotificationCenter.default.addObserver(self, selector: #selector(rateLimitUpdated(_:)), name: Notification.Name("RateLimitUpdated"), object: nil)
         
         tokenStatusLabel.textColor = .secondaryLabelColor
         tokenStatusLabel.font = .systemFont(ofSize: 10, weight: .bold)
@@ -664,12 +665,27 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         }
     }
     
+    @objc private func rateLimitUpdated(_ notif: Notification) {
+        if let info = notif.object as? RateLimitInfo {
+            applyRateLimitToUI(info)
+        }
+    }
+    
     private func updateRateLimitToolTip() {
+        // 1. Instantly apply live cached rate limit if available
+        if let cached = GitHubAPI.shared.currentRateLimit {
+            applyRateLimitToUI(cached)
+        }
+        
+        // 2. Fetch fresh limits with no caching
         guard let url = URL(string: "\(Constants.githubAPIBaseURL)/rate_limit") else { return }
         var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
         
-        let hasToken = ConfigManager.shared.token != nil && !ConfigManager.shared.token!.isEmpty
-        if hasToken, let token = ConfigManager.shared.token {
+        let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasToken = token != nil && !token!.isEmpty
+        if hasToken, let token = token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
@@ -677,6 +693,8 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
             do {
                 let (data, response) = try await GitHubAPI.shared.session.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
+                
+                GitHubAPI.shared.recordRateLimit(from: httpResponse)
                 
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let resources = json["resources"] as? [String: Any],
@@ -686,35 +704,42 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
                    let resetEpoch = core["reset"] as? TimeInterval {
                     
                     let resetDate = Date(timeIntervalSince1970: resetEpoch)
-                    let formatter = DateFormatter()
-                    formatter.dateStyle = .none
-                    formatter.timeStyle = .short
-                    let timeString = formatter.string(from: resetDate)
-                    
-                    let minutesRemaining = max(0, Int(resetDate.timeIntervalSinceNow / 60))
-                    
-                    let title = Translations.get("rateLimitTitle")
-                    let status = Translations.get(hasToken ? "rateLimitStatusAuth" : "rateLimitStatusPublic")
-                    let remainingText = Translations.get("rateLimitRemaining").format(with: ["remaining": "\(remaining)", "limit": "\(limit)"])
-                    let resetText = Translations.get("rateLimitReset").format(with: ["minutes": "\(minutesRemaining)", "time": timeString])
-                    let tip = hasToken ? "" : Translations.get("rateLimitTip")
-                    
-                    let tooltipText = """
-                    \(title)
-                    \(status)
-                    \(remainingText)
-                    \(resetText)\(tip)
-                    """
+                    let info = RateLimitInfo(limit: limit, remaining: remaining, resetDate: resetDate, hasToken: hasToken)
                     
                     await MainActor.run {
-                        self.tokenBadge.toolTip = tooltipText
-                        self.tokenStatusLabel.toolTip = tooltipText
+                        self.applyRateLimitToUI(info)
                     }
                 }
             } catch {
                 print("Error al consultar el rate limit de GitHub: \(error)")
             }
         }
+    }
+    
+    private func applyRateLimitToUI(_ info: RateLimitInfo) {
+        let resetDate = info.resetDate
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        let timeString = formatter.string(from: resetDate)
+        
+        let minutesRemaining = max(0, Int(resetDate.timeIntervalSinceNow / 60))
+        
+        let title = Translations.get("rateLimitTitle")
+        let status = Translations.get(info.hasToken ? "rateLimitStatusAuth" : "rateLimitStatusPublic")
+        let remainingText = Translations.get("rateLimitRemaining").format(with: ["remaining": "\(info.remaining)", "limit": "\(info.limit)"])
+        let resetText = Translations.get("rateLimitReset").format(with: ["minutes": "\(minutesRemaining)", "time": timeString])
+        let tip = info.hasToken ? "" : Translations.get("rateLimitTip")
+        
+        let tooltipText = """
+        \(title)
+        \(status)
+        \(remainingText)
+        \(resetText)\(tip)
+        """
+        
+        self.tokenBadge.toolTip = tooltipText
+        self.tokenStatusLabel.toolTip = tooltipText
     }
     
     override func cancelOperation(_ sender: Any?) {

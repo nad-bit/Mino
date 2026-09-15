@@ -6,6 +6,7 @@ class ConfigManager {
     
     private let configDir: URL
     private let configFile: URL
+    private let backupConfigFile: URL
     var config: AppConfig
     var token: String?
     
@@ -16,36 +17,56 @@ class ConfigManager {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         configDir = homeDir.appendingPathComponent(".config/Mino")
         configFile = configDir.appendingPathComponent("repos.json")
+        backupConfigFile = configDir.appendingPathComponent("repos.json.bak")
         
         self.config = AppConfig()
         self.loadConfig()
     }
     
     func loadConfig() {
+        var loadedSuccessfully = false
+        let decoder = JSONDecoder()
+        
         if FileManager.default.fileExists(atPath: configFile.path) {
             do {
                 let data = try Data(contentsOf: configFile)
-                // Attempt to decode. If parsing fails, fall back to defaults.
-                // We must handle the old "string" repos.json format migration if needed,
-                // but Decoder is safer. For simplicity, assume new structured format or fallback.
-                let decoder = JSONDecoder()
                 if let decoded = try? decoder.decode(AppConfig.self, from: data) {
                     self.config = decoded
+                    loadedSuccessfully = true
+                    // Sync backup with valid config
+                    try? data.write(to: backupConfigFile, options: .atomic)
+                } else {
+                    print("⚠️ [ConfigManager] Failed to parse \(configFile.path). Attempting recovery from backup...")
+                    // Attempt backup recovery
+                    if FileManager.default.fileExists(atPath: backupConfigFile.path),
+                       let backupData = try? Data(contentsOf: backupConfigFile),
+                       let backupDecoded = try? decoder.decode(AppConfig.self, from: backupData) {
+                        self.config = backupDecoded
+                        loadedSuccessfully = true
+                        print("✅ [ConfigManager] Successfully recovered configuration from backup.")
+                    } else {
+                        print("❌ [ConfigManager] Failed to recover from backup. Preserving corrupt file to prevent data loss.")
+                        let timestamp = Int(Date().timeIntervalSince1970)
+                        let corruptFile = configDir.appendingPathComponent("repos.json.corrupt.\(timestamp)")
+                        try? FileManager.default.copyItem(at: configFile, to: corruptFile)
+                    }
                 }
             } catch {
-                print("Failed to load config: \(error)")
+                print("Failed to read config file: \(error)")
             }
         } else {
-            // First time, save defaults
+            // First time run: no config exists yet, so saving defaults is safe
+            loadedSuccessfully = true
             saveConfig()
         }
         
-        if self.config.downloadPath == nil {
-            self.config.downloadPath = "~/Desktop"
-            saveConfig()
-        } else {
-            // Save config to ensure download_path is persisted to disk if missing in file
-            saveConfig()
+        // Only modify and persist downloadPath if we successfully loaded/initialized
+        // to avoid accidentally overwriting a corrupted config file with empty defaults!
+        if loadedSuccessfully {
+            if self.config.downloadPath == nil {
+                self.config.downloadPath = "~/Desktop"
+                saveConfig()
+            }
         }
         
         // Load token from Keychain
@@ -61,7 +82,15 @@ class ConfigManager {
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
             let data = try encoder.encode(config)
-            try data.write(to: configFile)
+            
+            // If current configFile exists and is valid, back it up before replacing
+            if FileManager.default.fileExists(atPath: configFile.path) {
+                try? FileManager.default.removeItem(at: backupConfigFile)
+                try? FileManager.default.copyItem(at: configFile, to: backupConfigFile)
+            }
+            
+            // Write atomically to prevent partial writes / truncation corruption
+            try data.write(to: configFile, options: .atomic)
         } catch {
             print("Failed to save config: \(error)")
         }
@@ -74,24 +103,27 @@ class ConfigManager {
     func saveTokenToKeychain(_ token: String) -> Bool {
         guard let data = token.data(using: .utf8) else { return false }
         
-        // Delete existing item if any
-        let queryDelete: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: keychainAccount
         ]
-        SecItemDelete(queryDelete as CFDictionary)
         
-        // Add new item
-        let queryAdd: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
+        let attributesToUpdate: [String: Any] = [
             kSecValueData as String: data
         ]
         
-        let status = SecItemAdd(queryAdd as CFDictionary, nil)
-        return status == errSecSuccess
+        let updateStatus = SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary)
+        if updateStatus == errSecSuccess {
+            return true
+        } else if updateStatus == errSecItemNotFound {
+            var newItem = query
+            newItem[kSecValueData as String] = data
+            let addStatus = SecItemAdd(newItem as CFDictionary, nil)
+            return addStatus == errSecSuccess
+        }
+        
+        return false
     }
     
     func getTokenFromKeychain() -> String? {

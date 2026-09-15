@@ -209,7 +209,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         rawTarget = rawTarget.replacingOccurrences(of: "github.com/", with: "", options: .caseInsensitive)
         rawTarget = rawTarget.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        guard !rawTarget.isEmpty else { return }
+        guard !rawTarget.isEmpty, rawTarget.count <= 256 else { return }
+        
+        // Strict validation: accepts only owner/repo, tap/cask, or cask name syntax (optionally prefixed by brew:)
+        let validTargetRegex = "^(brew:)?[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)*$"
+        guard rawTarget.range(of: validTargetRegex, options: .regularExpression) != nil else {
+            print("⚠️ [AppDelegate] Ignored malformed target from mino:// URL: \(rawTarget)")
+            return
+        }
         
         Task {
             _ = await self.repoCoordinator.addRepoSmart(repoName: rawTarget)
@@ -234,6 +241,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     
     func applicationWillTerminate(_ aNotification: Notification) {
         refreshCoordinator.countdownTimer?.invalidate()
+        refreshCoordinator.exactRefreshTimer?.invalidate()
         GlobalHotkeyManager.shared.unregister()
     }
     
@@ -835,6 +843,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
                 return true
             case "c": // CMD+C → Copy GitHub URL
                 mainPopoverVC.triggerActionOnHighlighted(.copy)
+                return true
+            case "r": // CMD+R → Refresh highlighted repo (or full refresh if none highlighted)
+                if mainPopoverVC.currentlyHighlightedRowIndex != nil {
+                    mainPopoverVC.triggerActionOnHighlighted(.refresh)
+                } else {
+                    triggerFullRefresh(nil)
+                }
                 return true
             case "z": // CMD+Z → Undo last delete
                 repoCoordinator.undoLastDelete()

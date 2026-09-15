@@ -5,7 +5,7 @@ protocol OAuthWindowDelegate: AnyObject {
     func oauthFinished(token: String?)
 }
 
-class OAuthWindowController: NSWindowController {
+class OAuthWindowController: NSWindowController, NSWindowDelegate {
     
     weak var delegate: OAuthWindowDelegate?
     
@@ -17,6 +17,9 @@ class OAuthWindowController: NSWindowController {
     
     private let codeLabel = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
+    
+    private var pollTask: Task<Void, Never>?
+    private var isFinished = false
     
     init(userCode: String, verificationUri: String, deviceCode: String, interval: Int, expiresIn: Int) {
         self.userCode = userCode
@@ -38,6 +41,7 @@ class OAuthWindowController: NSWindowController {
         window.center()
         
         super.init(window: window)
+        window.delegate = self
         setupUI()
         startPolling()
     }
@@ -124,32 +128,46 @@ class OAuthWindowController: NSWindowController {
     }
     
     @objc private func cancelClicked() {
-        GitHubAuth.shared.cancelPolling()
         closeSheet(with: nil)
     }
     
     private func startPolling() {
-        Task {
+        let code = deviceCode
+        let pollInterval = interval
+        let expires = expiresIn
+        pollTask = Task { [weak self] in
             do {
-                if let token = try await GitHubAuth.shared.pollForToken(deviceCode: deviceCode, interval: interval, expiresIn: expiresIn) {
-                    DispatchQueue.main.async {
-                        self.closeSheet(with: token)
+                if let token = try await GitHubAuth.shared.pollForToken(deviceCode: code, interval: pollInterval, expiresIn: expires) {
+                    await MainActor.run {
+                        self?.closeSheet(with: token)
                     }
                 } else {
-                    DispatchQueue.main.async {
-                        self.closeSheet(with: nil)
+                    await MainActor.run {
+                        self?.closeSheet(with: nil)
                     }
                 }
             } catch {
-                DispatchQueue.main.async {
-                    self.closeSheet(with: nil)
+                await MainActor.run {
+                    self?.closeSheet(with: nil)
                 }
             }
         }
     }
     
     private func closeSheet(with token: String?) {
+        guard !isFinished else { return }
+        isFinished = true
+        pollTask?.cancel()
+        GitHubAuth.shared.cancelPolling()
         delegate?.oauthFinished(token: token)
         self.window?.close()
+    }
+    
+    func windowWillClose(_ notification: Notification) {
+        guard !isFinished else { return }
+        isFinished = true
+        pollTask?.cancel()
+        GitHubAuth.shared.cancelPolling()
+        delegate?.oauthFinished(token: nil)
     }
 }

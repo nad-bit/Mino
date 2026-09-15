@@ -107,7 +107,7 @@ class RepoMenuItemView: NSView {
     /// Returns a fixed-size NSImageView with the SF Symbol warning icon.
     /// Using SF Symbol instead of ⚠️ emoji ensures the icon respects the given pointSize
     /// and never clips within a fixed-width slot.
-    private func makeWarningView(pointSize: CGFloat, tooltip: String?) -> NSView {
+    private func makeWarningView(pointSize: CGFloat, slotWidth: CGFloat? = nil, tooltip: String?) -> NSView {
         let cfg = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .medium)
         let img = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(cfg)
@@ -116,7 +116,8 @@ class RepoMenuItemView: NSView {
         iv.imageScaling = .scaleProportionallyUpOrDown
         iv.toolTip = tooltip
         iv.translatesAutoresizingMaskIntoConstraints = false
-        iv.widthAnchor.constraint(equalToConstant: 12).isActive = true
+        let width = slotWidth ?? max(12, pointSize)
+        iv.widthAnchor.constraint(equalToConstant: width).isActive = true
         iv.setContentHuggingPriority(.required, for: .horizontal)
         return iv
     }
@@ -145,6 +146,11 @@ class RepoMenuItemView: NSView {
     // Column widths (for columns mode, set from outside)
     var nameColumnWidth: CGFloat = 0
     var versionColumnWidth: CGFloat = 0
+    // Managed width constraints (tracked explicitly so we don't deactivate AppKit internal intrinsic constraints)
+    private var versionMaxWidthConstraint: NSLayoutConstraint?
+    private var titleWidthConstraint: NSLayoutConstraint?
+    private var dotWidthConstraint: NSLayoutConstraint?
+    private var starWidthConstraint: NSLayoutConstraint?
     
     init(repoName: String, displayData: RepoDisplayData, layout: String, appDelegate: AppDelegate) {
         self.repoName = repoName
@@ -222,12 +228,14 @@ class RepoMenuItemView: NSView {
                 c.isActive = false
             }
         }
-        for c in starLabel.constraints where c.firstAttribute == .width {
-            c.isActive = false
-        }
-        for c in dotLabel.constraints where c.firstAttribute == .width {
-            c.isActive = false
-        }
+        starWidthConstraint?.isActive = false
+        starWidthConstraint = nil
+        dotWidthConstraint?.isActive = false
+        dotWidthConstraint = nil
+        versionMaxWidthConstraint?.isActive = false
+        versionMaxWidthConstraint = nil
+        titleWidthConstraint?.isActive = false
+        titleWidthConstraint = nil
         
         // 5. Clear install button action before setupButtons re-evaluates caskName
         installBtn.action = nil
@@ -258,20 +266,28 @@ class RepoMenuItemView: NSView {
             // Cards have two lines, name is on top.
             // Width = margins (18+12) + icon/dot (12) + spacing (6) + max(name, subtitle) + spacing (8) + buttons
             let subWidth = subtitleLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
-            let versionWidth = versionLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
+            let rawVersionWidth = versionLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
+            let versionWidth = min(rawVersionWidth, 160)
             let contentWidth = max(nameWidth + 6 + versionWidth, subWidth + 20) // 20 for star
             return 18 + 12 + 6 + contentWidth + 8 + buttonsWidth + 12
             
         case "tags":
             // Single line: margin(12) + [warning?] + name + spacing(8) + version + spacing(8) + star(16) + spacing(6) + buttons + margin(12)
-            let versionWidth = versionLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
+            let rawVersionWidth = versionLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
+            let versionWidth = min(rawVersionWidth, 140)
             return 12 + (displayData.errorMessage != nil ? 18 : 0) + nameWidth + 8 + versionWidth + 8 + 16 + 6 + buttonsWidth + 12
             
         case "columns":
             // Fixed columns + margins + buttons
             // If nameColumnWidth or versionColumnWidth are set, use them as minimums
-            let totalColumns = (nameColumnWidth > 0 ? nameColumnWidth : nameWidth) + (versionColumnWidth > 0 ? versionColumnWidth : 60) + 60 + 20 // 60 for age, 20 for star
-            return 18 + totalColumns + 8 + buttonsWidth + 12
+            let showDot = ConfigManager.shared.config.showNewIndicator ?? false
+            let hasLeadingSlot = showDot || displayData.errorMessage != nil
+            let leadingMargin: CGFloat = hasLeadingSlot ? 12 : 18
+            let dotWidth: CGFloat = hasLeadingSlot ? (max(14, ceil(baseFontSize - 4) + 4) + 6) : 0
+            let rawVersionWidth = versionLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
+            let versionWidth = versionColumnWidth > 0 ? versionColumnWidth : min(rawVersionWidth, 120)
+            let totalColumns = dotWidth + (nameColumnWidth > 0 ? nameColumnWidth : nameWidth) + versionWidth + 60 + 20 // 60 for age, 20 for star
+            return leadingMargin + totalColumns + 8 + buttonsWidth + 12
             
         default:
             return 400
@@ -307,7 +323,7 @@ class RepoMenuItemView: NSView {
     
     private func setupButtons() {
         if caskName != nil && HomebrewManager.shared.brewPath != nil {
-            setupButton(installBtn, icon: "shippingbox", action: #selector(installClicked), tooltip: Translations.get("installUpdate"))
+            setupButton(installBtn, icon: "mug", action: #selector(installClicked), tooltip: Translations.get("installUpdate"))
         }
         setupButton(notesBtn, icon: "doc.text", action: #selector(notesClicked), tooltip: Translations.get("releaseNotes"))
         setupButton(openRepoBtn, icon: "safari", action: #selector(openRepoClicked), tooltip: Translations.get("openRepo"))
@@ -389,7 +405,10 @@ class RepoMenuItemView: NSView {
         starLabel.translatesAutoresizingMaskIntoConstraints = false
         starLabel.setContentHuggingPriority(.required, for: .horizontal)
         starLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
-        starLabel.widthAnchor.constraint(equalToConstant: max(16, size + 2)).isActive = true
+        starWidthConstraint?.isActive = false
+        let sConstraint = starLabel.widthAnchor.constraint(equalToConstant: max(16, size + 2))
+        sConstraint.isActive = true
+        starWidthConstraint = sConstraint
     }
     
     // MARK: - Layout: Tags (Single line with colorful pill)
@@ -426,9 +445,16 @@ class RepoMenuItemView: NSView {
         addSubview(contentStack)
         addSubview(buttonStack)
         
-        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        titleLabel.setContentHuggingPriority(.required, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        versionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         versionLabel.setContentHuggingPriority(.required, for: .horizontal)
+        
+        versionMaxWidthConstraint?.isActive = false
+        let tagVerConstraint = versionLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 140)
+        tagVerConstraint.isActive = true
+        versionMaxWidthConstraint = tagVerConstraint
+        
         starLabel.setContentHuggingPriority(.required, for: .horizontal)
         
         buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -471,7 +497,15 @@ class RepoMenuItemView: NSView {
         topRow.alignment = .firstBaseline
         topRow.translatesAutoresizingMaskIntoConstraints = false
         
-        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        versionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        versionLabel.setContentHuggingPriority(.required, for: .horizontal)
+        
+        versionMaxWidthConstraint?.isActive = false
+        let cardVerConstraint = versionLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 160)
+        cardVerConstraint.isActive = true
+        versionMaxWidthConstraint = cardVerConstraint
         
         // Line 2: age + ★ (no error tooltip here — it's already on the triangle icon)
         if let age = data.ageLabel {
@@ -537,6 +571,8 @@ class RepoMenuItemView: NSView {
         versionLabel.drawsBackground = false
         versionLabel.backgroundColor = .clear
         versionLabel.isHidden = false
+        versionLabel.lineBreakMode = .byTruncatingTail
+        versionLabel.cell?.truncatesLastVisibleLine = true
 
         if data.errorMessage != nil {
             if let ver = data.version {
@@ -548,7 +584,7 @@ class RepoMenuItemView: NSView {
                 versionLabel.layer?.cornerRadius = 0
                 versionLabel.layer?.masksToBounds = false
                 versionLabel.layer?.backgroundColor = NSColor.clear.cgColor
-                versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+                versionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
                 versionLabel.setContentHuggingPriority(.required, for: .horizontal)
             } else {
                 versionLabel.stringValue = ""
@@ -566,7 +602,7 @@ class RepoMenuItemView: NSView {
             versionLabel.layer?.opacity = 1.0
             versionLabel.layer?.cornerRadius = cornerRadius
             versionLabel.layer?.masksToBounds = true
-            versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+            versionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             versionLabel.setContentHuggingPriority(.required, for: .horizontal)
         } else if data.isLoading {
             versionLabel.stringValue = Translations.get("loading")
@@ -608,6 +644,8 @@ class RepoMenuItemView: NSView {
         versionLabel.font = .monospacedSystemFont(ofSize: baseFontSize - 1, weight: .regular)
         versionLabel.textColor = .secondaryLabelColor
         versionLabel.alignment = .left
+        versionLabel.lineBreakMode = .byTruncatingTail
+        versionLabel.cell?.truncatesLastVisibleLine = true
         versionLabel.translatesAutoresizingMaskIntoConstraints = false
         
         // Age column
@@ -618,23 +656,35 @@ class RepoMenuItemView: NSView {
         ageLabel.translatesAutoresizingMaskIntoConstraints = false
         
         // Star
-        configureStarLabel(isFavorite: data.isFavorite)
+        configureStarLabel(isFavorite: data.isFavorite, fontSize: baseFontSize - 2)
         
         // Leading slot: error warning OR freshness dot
         var rowViews: [NSView] = []
+        let dotFontSize = max(8.0, baseFontSize - 6.0)
+        dotLabel.stringValue = "●"
+        dotLabel.font = .systemFont(ofSize: dotFontSize)
+        let cellW = dotLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 100, height: 100)).width ?? 14
+        let slotWidth = ceil(cellW) + 2
+        
+        var leadingSlotView: NSView? = nil
         if data.errorMessage != nil {
             // SF Symbol warning replaces the freshness dot
-            let warningView = makeWarningView(pointSize: baseFontSize - 3, tooltip: data.errorMessage)
+            let warningView = makeWarningView(pointSize: dotFontSize + 2, slotWidth: slotWidth, tooltip: data.errorMessage)
             rowViews.append(warningView)
+            leadingSlotView = warningView
         } else if showDot {
-            dotLabel.stringValue = "●"
-            dotLabel.font = .systemFont(ofSize: 8)
             dotLabel.textColor = data.freshnessColor
             dotLabel.alignment = .center
             dotLabel.translatesAutoresizingMaskIntoConstraints = false
             dotLabel.setContentHuggingPriority(.required, for: .horizontal)
-            dotLabel.widthAnchor.constraint(equalToConstant: 12).isActive = true
+            
+            dotWidthConstraint?.isActive = false
+            let dConstraint = dotLabel.widthAnchor.constraint(equalToConstant: slotWidth)
+            dConstraint.isActive = true
+            dotWidthConstraint = dConstraint
+            
             rowViews.append(dotLabel)
+            leadingSlotView = dotLabel
         }
         
         rowViews.append(contentsOf: [titleLabel, versionLabel, ageLabel, starLabel])
@@ -645,25 +695,45 @@ class RepoMenuItemView: NSView {
         contentStack.alignment = .centerY
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         
+        if let slot = leadingSlotView {
+            contentStack.setCustomSpacing(6, after: slot)
+        }
+        
         addSubview(contentStack)
         addSubview(buttonStack)
         
-        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        versionLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        versionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        versionLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         ageLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         starLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
         
         // Fixed-width columns for alignment across rows
+        titleWidthConstraint?.isActive = false
         if nameColumnWidth > 0 {
-            titleLabel.widthAnchor.constraint(equalToConstant: nameColumnWidth).isActive = true
-        }
-        if versionColumnWidth > 0 {
-            versionLabel.widthAnchor.constraint(equalToConstant: versionColumnWidth).isActive = true
+            let tConstraint = titleLabel.widthAnchor.constraint(equalToConstant: nameColumnWidth)
+            tConstraint.isActive = true
+            titleWidthConstraint = tConstraint
         }
         
+        versionMaxWidthConstraint?.isActive = false
+        if versionColumnWidth > 0 {
+            let vConstraint = versionLabel.widthAnchor.constraint(equalToConstant: versionColumnWidth)
+            vConstraint.isActive = true
+            versionMaxWidthConstraint = vConstraint
+        } else {
+            let vConstraint = versionLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 120)
+            vConstraint.isActive = true
+            versionMaxWidthConstraint = vConstraint
+        }
+        
+        let hasLeadingSlot = leadingSlotView != nil
+        let leadingMargin: CGFloat = hasLeadingSlot ? 12 : 18
+        
         NSLayoutConstraint.activate([
-            contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: leadingMargin),
             contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
             buttonStack.leadingAnchor.constraint(greaterThanOrEqualTo: contentStack.trailingAnchor, constant: 8),
             buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -690,6 +760,12 @@ class RepoMenuItemView: NSView {
     @objc func openRepoClicked() {
         appDelegate.animateStatusIcon(with: .scale)
         self.appDelegate.handleOpenRepo(for: self.repoName)
+    }
+    
+    @objc func refreshClicked() {
+        Task { @MainActor in
+            await self.appDelegate.repoCoordinator.refreshSingleRepo(repoName: self.repoName)
+        }
     }
     
     @objc func deleteClicked() {
@@ -903,26 +979,37 @@ class RepoMenuItemView: NSView {
     override func layout() {
         super.layout()
         
-        let unconstrainedWidth = titleLabel.cell?.cellSize(forBounds: NSMakeRect(0, 0, .greatestFiniteMagnitude, .greatestFiniteMagnitude)).width ?? titleLabel.intrinsicContentSize.width
+        let unconstrainedNameWidth = titleLabel.cell?.cellSize(forBounds: NSMakeRect(0, 0, .greatestFiniteMagnitude, .greatestFiniteMagnitude)).width ?? titleLabel.intrinsicContentSize.width
+        let isNameTruncated = unconstrainedNameWidth > titleLabel.frame.width + 0.5
         
-        let hasError = versionLabel.stringValue == "⚠️" || subtitleLabel.stringValue == Translations.get("error")
-        let errorTooltip = versionLabel.toolTip ?? subtitleLabel.toolTip
+        let unconstrainedVersionWidth = versionLabel.cell?.cellSize(forBounds: NSMakeRect(0, 0, .greatestFiniteMagnitude, .greatestFiniteMagnitude)).width ?? versionLabel.intrinsicContentSize.width
+        let isVersionTruncated = unconstrainedVersionWidth > versionLabel.frame.width + 0.5
         
-        let isTruncated = unconstrainedWidth > titleLabel.frame.width + 0.1
+        let hasError = versionLabel.stringValue == "⚠️" || subtitleLabel.stringValue == Translations.get("error") || displayData.errorMessage != nil
+        let errorTooltip = displayData.errorMessage
         
         if hasError, let err = errorTooltip {
-            titleLabel.toolTip = err
-            versionLabel.toolTip = err
-            subtitleLabel.toolTip = err
-        } else if isTruncated {
-            let fullName = titleLabel.stringValue
-            titleLabel.toolTip = fullName
-            versionLabel.toolTip = fullName
-            subtitleLabel.toolTip = fullName
+            titleLabel.toolTip = isNameTruncated ? "\(displayData.formattedName)\n\n⚠️ \(err)" : "⚠️ \(err)"
+            versionLabel.toolTip = "⚠️ \(err)"
+            subtitleLabel.toolTip = "⚠️ \(err)"
         } else {
-            titleLabel.toolTip = nil
-            versionLabel.toolTip = nil
-            subtitleLabel.toolTip = nil
+            let fullVersion = displayData.version
+            
+            if isVersionTruncated, let ver = fullVersion {
+                // Show full version tooltip on BOTH version badge and repository name
+                versionLabel.toolTip = ver
+                titleLabel.toolTip = isNameTruncated ? "\(displayData.formattedName)\n\(ver)" : ver
+                subtitleLabel.toolTip = isNameTruncated ? displayData.formattedName : nil
+            } else if isNameTruncated {
+                // Only repository name is truncated
+                titleLabel.toolTip = displayData.formattedName
+                versionLabel.toolTip = displayData.formattedName
+                subtitleLabel.toolTip = displayData.formattedName
+            } else {
+                titleLabel.toolTip = nil
+                versionLabel.toolTip = nil
+                subtitleLabel.toolTip = nil
+            }
         }
     }
     

@@ -44,7 +44,9 @@ class GitHubAuth {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let body = ["client_id": Constants.githubClientID, "scope": "repo"]
+        // Request empty scope for public read-only access and full 5,000 req/hr rate limit
+        // without requesting read/write access to user's private repositories.
+        let body = ["client_id": Constants.githubClientID, "scope": ""]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
         let (data, response) = try await GitHubAPI.shared.session.data(for: request)

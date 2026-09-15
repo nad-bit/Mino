@@ -94,7 +94,7 @@ struct AppConfig: Codable {
             RepoConfig(name: "gangz1o/Clipaste", source: "manual"),
             RepoConfig(name: "jaywcjlove/awesome-swift-macos-apps", source: "manual"),
             RepoConfig(name: "nickybmon/OpenEmu-Silicon", source: "manual"),
-            RepoConfig(name: "SoulSniper-V2/SnapState", source: "brew", cask: "soulsniper-v2/tap/snapstate"),
+            RepoConfig(name: "ganeshmshetty/openclip", source: "manual"),
             RepoConfig(name: "idawnlight/ShichiZip", source: "brew", cask: "shichizip")
         ]
         self.refreshMinutes = Constants.defaultRefreshIntervalMinutes

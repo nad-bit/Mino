@@ -7,28 +7,103 @@ class RefreshCoordinator {
     
     weak var delegate: AppDelegate?
     
+    static func truncateToMinute(_ date: Date) -> Date {
+        guard date != Date.distantPast else { return date }
+        let cal = Calendar.current
+        let components = cal.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        return cal.date(from: components) ?? date
+    }
+    
     var lastRefreshTime: Date {
         get {
-            return UserDefaults.standard.object(forKey: "LastRefreshDate") as? Date ?? Date.distantPast
+            guard let date = UserDefaults.standard.object(forKey: "LastRefreshDate") as? Date else {
+                return Date.distantPast
+            }
+            // Self-healing: if a timestamp in the future was previously recorded, fix it immediately
+            if date > Date() {
+                let now = RefreshCoordinator.truncateToMinute(Date())
+                UserDefaults.standard.set(now, forKey: "LastRefreshDate")
+                return now
+            }
+            return date
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: "LastRefreshDate")
+            let clamped = min(RefreshCoordinator.truncateToMinute(newValue), RefreshCoordinator.truncateToMinute(Date()))
+            UserDefaults.standard.set(clamped, forKey: "LastRefreshDate")
         }
     }
+    
     var countdownTimer: Timer?
+    var exactRefreshTimer: Timer?
     var isRefreshing = false
+    private var wakeObserver: Any?
     
     init(delegate: AppDelegate) {
         self.delegate = delegate
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleSystemWake()
+            }
+        }
+    }
+    
+    deinit {
+        if let obs = wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(obs)
+        }
+        exactRefreshTimer?.invalidate()
+        countdownTimer?.invalidate()
+    }
+    
+    private func handleSystemWake() {
+        let refreshMinutes = ConfigManager.shared.config.refreshMinutes
+        let nextDate = lastRefreshTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
+        if nextDate.timeIntervalSinceNow <= 0 && !isRefreshing {
+            triggerFullRefresh(nil)
+        } else {
+            scheduleExactTimer()
+        }
     }
     
     // MARK: - Timers
+    
+    func scheduleExactTimer() {
+        exactRefreshTimer?.invalidate()
+        exactRefreshTimer = nil
+        
+        guard lastRefreshTime != Date.distantPast else { return }
+        let refreshMinutes = ConfigManager.shared.config.refreshMinutes
+        let nextDate = lastRefreshTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
+        let delay = nextDate.timeIntervalSinceNow
+        
+        if delay <= 0 {
+            if !isRefreshing {
+                Task { @MainActor [weak self] in
+                    self?.triggerFullRefresh(nil)
+                }
+            }
+        } else {
+            let timer = Timer(fire: nextDate, interval: 0, repeats: false) { [weak self] _ in
+                Task { @MainActor in
+                    self?.triggerFullRefresh(nil)
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            exactRefreshTimer = timer
+        }
+    }
     
     func startTimers() {
         countdownTimer?.invalidate()
         let timer = Timer(timeInterval: Constants.countdownTimerIntervalSeconds, target: self, selector: #selector(updateCountdown), userInfo: nil, repeats: true)
         RunLoop.main.add(timer, forMode: .common)
         countdownTimer = timer
+        
+        scheduleExactTimer()
     }
     
     func getRefreshTitle() -> String {
@@ -85,9 +160,9 @@ class RefreshCoordinator {
         if isRefreshing { return }
         isRefreshing = true
         
-        // Record the refresh timestamp NOW (at trigger time) so the next cycle
-        // is anchored to this exact moment, eliminating accumulated drift.
-        self.lastRefreshTime = Date()
+        // Anchor to the current minute (strictly capped at current time, never in the future)
+        self.lastRefreshTime = RefreshCoordinator.truncateToMinute(Date())
+        scheduleExactTimer()
         
         delegate.footerView?.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
         delegate.refreshQuickAddState()
@@ -117,10 +192,16 @@ class RefreshCoordinator {
         Task { [weak self, weak delegate] in
             guard let self = self, let delegate = delegate else { return }
             
-            // 2. Optimized burst fetching: prioritized order, OS-managed concurrency
+            // 2. Controlled concurrent fetching: worker pool prevents GitHub secondary rate limit bursts
             var results: [(String, RepoInfo)] = []
+            let maxConcurrentTasks = Constants.threadPoolMaxWorkers
+            
             await withTaskGroup(of: (String, RepoInfo).self) { group in
-                for repo in sortedRepos {
+                var repoIterator = sortedRepos.makeIterator()
+                
+                // Seed initial concurrent worker batch
+                for _ in 0..<maxConcurrentTasks {
+                    guard let repo = repoIterator.next() else { break }
                     let cachedVersion = delegate.repoCache[repo]?.version
                     let looksLikeSHA = cachedVersion?.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
                     let hasExistingRelease = cachedVersion != nil && !looksLikeSHA
@@ -131,8 +212,19 @@ class RefreshCoordinator {
                     }
                 }
                 
+                // As each worker completes, enqueue the next repo
                 for await result in group {
                     results.append(result)
+                    if let nextRepo = repoIterator.next() {
+                        let cachedVersion = delegate.repoCache[nextRepo]?.version
+                        let looksLikeSHA = cachedVersion?.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
+                        let hasExistingRelease = cachedVersion != nil && !looksLikeSHA
+                        
+                        group.addTask {
+                            let info = await GitHubAPI.shared.fetchRepoInfo(repo: nextRepo, hasExistingRelease: hasExistingRelease)
+                            return (nextRepo, info)
+                        }
+                    }
                 }
             }
             
@@ -142,6 +234,11 @@ class RefreshCoordinator {
             var updatedNotifiedVersions = lastNotifiedVersions
 
             for (repo, info) in results {
+                // Avoid overwriting a targeted single-repo refresh that ran while or right before this batch finished
+                if delegate.repoCoordinator.isSingleRefreshing(repo: repo) || delegate.repoCoordinator.wasRecentlyRefreshed(repo: repo) {
+                    continue
+                }
+                
                 if let currentVersion = info.version {
                     if let oldVersion = lastNotifiedVersions[repo] {
                         if currentVersion != oldVersion {
@@ -194,6 +291,9 @@ class RefreshCoordinator {
             delegate.updatePopularTagsCache()
             delegate.refreshQuickAddState()
             delegate.rebuildMenu(preserveScroll: true)
+            
+            delegate.footerView?.updateTimeText(self.getRefreshTitle(), isRefreshing: false)
+            delegate.footerView?.updateRepoCount()
         }
     }
     
@@ -213,6 +313,9 @@ class RefreshCoordinator {
             
             var didUpdateAny = false
             for repoName in reposToUpdate {
+                if delegate.repoCoordinator.wasRecentlyRefreshed(repo: repoName) {
+                    continue
+                }
                 let result = await GitHubAPI.shared.fetchRepoTags(repo: repoName)
                 
                 await MainActor.run {

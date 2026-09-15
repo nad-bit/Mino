@@ -5,6 +5,37 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.4] - 2026-09-15
+
+### Security
+- **Strict Host Allowlist for GitHub Authorization**: Enforced strict allowlist validation (`github.com`, `api.github.com`, `*.githubusercontent.com`, `*.github.com`) before attaching `Authorization: Bearer` headers to prevent potential token exfiltration to untrusted domains (M-01).
+- **Least Privilege OAuth Scope**: Changed GitHub Device Flow authorization scope from broad `repo` (which requested read/write access to private code) to empty scope `""`, granting public read-only access and the full 5,000 req/hr rate limit without private repository exposure (M-02).
+- **Release Notes Link Scheme Restriction**: Restricted clickable links in release notes to `https://`, `http://`, and `mailto:` protocols, blocking arbitrary system URL schemes (`file://`, `shortcuts://`, etc.) (M-05).
+- **`mino://` URL Input Validation**: Added strict regular expression validation to sanitize targets received via the `mino://` custom scheme, rejecting malformed inputs and potential argument injection (M-04).
+- **Homebrew Tap Trust Hardening**: Removed the deprecated global environment override `HOMEBREW_NO_REQUIRE_TAP_TRUST = "1"`, relying strictly on explicit per-cask trust verification (M-03).
+
+### Added
+- **Interactive Download Progress & Completion HUD**: Enhanced `HUDPanel` with real-time ETA calculation (`~15s`), completion percentage, jitter-free monospaced tabular digits for transfer speed/bytes, stylized destination folder path badge (e.g. `📁 ~/Desktop`), and interactive click-to-reveal in Finder.
+- **Single-Repo Full Refresh (`CMD + R`)**: Pressing `CMD + R` on a selected repository row now performs a full refresh of all repository metadata (tags/topics, description, Homebrew cask discovery, and latest release/version info) as if freshly added, equipped with race-condition guards against simultaneous background refresh cycles. Pressing `CMD + R` when no row is selected triggers a full global refresh.
+- **Homebrew Icon Standardization (`mug`)**: Replaced the generic shipping box icon (`shippingbox`) with the iconic beer mug symbol (`mug`) across menu inline action buttons, release notes cask headers, and the Homebrew installation HUDPanel.
+- **Automated Validation Test Suite**: Introduced `SwiftApp/Tests/AuditValidationTests.swift` covering host allowlist matching, URL target regex validation, link scheme filtering, and configuration recovery.
+- **Build Script Integration (`--test` & `--publish-tap`)**: Added automatic pre-build test execution to `build.sh`, a dedicated `--test` flag, and explicit `--publish-tap` command for Homebrew Tap updates.
+
+### Fixed
+- **Timer Refresh Drift Elimination & Exact Minute Cadence**: Fixed accumulated drift in periodic refresh cycles by truncating timestamps to the minute (`:00` seconds), anchoring automatic cycles to strict interval increments (e.g., 07:13 -> 08:13 -> 09:13), dispatching precise one-shot firing timers (`Timer(fire:...)`), and listening to `NSWorkspace.didWakeNotification` for immediate overdue triggers upon waking from system sleep.
+- **Default Sample Repository Update**: Replaced `SoulSniper-V2/SnapState` with `ganeshmshetty/openclip` in the default initial repository configuration (`Models.swift`).
+- **Atomic Configuration Persistence & Backup (`repos.json`)**: Implemented atomic writes (`.atomic`) and automatic synchronization with `repos.json.bak` on every save, preventing configuration file corruption (M-12).
+- **Fail-Safe Config Recovery**: Added automatic fallback to `repos.json.bak` and corrupt-state archival if parsing fails, completely eliminating the risk of accidental repository list erasure on startup (M-12).
+- **Keychain Safe Update**: Replaced unconditional delete-and-add with `SecItemUpdate` and graceful fallback to `SecItemAdd`, preventing token loss if addition fails (M-13).
+- **Disk Cache LRU Pruning & Storage Quota**: Implemented background LRU pruning for the release images cache (`~/Library/Caches/com.nad.mino/ReleaseImages`) capped at 150 MB and 30-day TTL (M-07).
+- **Image Download Memory Guard**: Added a 10 MB payload limit in `fetchLocalImageURL` to prevent memory spikes from gigantic remote release image assets (M-09).
+- **OAuth Polling Task Lifetime**: Implemented `NSWindowDelegate` and structured cancellation of polling tasks upon window closing or cancellation (M-10).
+- **Long Version Tag Truncation & Dual Hover Tooltips**: Prevented extremely long release tag names (e.g. `auto-ce69b578b4d8aaf05dea0ac1cca044e06dc259c5`) from squeezing out repository names in menu rows. Prioritized repository title compression resistance, truncated version badges with maximum width bounds (`140px` in tags, `160px` in cards, `120px` in columns), and added dynamic contextual tooltips that show the full version string on hover over **both** the version badge and the repository title when truncated (or multi-line repo title + version if both are truncated).
+- **Scalable Segmented Control in Release Notes**: Dynamically scaled the "Notas / Archivos" `NSSegmentedControl` font size (`11pt` to `18pt`) and AppKit control size (`.small`, `.regular`, `.large`) proportionally to the user's custom `menuFontSize` preference.
+- **High-Throughput Refresh Worker Pool**: Connected `Constants.threadPoolMaxWorkers` directly to `RefreshCoordinator` and calibrated worker pool size to `30` concurrent workers (replacing the previous static 8-worker bottleneck and unused 5-worker constant). Reduced repository refresh times from ~35s down to 1–3s on large libraries (700+ repositories) through HTTP/2 multiplexing while staying safely within GitHub's secondary rate limit boundaries.
+- **Novelty Indicator Dots Sizing & Gray Dot Visibility in Columns Layout**: Fixed horizontal clipping of freshness indicator circles (`●`) when using font sizes >= 19pt by dynamically sizing the leading slot width to fit the glyph cell plus margin. Restored visibility of gray indicator circles (`.systemGray`) for releases older than 90 days. Balanced optical leading margin (`12pt` when dots are enabled vs `18pt` when disabled) so the visual left edge of the circles perfectly matches the left margin of repository names when circles are deactivated. Safely managed explicit width constraints across cell recycling without deactivating AppKit internal intrinsic content size constraints.
+- **GitHub API Rate Limit Tooltip & Error Discrimination**: Fixed disparity where the Preferences tooltip always indicated 5,000 of 5,000 available while repositories displayed "API rate limit exceeded". Replaced blanket mapping of HTTP 403 to rate limit errors with strict header inspection (`x-ratelimit-remaining == 0` for true quota exhaustion vs secondary concurrency limits, SAML SSO enforcement, or repository permission errors). Added real-time rate limit tracking from live response headers and immediate cache retrieval for tooltips.
+
 ## [2.2.3] - 2026-08-05
 
 ### Added

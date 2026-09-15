@@ -1,12 +1,65 @@
 import Foundation
 import AppKit
 
+public struct RateLimitInfo: Equatable {
+    public let limit: Int
+    public let remaining: Int
+    public let resetDate: Date
+    public let hasToken: Bool
+    
+    public init(limit: Int, remaining: Int, resetDate: Date, hasToken: Bool) {
+        self.limit = limit
+        self.remaining = remaining
+        self.resetDate = resetDate
+        self.hasToken = hasToken
+    }
+}
+
 class GitHubAPI {
     static let shared = GitHubAPI()
     /// Shared across the module so GitHubAuth and RepoCoordinator
     /// reuse the same cache-disabled, timeout-configured session
     /// instead of falling back to URLSession.shared.
     private(set) var session: URLSession
+    
+    // MARK: - Rate Limit Tracking
+    private(set) var currentRateLimit: RateLimitInfo?
+    
+    func recordRateLimit(from response: HTTPURLResponse) {
+        guard let limitStr = response.value(forHTTPHeaderField: "x-ratelimit-limit"), let limit = Int(limitStr),
+              let remainingStr = response.value(forHTTPHeaderField: "x-ratelimit-remaining"), let remaining = Int(remainingStr),
+              let resetStr = response.value(forHTTPHeaderField: "x-ratelimit-reset"), let resetEpoch = Double(resetStr) else {
+            return
+        }
+        let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasToken = token != nil && !token!.isEmpty
+        let info = RateLimitInfo(limit: limit, remaining: remaining, resetDate: Date(timeIntervalSince1970: resetEpoch), hasToken: hasToken)
+        self.currentRateLimit = info
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: Notification.Name("RateLimitUpdated"), object: info)
+        }
+    }
+    
+    func parse403Error(response: HTTPURLResponse, data: Data) -> NSError {
+        // 1. Primary rate limit: x-ratelimit-remaining is explicitly 0
+        if let remaining = response.value(forHTTPHeaderField: "x-ratelimit-remaining"), remaining == "0" {
+            return NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRateLimit")])
+        }
+        
+        // 2. Otherwise inspect GitHub's JSON error payload
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = json["message"] as? String {
+            let lower = message.lowercased()
+            if lower.contains("secondary rate limit") {
+                return NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiSecondaryRateLimit")])
+            } else if lower.contains("saml") {
+                return NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: "SAML SSO: " + Translations.get("apiForbidden")])
+            }
+        }
+        
+        // 3. Fallback for repository-level access denied / permission / private
+        return NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiForbidden")])
+    }
     
     // MARK: - Image Cache & Fetching
     
@@ -61,6 +114,77 @@ class GitHubAPI {
         return fileURL
     }
     
+    /// Strict allowlist validation for hosts eligible to receive the GitHub Authorization header.
+    /// Prevents token exfiltration to attacker-controlled domains (e.g. github.com.attacker.com).
+    static func isTrustedGitHubHost(_ host: String?) -> Bool {
+        guard let host = host?.lowercased() else { return false }
+        return host == "github.com"
+            || host == "api.github.com"
+            || host == "raw.githubusercontent.com"
+            || host == "user-images.githubusercontent.com"
+            || host == "avatars.githubusercontent.com"
+            || host == "camo.githubusercontent.com"
+            || host == "objects.githubusercontent.com"
+            || host == "githubusercontent.com"
+            || host.hasSuffix(".githubusercontent.com")
+            || host.hasSuffix(".github.com")
+    }
+    
+    /// Prunes the disk image cache to stay within limits (max total size 150 MB and max age 30 days).
+    /// Evicts oldest accessed/modified files first (LRU).
+    func pruneDiskCacheIfNeeded() {
+        guard let dir = diskCacheDirectory else { return }
+        Task.detached(priority: .background) {
+            let fileManager = FileManager.default
+            let maxCacheSizeBytes: Int64 = 150 * 1024 * 1024 // 150 MB
+            let maxAgeSeconds: TimeInterval = 30 * 86400 // 30 days
+            let expirationDate = Date().addingTimeInterval(-maxAgeSeconds)
+            
+            let resourceKeys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey, .contentAccessDateKey]
+            guard let files = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: resourceKeys, options: .skipsHiddenFiles) else {
+                return
+            }
+            
+            struct CachedFileInfo {
+                let url: URL
+                let size: Int64
+                let lastAccessDate: Date
+            }
+            
+            var fileInfos: [CachedFileInfo] = []
+            var totalSize: Int64 = 0
+            
+            for fileURL in files {
+                guard let resourceValues = try? fileURL.resourceValues(forKeys: Set(resourceKeys)),
+                      let size = resourceValues.fileSize else { continue }
+                
+                let date = resourceValues.contentAccessDate ?? resourceValues.contentModificationDate ?? Date.distantPast
+                let fileSize = Int64(size)
+                
+                // Immediately delete files older than 30 days
+                if date < expirationDate {
+                    try? fileManager.removeItem(at: fileURL)
+                    continue
+                }
+                
+                totalSize += fileSize
+                fileInfos.append(CachedFileInfo(url: fileURL, size: fileSize, lastAccessDate: date))
+            }
+            
+            // If total cache size exceeds quota, sort oldest first and delete until under 80% of limit
+            if totalSize > maxCacheSizeBytes {
+                let targetSize = Int64(Double(maxCacheSizeBytes) * 0.8)
+                fileInfos.sort { $0.lastAccessDate < $1.lastAccessDate }
+                
+                for info in fileInfos {
+                    if totalSize <= targetSize { break }
+                    try? fileManager.removeItem(at: info.url)
+                    totalSize -= info.size
+                }
+            }
+        }
+    }
+    
     /// Fetches an image (with authentication) and saves it to local disk cache,
     /// returning the file:// URL so WebKit/Cocoa HTML parsers can render it natively from disk.
     func fetchLocalImageURL(from urlString: String) async -> URL? {
@@ -76,7 +200,7 @@ class GitHubAPI {
             return fileURL
         }
         
-        // 2. Download asynchronously with authentication headers (only for GitHub domains)
+        // 2. Download asynchronously with authentication headers (strictly for verified GitHub domains)
         guard let url = URL(string: urlString) else { return nil }
         
         var request = URLRequest(url: url)
@@ -84,14 +208,20 @@ class GitHubAPI {
         request.setValue(Constants.userAgent, forHTTPHeaderField: "User-Agent")
         
         if let host = url.host?.lowercased(),
-           (host.contains("github.com") || host.contains("githubusercontent.com")),
+           GitHubAPI.isTrustedGitHubHost(host),
            let token = ConfigManager.shared.token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
         do {
             let (data, response) = try await session.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
+            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+                return nil
+            }
+            
+            // Limit image size to 10 MB to prevent memory spikes from gigantic assets
+            let maxImageBytes = 10 * 1024 * 1024
+            guard data.count <= maxImageBytes,
                   let image = NSImage(data: data) else {
                 return nil
             }
@@ -121,6 +251,7 @@ class GitHubAPI {
     
     private init() {
         self.session = URLSession(configuration: GitHubAPI.makeConfiguration())
+        self.pruneDiskCacheIfNeeded()
     }
     
     private static func makeConfiguration() -> URLSessionConfiguration {
@@ -139,6 +270,7 @@ class GitHubAPI {
     func resetSession() {
         session.finishTasksAndInvalidate()
         session = URLSession(configuration: GitHubAPI.makeConfiguration())
+        pruneDiskCacheIfNeeded()
     }
     
     /// Generic data fetch for non-GitHub API calls (e.g. Homebrew formulae API).
@@ -150,7 +282,7 @@ class GitHubAPI {
     func fetchRepoInfo(repo: String, hasExistingRelease: Bool = false) async -> RepoInfo {
         var requestHeaders: [String: String] = [:]
         
-        if let token = ConfigManager.shared.token {
+        if let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
             requestHeaders["Authorization"] = "Bearer \(token)"
         }
         
@@ -190,11 +322,12 @@ class GitHubAPI {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
+        recordRateLimit(from: httpResponse)
         
         if httpResponse.statusCode == 404 {
             throw NSError(domain: "GitHubAPI", code: 404, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRepoNotFound")])
         } else if httpResponse.statusCode == 403 {
-            throw NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRateLimit")])
+            throw parse403Error(response: httpResponse, data: data)
         } else if httpResponse.statusCode == 429 {
             throw NSError(domain: "GitHubAPI", code: 429, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiTooManyRequests")])
         } else if httpResponse.statusCode != 200 {
@@ -251,11 +384,12 @@ class GitHubAPI {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
+        recordRateLimit(from: httpResponse)
         
         if httpResponse.statusCode == 404 {
             throw NSError(domain: "GitHubAPI", code: 404, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRepoNotFound")])
         } else if httpResponse.statusCode == 403 {
-            throw NSError(domain: "GitHubAPI", code: 403, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRateLimit")])
+            throw parse403Error(response: httpResponse, data: data)
         } else if httpResponse.statusCode == 429 {
             throw NSError(domain: "GitHubAPI", code: 429, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiTooManyRequests")])
         } else if httpResponse.statusCode != 200 {
@@ -344,7 +478,7 @@ class GitHubAPI {
         var headers: [String: String] = [
             "Accept": "application/vnd.github.v3+json"
         ]
-        if let token = ConfigManager.shared.token {
+        if let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
             headers["Authorization"] = "Bearer \(token)"
         }
         
@@ -357,10 +491,11 @@ class GitHubAPI {
                 
                 if let (data, response) = try? await session.data(for: request),
                    let httpResponse = response as? HTTPURLResponse {
+                    recordRateLimit(from: httpResponse)
                     
-                    // Surface rate limit errors to the user
+                    // Surface descriptive errors to the user
                     if httpResponse.statusCode == 403 {
-                        return Translations.get("apiRateLimit")
+                        return parse403Error(response: httpResponse, data: data).localizedDescription
                     } else if httpResponse.statusCode == 429 {
                         return Translations.get("apiTooManyRequests")
                     }
@@ -389,9 +524,10 @@ class GitHubAPI {
             
             if let (data, response) = try? await session.data(for: request),
                let httpResponse = response as? HTTPURLResponse {
+                recordRateLimit(from: httpResponse)
                 
                 if httpResponse.statusCode == 403 {
-                    return Translations.get("apiRateLimit")
+                    return parse403Error(response: httpResponse, data: data).localizedDescription
                 } else if httpResponse.statusCode == 429 {
                     return Translations.get("apiTooManyRequests")
                 }
@@ -415,7 +551,7 @@ class GitHubAPI {
         var headers: [String: String] = [
             "Accept": "application/vnd.github.v3+json"
         ]
-        if let token = ConfigManager.shared.token {
+        if let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
             headers["Authorization"] = "Bearer \(token)"
         }
         
@@ -427,9 +563,10 @@ class GitHubAPI {
                 
                 if let (data, response) = try? await session.data(for: request),
                    let httpResponse = response as? HTTPURLResponse {
+                    recordRateLimit(from: httpResponse)
                     
                     if httpResponse.statusCode == 403 {
-                        return (Translations.get("apiRateLimit"), nil)
+                        return (parse403Error(response: httpResponse, data: data).localizedDescription, nil)
                     } else if httpResponse.statusCode == 429 {
                         return (Translations.get("apiTooManyRequests"), nil)
                     }
@@ -466,7 +603,7 @@ class GitHubAPI {
         request.setValue(Constants.userAgent, forHTTPHeaderField: "User-Agent")
         
         if let host = url.host?.lowercased(),
-           (host.contains("github.com") || host.contains("githubusercontent.com")),
+           GitHubAPI.isTrustedGitHubHost(host),
            let token = ConfigManager.shared.token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }

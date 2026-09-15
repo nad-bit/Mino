@@ -232,7 +232,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         // --- Segmented Navigation Control (Notas / Archivos) ---
         modeSegmentedControl = NSSegmentedControl(labels: [Translations.get("tabNotes"), Translations.get("tabAssets")], trackingMode: .selectOne, target: self, action: #selector(segmentChanged(_:)))
         modeSegmentedControl.selectedSegment = 0
-        modeSegmentedControl.controlSize = .regular
+        updateSegmentedControlFontSize()
         modeSegmentedControl.translatesAutoresizingMaskIntoConstraints = false
         mainStack.addArrangedSubview(modeSegmentedControl)
         
@@ -353,6 +353,20 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         }
     }
     
+    private func updateSegmentedControlFontSize() {
+        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        let offset = baseFontSize - 13.0
+        let segFontSize = max(11.0, min(18.0, 13.0 + (offset * 0.4)))
+        modeSegmentedControl.font = NSFont.systemFont(ofSize: segFontSize, weight: .medium)
+        if baseFontSize <= 12 {
+            modeSegmentedControl.controlSize = .small
+        } else if baseFontSize >= 19 {
+            modeSegmentedControl.controlSize = .large
+        } else {
+            modeSegmentedControl.controlSize = .regular
+        }
+    }
+    
     func loadNotes(for info: RepoInfo) {
         self.currentRepoName = info.name
         
@@ -377,7 +391,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         if let cask = caskName {
             let space = NSAttributedString(string: "  ")
             let attachment = NSTextAttachment()
-            if let image = NSImage(systemSymbolName: "shippingbox", accessibilityDescription: nil) {
+            if let image = NSImage(systemSymbolName: "mug", accessibilityDescription: nil) {
                 let font = NSFont.systemFont(ofSize: 24, weight: .bold)
                 let yOffset = round((font.capHeight - image.size.height) / 2.0)
                 attachment.image = image
@@ -390,6 +404,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
         let offset = baseFontSize - 13.0
         let titleFontSize = 24 + (offset * 0.5)
+        updateSegmentedControlFontSize()
         
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
@@ -863,8 +878,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         let destURL = uniqueDestination(for: fileName, in: destDir)
         fileName = destURL.lastPathComponent
         
-        let dlImage = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
-        HUDPanel.shared.showProgress(title: fileName, image: dlImage, progress: 0.0)
+        HUDPanel.shared.showDownloadProgress(title: fileName, status: "...", details: "", progress: 0.0)
         
         let startTime = Date()
         var lastUIUpdate = Date.distantPast
@@ -883,24 +897,47 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                     let progressRatio = total > 0 ? Double(received) / Double(total) : 0.0
                     let receivedStr = self.formatBytes(received)
                     
-                    var sub: String
+                    var status: String
+                    var details: String
                     if total > 0 {
                         let totalStr = self.formatBytes(total)
                         let speedBps = elapsed > 0 ? Double(received) / elapsed : 0
                         let speedStr = self.formatBytes(Int64(speedBps))
-                        sub = "\(receivedStr) / \(totalStr)  ·  \(speedStr)/s"
+                        let percent = Int(progressRatio * 100)
+                        
+                        var etaStr = ""
+                        if speedBps > 1024 && received < total {
+                            let remainingSecs = Int(Double(total - received) / speedBps)
+                            if remainingSecs < 60 {
+                                etaStr = "  ·  ~\(remainingSecs)s"
+                            } else {
+                                let mins = remainingSecs / 60
+                                let secs = remainingSecs % 60
+                                etaStr = "  ·  ~\(mins)m \(secs)s"
+                            }
+                        }
+                        
+                        status = "\(percent)%  ·  \(speedStr)/s\(etaStr)"
+                        details = "\(receivedStr) / \(totalStr)"
                     } else {
-                        sub = receivedStr
+                        status = receivedStr
+                        details = ""
                     }
                     
                     Task { @MainActor in
-                        HUDPanel.shared.updateProgress(subtitle: sub, progress: progressRatio)
+                        HUDPanel.shared.updateDownloadProgress(status: status, details: details, progress: progressRatio)
                     }
                 }
                 
                 await MainActor.run {
-                    HUDPanel.shared.showCompletion(title: fileName, subtitle: "✓", isSuccess: true)
-                    NSWorkspace.shared.selectFile(destURL.path, inFileViewerRootedAtPath: destDir.path)
+                    let finalSize = (try? destURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map { Int64($0) } ?? asset.size ?? 0
+                    let sizeStr = self.formatBytes(finalSize)
+                    let compText = Translations.get("downloadSuccess")
+                    let subtitle = sizeStr.isEmpty || sizeStr == "0 bytes"
+                        ? compText
+                        : "\(sizeStr)  ·  \(compText)"
+                    
+                    HUDPanel.shared.showDownloadCompletion(title: fileName, subtitle: subtitle, destinationURL: destURL)
                 }
             } catch {
                 await MainActor.run {
@@ -959,6 +996,12 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         }
         
         if let url = targetURL {
+            let scheme = url.scheme?.lowercased() ?? ""
+            guard scheme == "https" || scheme == "http" || scheme == "mailto" else {
+                print("⚠️ [ReleaseNotes] Blocked opening link with untrusted scheme: \(scheme)")
+                return false
+            }
+            
             if let popover = (NSApp.delegate as? AppDelegate)?.releaseNotesPopover {
                 popover.close()
             }

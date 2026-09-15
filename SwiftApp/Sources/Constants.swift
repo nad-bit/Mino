@@ -15,10 +15,10 @@ enum Constants {
     static let defaultRefreshIntervalMinutes: Int = 360  // 6 hours
     static let menuUpdateBatchDelaySeconds: Double = 0.3 // 300ms
     static let interactiveControlDelaySeconds: Double = 0.5 // 500ms
-    static let countdownTimerIntervalSeconds: TimeInterval = 60 // 1 minute
+    static let countdownTimerIntervalSeconds: TimeInterval = 15 // 15 seconds
     
     // Performance Constants
-    static let threadPoolMaxWorkers: Int = 5
+    static let threadPoolMaxWorkers: Int = 30
     static let httpRequestTimeoutSeconds: TimeInterval = 30
     static let httpMaxRetries: Int = 3
     

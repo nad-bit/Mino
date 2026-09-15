@@ -6,6 +6,21 @@ class RepoCoordinator {
     
     weak var delegate: AppDelegate?
     
+    // MARK: - Single Repo Refresh Tracking & Race Condition Protection
+    private(set) var activeSingleRefreshes = Set<String>()
+    private(set) var recentlyRefreshedRepos = [String: Date]()
+    
+    func isSingleRefreshing(repo: String) -> Bool {
+        return activeSingleRefreshes.contains(repo)
+    }
+    
+    func wasRecentlyRefreshed(repo: String, within seconds: TimeInterval = 60) -> Bool {
+        if let timestamp = recentlyRefreshedRepos[repo], Date().timeIntervalSince(timestamp) < seconds {
+            return true
+        }
+        return false
+    }
+    
     init(delegate: AppDelegate) {
         self.delegate = delegate
     }
@@ -160,7 +175,7 @@ class RepoCoordinator {
         guard let delegate = delegate else { return }
         
         // Show installing notification with package icon while Brew works
-        let brewImage = NSImage(systemSymbolName: "shippingbox", accessibilityDescription: nil)
+        let brewImage = NSImage(systemSymbolName: "mug", accessibilityDescription: nil)
         HUDPanel.shared.show(title: Translations.get("installingTitle"), subtitle: Translations.get("installingMsg").format(with: ["cask_name": caskName]), image: brewImage, duration: nil)
         
         Task { [weak delegate] in
@@ -459,4 +474,70 @@ class RepoCoordinator {
         }
         return false
     }
+    
+    // MARK: - Single Repo Refresh (CMD+R on selected repo)
+    
+    func refreshSingleRepo(repoName: String) async {
+        guard let delegate = delegate else { return }
+        
+        // Prevent duplicate parallel requests on the same repository
+        guard !activeSingleRefreshes.contains(repoName) else { return }
+        activeSingleRefreshes.insert(repoName)
+        defer {
+            activeSingleRefreshes.remove(repoName)
+        }
+        
+        // Visual indicator on the status bar icon
+        delegate.animateStatusIcon(with: .rotate)
+        
+        // Fetch all info concurrently (version, tags/description, and potential Cask)
+        async let infoTask = GitHubAPI.shared.fetchRepoInfo(repo: repoName, hasExistingRelease: false)
+        async let tagsTask = GitHubAPI.shared.fetchRepoTags(repo: repoName)
+        async let caskTask: String? = {
+            if HomebrewManager.shared.brewPath != nil {
+                return await HomebrewManager.shared.findCaskForRepo(repoName: repoName)
+            }
+            return nil
+        }()
+        
+        let (info, tagsMeta, foundCask) = await (infoTask, tagsTask, caskTask)
+        
+        // Race Condition Guard 1: Verify repo is still present in user config (not deleted while fetching)
+        guard let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name.lowercased() == repoName.lowercased() }) else {
+            return
+        }
+        
+        // Update tags and description
+        if let tags = tagsMeta.tags {
+            ConfigManager.shared.config.repos[index].tags = tags
+        }
+        if let desc = tagsMeta.description {
+            ConfigManager.shared.config.repos[index].repoDescription = desc
+        }
+        
+        // Update Cask if newly discovered
+        if let cask = foundCask {
+            ConfigManager.shared.config.repos[index].source = "brew"
+            ConfigManager.shared.config.repos[index].cask = cask
+        }
+        
+        ConfigManager.shared.saveConfig()
+        
+        // Update cache & timestamp anchor to prevent full refresh overwriting
+        delegate.repoCache[repoName] = info
+        recentlyRefreshedRepos[repoName] = Date()
+        
+        // Re-render UI with fresh data
+        delegate.updatePopularTagsCache()
+        delegate.rebuildMenu(preserveScroll: true)
+        
+        // If Release Notes popover is currently open for this repo, reload it live
+        if let vc = delegate.releaseNotesPopover?.contentViewController as? ReleaseNotesViewController,
+           vc.currentRepoName == repoName {
+            vc.loadNotes(for: info)
+        }
+        
+        delegate.animateStatusIcon(with: .bounce)
+    }
 }
+
