@@ -81,7 +81,7 @@ APP_ARM64="$BUILD_DIR/${APP_NAME}_AppleSilicon.app"
 APP_X86_64="$BUILD_DIR/${APP_NAME}_Intel.app"
 APP_UNIVERSAL="$BUILD_DIR/${APP_NAME}_Universal.app"
 
-if [ "$1" != "--release" ]; then
+if [ "$1" != "--release" ] && [ "$1" != "--publish-tap" ]; then
     echo "🎨 Generating Global App Icon from SF Symbol..."
     swift GenerateIcon.swift
     
@@ -125,6 +125,7 @@ if [ "$1" != "--release" ]; then
     lipo -create -output "$APP_UNIVERSAL/Contents/MacOS/$APP_NAME" "$APP_ARM64/Contents/MacOS/$APP_NAME" "$APP_X86_64/Contents/MacOS/$APP_NAME"
 
     # Move the universal app to the standard name for processing
+    rm -rf "$BUILD_DIR/$APP_NAME.app"
     mv "$APP_UNIVERSAL" "$BUILD_DIR/$APP_NAME.app"
 
     cd "$BUILD_DIR"
