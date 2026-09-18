@@ -2,13 +2,17 @@
 set -e
 
 APP_NAME="Mino"
-VERSION="2.2.4"
-BUILD_NUMBER="324"
+VERSION="2.2.5"
+BUILD_NUMBER="325"
 BUILD_DIR="build"
 
 if [ "$1" == "--test" ]; then
-    echo "🧪 Running verification tests..."
-    swift Tests/AuditValidationTests.swift
+    echo "🧪 Compiling and running verification tests with production sources..."
+    mkdir -p "$BUILD_DIR"
+    TEST_SOURCES=$(ls Sources/*.swift | grep -v "Sources/main.swift")
+    swiftc $TEST_SOURCES Tests/AuditValidationTests.swift -o "$BUILD_DIR/audit_test_runner"
+    "$BUILD_DIR/audit_test_runner"
+    rm -f "$BUILD_DIR/audit_test_runner"
     exit 0
 fi
 
@@ -107,8 +111,11 @@ if [ "$1" != "--release" ] && [ "$1" != "--publish-tap" ]; then
         echo "⚠️  Warning: global icon.png generation failed."
     fi
 
-    echo "🧪 Running validation tests..."
-    swift Tests/AuditValidationTests.swift
+    echo "🧪 Running validation tests against production sources..."
+    TEST_SOURCES=$(ls Sources/*.swift | grep -v "Sources/main.swift")
+    swiftc $TEST_SOURCES Tests/AuditValidationTests.swift -o "$BUILD_DIR/audit_test_runner"
+    "$BUILD_DIR/audit_test_runner"
+    rm -f "$BUILD_DIR/audit_test_runner"
 
     echo "📝 Creating App Structures..."
     create_app_structure "$APP_ARM64"

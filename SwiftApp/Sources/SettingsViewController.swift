@@ -232,13 +232,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         loginSwitch.target = self
         loginSwitch.action = #selector(toggleLogin(_:))
         addSettingsRow(to: startupStack, label: loginLabel, controls: [loginSwitch])
-        
         formStack.addArrangedSubview(createGroupBox(for: startupStack))
-        
-    }
-    
-    private func setOAuthStack(hidden: Bool) {
-        // No longer needed with modal OAuth
     }
     
     func updatePreferredContentSize() {

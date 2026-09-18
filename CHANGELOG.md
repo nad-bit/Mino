@@ -5,6 +5,37 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.5] - 2026-09-18
+
+### Security
+- **Exact Endpoints GitHub Host Allowlist**: Replaced broad wildcard suffixes (`*.github.com` and `*.githubusercontent.com`) with an exact allowlist restricted strictly to Mino's real endpoints (`api.github.com`, `raw.githubusercontent.com`, and `github.com`), eliminating exposure to arbitrary third-party or infrastructure subdomains.
+- **Authorization Header Isolation for Assets**: Proactively removed `Authorization: Bearer` headers from remote image and avatar downloads, ensuring OAuth tokens are strictly sent only to authenticated GitHub API endpoints.
+- **Decompression Bomb Protection via `CGImageSource`**: Implemented pre-decode image inspection (`safeDecodeImage`) using `CGImageSourceCopyPropertiesAtIndex` to validate pixel dimensions and total area before allocating memory. Rejects corrupted or malicious decompression bombs exceeding 4096 px or 16 megapixels without allocating giant bitmaps in RAM.
+- **Structural HTML & Markdown Sanitization**: Introduced `Utils.sanitizeHTML(_:)` to strip high-risk executable tags (`<script>`, `<iframe>`, `<object>`, `<embed>`, `<form>`), inline JavaScript event handlers (`onload`, `onclick`, `onerror`), and dangerous pseudo-protocols (`javascript:`, `vbscript:`, `data:`) before handing release notes content to the `NSAttributedString` HTML parser.
+- **Asset Filename Sanitization**: Added `Utils.sanitizeFileName(_:)` across release asset and source archive downloads to eliminate path traversal sequences (`../`), normalize path separators, strip ASCII control characters, and enforce maximum filename boundaries.
+- **Canonical `mino://` URL Scheme Depth Limit**: Hardened custom scheme target parsing to restrict path depth to a maximum of 3 canonical segments (`owner/repo`, `tap/cask`, `cask`), strictly rejecting ambiguous or deeply nested input (`a/b/c/d/...`).
+- **Thread-Safe `ConfigManager` Concurrency Isolation**: Protected global mutable `config` and `token` state with `NSRecursiveLock` to prevent multithreaded race conditions across background tasks and UI updates.
+- **Automatic Untrusted Tap/Cask Resolution & Recovery**: Added automated trust target extraction from Homebrew error diagnostics (`extractTrustTarget`). When installing a cask from a third-party tap referenced by short name (e.g. `frame`), Mino automatically detects the untrusted cask error, executes `brew trust --cask <target>`, and retries installation seamlessly without manual user intervention.
+- **Production-Linked Test Suite Execution**: Refactored the audit test suite (`SwiftApp/Tests/AuditValidationTests.swift`) to compile and execute directly against production sources (`Sources/*.swift`), guaranteeing automated regression coverage against real code.
+
+### Added
+- **Dynamic Horizontal Progress Bar**: Added a sleek, 2pt horizontal progress bar (`controlAccentColor`) anchored to the bottom edge of the header view. Smoothly animates in real-time as concurrent worker tasks finish refreshing repositories and casks during background checks.
+- **Vector & SVG Image Rendering in Release Notes**: Enhanced `GitHubAPI.safeDecodeImage` to safely decode SVG vector images (such as GitHub Camo badges from *shields.io*) with payload size guards (max 2 MB) and dimension validation, resolving broken badge images across release notes.
+- **Tag Cloud Aesthetic Redesign (`NoSearchResultsView`)**: Overhauled tag suggestion buttons when searches yield no results or the library is empty, adding a 0.5pt subtle border profile, accent-tinted translucent backgrounds, high-contrast text, and interactive hover illumination with pointing-hand cursors.
+- **Proportional SF Symbol Sizing in Notes Header**: The beer mug symbol (`mug`) in release notes titles now scales dynamically with the title's font size and user menu font preferences instead of remaining at a fixed point size.
+- **Symmetrical Search Field Centering (`MenuSearchFieldCell`)**: Implemented a custom search field cell enforcing balanced horizontal insets. Keeps the placeholder ("Buscar…"), blinking text caret, and query string centered at the exact mathematical midpoint of the menu header, preventing horizontal jumps when the cancel ("X") button activates.
+
+### Fixed
+- **Status Icon Animation Freeze on Launch**: Decoupled the initial refresh cycle and tag backfill on startup with a 300 ms dispatch delay to allow the main runloop and AppKit layout pass to complete freely. Replaced discrete single-shot rotations with a continuous repeating symbol effect (`.repeating`) that spins smoothly throughout the entire refresh.
+- **Caps Lock Keyboard Shortcuts Compatibility**: Subtracted `.capsLock` from AppKit modifier flags and normalized key characters to lowercase across both `AppDelegate` and `GlobalHotkeyManager`, ensuring in-app shortcuts (`CMD+R`, `CMD+F`, `CMD+,`, etc.) function consistently whether Caps Lock is on or off.
+- **Release Notes Tag & Card Contrast in Dark Mode**: Balanced card backdrop opacity (35% `windowBackgroundColor`) and redone tag pills (`ClickableTagPill`) with 0.5pt accent borders and `.labelColor` text, ensuring crisp legibility against light desktop wallpapers in Dark Mode.
+- **Subpixel Layout Jitter**: Rounded popover target widths to integer points (`ceil`), eliminating subpixel rounding shifts across different menu widths.
+- **Search Field Focus & Caret Stability**: Guarded `searchField.stringValue` reassignments during menu reloads to avoid resetting Cocoa's field editor buffer while the user is actively typing.
+
+### Changed
+- **Origin & Minimalist Ethos**: Documented the origin of the name *"Minuto Cero · Minimalismo · Minino"* in `README.md`.
+
+
 ## [2.2.4] - 2026-09-15
 
 ### Security

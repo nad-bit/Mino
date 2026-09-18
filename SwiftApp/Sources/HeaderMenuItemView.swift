@@ -41,6 +41,11 @@ class HeaderMenuItemView: NSView {
         }
     }
     
+    // Refresh Progress Bar
+    private let progressContainer = NSView()
+    private let progressBar = NSView()
+    private var progressBarWidthConstraint: NSLayoutConstraint?
+    
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
         super.init(frame: NSRect(x: 0, y: 0, width: Constants.menuMinWidth, height: Constants.menuHeaderFooterHeight))
@@ -162,6 +167,35 @@ class HeaderMenuItemView: NSView {
             
             settingsBtn.widthAnchor.constraint(equalToConstant: btnSize),
             settingsBtn.heightAnchor.constraint(equalToConstant: btnSize)
+        ])
+        
+        // Setup Refresh Progress Bar along bottom edge
+        progressContainer.translatesAutoresizingMaskIntoConstraints = false
+        progressContainer.wantsLayer = true
+        progressContainer.layer?.backgroundColor = NSColor.separatorColor.withAlphaComponent(0.12).cgColor
+        progressContainer.isHidden = true
+        progressContainer.alphaValue = 0.0
+        addSubview(progressContainer)
+        
+        progressBar.translatesAutoresizingMaskIntoConstraints = false
+        progressBar.wantsLayer = true
+        progressBar.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        progressBar.layer?.cornerRadius = 1.0
+        progressContainer.addSubview(progressBar)
+        
+        let widthConst = progressBar.widthAnchor.constraint(equalToConstant: 0)
+        self.progressBarWidthConstraint = widthConst
+        
+        NSLayoutConstraint.activate([
+            progressContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            progressContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            progressContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
+            progressContainer.heightAnchor.constraint(equalToConstant: 2.0),
+            
+            progressBar.leadingAnchor.constraint(equalTo: progressContainer.leadingAnchor),
+            progressBar.topAnchor.constraint(equalTo: progressContainer.topAnchor),
+            progressBar.bottomAnchor.constraint(equalTo: progressContainer.bottomAnchor),
+            widthConst
         ])
         
         // Initial state: Search is dominant
@@ -394,5 +428,42 @@ class HeaderMenuItemView: NSView {
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         menuDidChangeHighlight(highlightedItem: nil)
+    }
+    
+    // MARK: - Refresh Progress Bar Control
+    
+    func setRefreshing(_ isRefreshing: Bool, initialProgress: Double = 0.0) {
+        if isRefreshing {
+            progressContainer.isHidden = false
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                progressContainer.animator().alphaValue = 1.0
+            }
+            updateProgress(fraction: initialProgress)
+        } else {
+            updateProgress(fraction: 1.0)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                NSAnimationContext.runAnimationGroup({ context in
+                    context.duration = 0.35
+                    self?.progressContainer.animator().alphaValue = 0.0
+                }) { [weak self] in
+                    MainActor.assumeIsolated {
+                        self?.progressContainer.isHidden = true
+                        self?.progressBarWidthConstraint?.constant = 0
+                    }
+                }
+            }
+        }
+    }
+    
+    func updateProgress(fraction: Double) {
+        let clamped = max(0.0, min(1.0, fraction))
+        let targetW = bounds.width * CGFloat(clamped)
+        progressBarWidthConstraint?.constant = targetW
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.25
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            progressBar.layoutSubtreeIfNeeded()
+        }
     }
 }

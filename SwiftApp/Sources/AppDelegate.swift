@@ -142,8 +142,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             self.updatePopularTagsCache()
             self.rebuildMenu()
             self.refreshCoordinator.startTimers()
-            self.triggerFullRefresh(nil)
-            self.refreshCoordinator.startTagBackfillSequence()
+            
+            // Allow the initial runloop pass to settle so icon animation doesn't freeze
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.triggerFullRefresh(nil)
+                self?.refreshCoordinator.startTagBackfillSequence()
+            }
         }
         
         NotificationCenter.default.addObserver(self, selector: #selector(configDidUpdate), name: Notification.Name("ConfigChanged"), object: nil)
@@ -211,9 +215,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         
         guard !rawTarget.isEmpty, rawTarget.count <= 256 else { return }
         
-        // Strict validation: accepts only owner/repo, tap/cask, or cask name syntax (optionally prefixed by brew:)
-        let validTargetRegex = "^(brew:)?[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)*$"
-        guard rawTarget.range(of: validTargetRegex, options: .regularExpression) != nil else {
+        // Strict canonical validation via Utils.isValidMinoTarget
+        guard Utils.isValidMinoTarget(rawTarget) else {
             print("⚠️ [AppDelegate] Ignored malformed target from mino:// URL: \(rawTarget)")
             return
         }
@@ -225,16 +228,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     
     @objc private func configDidUpdate() {
         DispatchQueue.main.async {
-            // When the user reduces the refresh interval, the next refresh date
-            // (lastRefreshTime + newInterval) may already be in the past, which
-            // would cause updateCountdown() to trigger an unwanted immediate refresh.
-            // Prevent this by resetting the countdown to start from now.
+            // When the user changes the refresh interval, recalculate boundaries
+            // and immediately reschedule exactRefreshTimer so obsolete pending timers
+            // don't fire prematurely.
             let newMinutes = ConfigManager.shared.config.refreshMinutes
             let nextRefresh = self.refreshCoordinator.lastRefreshTime.addingTimeInterval(TimeInterval(newMinutes * 60))
             if nextRefresh.timeIntervalSinceNow <= 0 && !self.refreshCoordinator.isRefreshing {
                 self.refreshCoordinator.lastRefreshTime = Date()
             }
             
+            self.refreshCoordinator.scheduleExactTimer()
             self.footerView?.updateTimeText(self.getRefreshTitle(), isRefreshing: self.isRefreshing)
         }
     }
@@ -534,6 +537,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         }
     }
     
+    func setStatusIconRefreshing(_ isRefreshing: Bool) {
+        guard let imageView = statusIconView else { return }
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { return }
+        
+        if #available(macOS 14.0, *) {
+            if isRefreshing {
+                if #available(macOS 15.0, *) {
+                    imageView.addSymbolEffect(.rotate.byLayer, options: .repeating)
+                } else {
+                    imageView.addSymbolEffect(.pulse.byLayer, options: .repeating)
+                }
+            } else {
+                if #available(macOS 15.0, *) {
+                    imageView.removeSymbolEffect(ofType: .rotate)
+                } else {
+                    imageView.removeSymbolEffect(ofType: .pulse)
+                }
+            }
+        }
+    }
+    
     // MARK: - Popover State
     
     
@@ -811,9 +835,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         }
         
         // 2. Global App Shortcuts (CMD + ...)
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
         if modifiers == .command {
-            switch event.charactersIgnoringModifiers {
+            switch event.charactersIgnoringModifiers?.lowercased() {
             case "s": // CMD+S -> Toggle favorite
                 mainPopoverVC.triggerActionOnHighlighted(.favorite)
                 return true
@@ -883,9 +907,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     }
 }
 
+// MARK: - MenuSearchFieldCell (Symmetrical centering for search field)
+
+class MenuSearchFieldCell: NSSearchFieldCell {
+    
+    override func searchTextRect(forBounds rect: NSRect) -> NSRect {
+        var textRect = super.searchTextRect(forBounds: rect)
+        
+        // Symmetrically balance horizontal insets so text & placeholder are centered
+        // exactly at rect.midX regardless of whether cancel button is visible or hidden.
+        let leftButtonWidth = searchButtonCell?.image?.size.width ?? 14.0
+        let rightButtonWidth = cancelButtonCell?.image?.size.width ?? 14.0
+        let sideMargin = ceil(max(leftButtonWidth, rightButtonWidth) + 8.0)
+        
+        let availableWidth = rect.width - (sideMargin * 2.0)
+        if availableWidth > 0 {
+            textRect.origin.x = round(rect.origin.x + sideMargin)
+            textRect.size.width = round(availableWidth)
+        }
+        return textRect
+    }
+}
+
 // MARK: - MenuSearchField (subclass for AppDelegate reference)
 
 class MenuSearchField: NSSearchField {
+    override class var cellClass: AnyClass? {
+        get { MenuSearchFieldCell.self }
+        set { }
+    }
+    
     private weak var appDelegate: AppDelegate?
     
     convenience init(appDelegate: AppDelegate) {

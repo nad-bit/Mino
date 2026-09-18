@@ -7,8 +7,36 @@ class ConfigManager {
     private let configDir: URL
     private let configFile: URL
     private let backupConfigFile: URL
-    var config: AppConfig
-    var token: String?
+    
+    private let lock = NSRecursiveLock()
+    private var _config: AppConfig
+    private var _token: String?
+    
+    var config: AppConfig {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _config
+        }
+        set {
+            lock.lock()
+            _config = newValue
+            lock.unlock()
+        }
+    }
+    
+    var token: String? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _token
+        }
+        set {
+            lock.lock()
+            _token = newValue
+            lock.unlock()
+        }
+    }
     
     private let keychainService = "Mino"
     private let keychainAccount = "github_token"
@@ -19,7 +47,7 @@ class ConfigManager {
         configFile = configDir.appendingPathComponent("repos.json")
         backupConfigFile = configDir.appendingPathComponent("repos.json.bak")
         
-        self.config = AppConfig()
+        self._config = AppConfig()
         self.loadConfig()
     }
     

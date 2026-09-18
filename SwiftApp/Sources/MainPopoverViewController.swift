@@ -230,7 +230,7 @@ class MainPopoverViewController: NSViewController {
         headerView.updateFontSize()
         
         // Restore previous search query if any
-        if !appDelegate.currentSearchQuery.isEmpty {
+        if !appDelegate.currentSearchQuery.isEmpty && appDelegate.searchField?.stringValue != appDelegate.currentSearchQuery {
             appDelegate.searchField?.stringValue = appDelegate.currentSearchQuery
             headerView.updateSearchOpacity()
         }
@@ -345,7 +345,7 @@ class MainPopoverViewController: NSViewController {
         }
         
         let rowContentWidth = maxNameWidth + maxVersionWidth + 120 // padding/icons
-        let targetWidth = min(Constants.menuMaxWidth, max(Constants.menuDefaultWidth, rowContentWidth))
+        let targetWidth = ceil(min(Constants.menuMaxWidth, max(Constants.menuDefaultWidth, rowContentWidth)))
         self.lastTargetWidth = targetWidth
         
         if sortedRepos.isEmpty {

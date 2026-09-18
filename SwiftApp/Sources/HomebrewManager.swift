@@ -1,6 +1,6 @@
 import Foundation
 
-class HomebrewManager {
+final class HomebrewManager: @unchecked Sendable {
     static let shared = HomebrewManager()
     
     var brewPath: String? {
@@ -21,8 +21,21 @@ class HomebrewManager {
         return process
     }
     
-    func trustCask(cask: String) async -> Bool {
-        guard let process = createProcess(arguments: ["trust", "--cask", cask]) else { return false }
+    func trustTarget(_ target: String) async -> Bool {
+        let trimmed = target.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        
+        let slashCount = trimmed.filter { $0 == "/" }.count
+        let args: [String]
+        if slashCount >= 2 {
+            args = ["trust", "--cask", trimmed]
+        } else if slashCount == 1 {
+            args = ["trust", "--tap", trimmed]
+        } else {
+            args = ["trust", "--cask", trimmed]
+        }
+        
+        guard let process = createProcess(arguments: args) else { return false }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
                 do {
@@ -34,6 +47,44 @@ class HomebrewManager {
                 }
             }
         }
+    }
+    
+    func trustCask(cask: String) async -> Bool {
+        return await trustTarget(cask)
+    }
+    
+    func extractTrustTarget(from output: String) -> String? {
+        // Pattern 1: Run `brew trust --cask <target>`
+        if let regex = try? NSRegularExpression(pattern: "brew trust --cask\\s+([^`\\r\\n]+)", options: .caseInsensitive) {
+            let range = NSRange(location: 0, length: output.utf16.count)
+            if let match = regex.firstMatch(in: output, options: [], range: range),
+               let matchRange = Range(match.range(at: 1), in: output) {
+                let target = String(output[matchRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !target.isEmpty { return target }
+            }
+        }
+        
+        // Pattern 2: Error: Refusing to load cask <target> from untrusted tap
+        if let regex = try? NSRegularExpression(pattern: "refusing to load cask\\s+([^\\s]+)\\s+from untrusted tap", options: .caseInsensitive) {
+            let range = NSRange(location: 0, length: output.utf16.count)
+            if let match = regex.firstMatch(in: output, options: [], range: range),
+               let matchRange = Range(match.range(at: 1), in: output) {
+                let target = String(output[matchRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !target.isEmpty { return target }
+            }
+        }
+        
+        // Pattern 3: Run `brew trust <tap>`
+        if let regex = try? NSRegularExpression(pattern: "brew trust\\s+([^`\\r\\n]+)", options: .caseInsensitive) {
+            let range = NSRange(location: 0, length: output.utf16.count)
+            if let match = regex.firstMatch(in: output, options: [], range: range),
+               let matchRange = Range(match.range(at: 1), in: output) {
+                let target = String(output[matchRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !target.isEmpty { return target }
+            }
+        }
+        
+        return nil
     }
     
     func listCasks() async -> [String] {
@@ -64,15 +115,25 @@ class HomebrewManager {
     }
     
     func infoForCask(cask: String) async -> String? {
+        if let info = await executeInfoForCask(cask: cask) {
+            return info
+        }
+        return nil
+    }
+    
+    private func executeInfoForCask(cask: String, canRetry: Bool = true) async -> String? {
         guard let process = createProcess(arguments: ["info", "--cask", "--json=v2", cask]) else { return nil }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
-                let pipe = Pipe()
-                process.standardOutput = pipe
+                let pipeOut = Pipe()
+                let pipeErr = Pipe()
+                process.standardOutput = pipeOut
+                process.standardError = pipeErr
                 
                 do {
                     try process.run()
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    let data = pipeOut.fileHandleForReading.readDataToEndOfFile()
+                    let errData = pipeErr.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
                     
                     if process.terminationStatus == 0 {
@@ -80,6 +141,18 @@ class HomebrewManager {
                             continuation.resume(returning: output)
                             return
                         }
+                    } else if canRetry, let errStr = String(data: errData, encoding: .utf8),
+                              let target = self.extractTrustTarget(from: errStr) {
+                        Task {
+                            let trusted = await self.trustTarget(target)
+                            if trusted {
+                                let retryResult = await self.executeInfoForCask(cask: cask, canRetry: false)
+                                continuation.resume(returning: retryResult)
+                            } else {
+                                continuation.resume(returning: nil)
+                            }
+                        }
+                        return
                     }
                 } catch {
                      print("Error running brew info: \(error)")
@@ -92,11 +165,25 @@ class HomebrewManager {
     func installCask(cask: String) async -> (success: Bool, message: String) {
         _ = await runBrewUpdate()
         
-        // If it's a tap cask, trust it first so it's also trusted permanently in the user's terminal
+        // If it's a tap cask or qualified name, trust it automatically upfront
         if cask.contains("/") {
-            _ = await trustCask(cask: cask)
+            _ = await trustTarget(cask)
         }
         
+        var result = await executeInstallProcess(cask: cask)
+        
+        // If it failed due to an untrusted tap/cask, extract target from Homebrew output, trust it, and retry once
+        if !result.success, let target = extractTrustTarget(from: result.message) {
+            let trusted = await trustTarget(target)
+            if trusted {
+                result = await executeInstallProcess(cask: cask)
+            }
+        }
+        
+        return result
+    }
+    
+    private func executeInstallProcess(cask: String) async -> (success: Bool, message: String) {
         guard let process = createProcess(arguments: ["reinstall", "--cask", cask]) else {
             return (false, "Homebrew not found")
         }
@@ -129,8 +216,8 @@ class HomebrewManager {
                     }
                     if let str = String(data: data, encoding: .utf8) {
                         outputLock.lock()
-                        allOutput += str.lowercased()
-                        let currentOutput = allOutput
+                        allOutput += str
+                        let currentOutput = allOutput.lowercased()
                         outputLock.unlock()
                         
                         // Covers: classic "password:", "sudo:", "no tty present",
@@ -176,7 +263,7 @@ class HomebrewManager {
                     }
                     
                     if process.terminationStatus == 0 {
-                        let isAlreadyInstalled = finalOutput.contains("already installed")
+                        let isAlreadyInstalled = finalOutput.lowercased().contains("already installed")
                         if isAlreadyInstalled {
                             continuation.resume(returning: (true, "alreadyInstalled"))
                         } else {
@@ -194,6 +281,10 @@ class HomebrewManager {
     }
     
     func findCaskForRepo(repoName: String) async -> String? {
+        return await executeFindCaskForRepo(repoName: repoName, canRetry: true)
+    }
+    
+    private func executeFindCaskForRepo(repoName: String, canRetry: Bool) async -> String? {
         let shortName = repoName.split(separator: "/").last.map { String($0) } ?? repoName
         let repoUrlPattern = "github.com/\(repoName)".lowercased()
         
@@ -206,12 +297,15 @@ class HomebrewManager {
         // 2. Info mapping
         return await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
-                let pipe = Pipe()
-                process.standardOutput = pipe
+                let pipeOut = Pipe()
+                let pipeErr = Pipe()
+                process.standardOutput = pipeOut
+                process.standardError = pipeErr
                 
                 do {
                     try process.run()
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    let data = pipeOut.fileHandleForReading.readDataToEndOfFile()
+                    let errData = pipeErr.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
                     if process.terminationStatus == 0 {
                         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -228,6 +322,18 @@ class HomebrewManager {
                                 }
                             }
                         }
+                    } else if canRetry, let errStr = String(data: errData, encoding: .utf8),
+                              let target = self.extractTrustTarget(from: errStr) {
+                        Task {
+                            let trusted = await self.trustTarget(target)
+                            if trusted {
+                                let retry = await self.executeFindCaskForRepo(repoName: repoName, canRetry: false)
+                                continuation.resume(returning: retry)
+                            } else {
+                                continuation.resume(returning: nil)
+                            }
+                        }
+                        return
                     }
                 } catch {}
                 continuation.resume(returning: nil)

@@ -3,6 +3,7 @@
     <img src="docs/icon.png" width="150" alt="Mino Logo">
   </p>
   <h1 align="center">Mino</h1>
+  <p align="center"><em>Minuto Cero &middot; Minimalismo &middot; Minino</em></p>
   <p>A lightweight, native macOS menu bar app to track GitHub releases with Homebrew integration.</p>
   
   [![macOS](https://img.shields.io/badge/macOS-12.0+-000000?style=flat&logo=apple&logoColor=white)](https://apple.com/macos)
@@ -136,15 +137,21 @@ Mino requires certain macOS permissions to function seamlessly:
 
 ### Security & Resilience
 
-Mino adheres to strict defense-in-depth principles across authentication, networking, and data storage:
+Mino adheres to strict defense-in-depth principles across authentication, networking, IPC, and data storage:
 
 - **Least Privilege OAuth Scope**: Uses GitHub's official Device Authorization Flow with an empty scope (`""`), granting public read access and the full 5,000 req/hr API quota with zero access to private code or write permissions.
-- **Strict Host Allowlist**: Authorization headers are exclusively dispatched to verified GitHub hosts (`github.com`, `api.github.com`, `*.githubusercontent.com`, `*.github.com`), preventing token exfiltration to unauthorized endpoints.
+- **Exact Endpoints GitHub Host Allowlist**: Authorization headers (`Authorization: Bearer`) are exclusively dispatched to Mino's verified API endpoints (`api.github.com`, `raw.githubusercontent.com`, and `github.com`), completely rejecting arbitrary subdomains or third-party hosts. Remote asset and avatar downloads are proactively isolated without credentials.
 - **Secure Keychain Storage**: Tokens are stored and updated via native macOS Keychain Services (`SecItemUpdate` / `SecItemAdd`)—never written in raw configuration files or system logs.
-- **Link & Protocol Isolation**: Clickable links in release notes strictly enforce `https://`, `http://`, or `mailto:` protocols to prevent execution of dangerous system schemes (`file://`, `shortcuts://`, etc.). All inputs received via the `mino://` custom URL scheme are sanitized against strict regular expressions.
-- **Atomic Persistence & Fail-Safe Recovery**: Configuration (`repos.json`) is saved via atomic writes (`.atomic`) and continuously mirrored to `repos.json.bak`. If corruption ever occurs, Mino automatically restores from the backup to safeguard your repository collection.
+- **Link & Protocol Isolation**: Clickable links in release notes strictly enforce `https://`, `http://`, or `mailto:` protocols to prevent execution of dangerous system schemes (`file://`, `shortcuts://`, `terminal://`, etc.).
+- **Structural HTML & Markdown Sanitization**: Release notes are sanitized prior to HTML parsing, stripping high-risk executable tags (`<script>`, `<iframe>`, `<object>`, `<embed>`, `<form>`), inline JavaScript event handlers (`onload`, `onclick`, `onerror`), and pseudo-protocols (`javascript:`, `data:`).
+- **Decompression Bomb Protection**: Remote images are inspected using `CGImageSource` metadata prior to rasterization, validating pixel dimensions (max 4,096 px) and total pixel area (max 16 megapixels) to neutralize decompression bombs without allocating memory.
+- **Asset Filename Sanitization**: File downloads are sanitized against directory traversal sequences (`../`), path separators, and ASCII control characters to safeguard the local filesystem.
+- **Canonical `mino://` URL Scheme Depth Limit**: Custom scheme targets are validated against strict depth constraints (maximum 3 path segments: `owner/repo`, `tap/cask`, or `cask`), rejecting nested paths and command injections.
+- **Atomic Persistence & Fail-Safe Recovery**: Configuration (`repos.json`) is saved via atomic writes (`.atomic`) and continuously mirrored to `repos.json.bak`. If corruption ever occurs, Mino automatically restores from backup to safeguard your repository collection.
+- **Thread-Safe State Isolation**: Global mutable configuration and token state are protected with recursive locks (`NSRecursiveLock`) to prevent race conditions between background refresh tasks and UI events.
+- **Automatic Homebrew Tap Trust Remediation**: Diagnostics from third-party tap installations are automatically parsed (`extractTrustTarget`), executing `brew trust --cask` and retrying seamlessly without user friction.
 - **Resource Protection & Memory Guards**: Remote release images are capped at 10 MB in memory, and the local disk cache (`~/Library/Caches/com.nad.mino/ReleaseImages`) is managed with automated background LRU pruning (150 MB quota / 30-day TTL).
-- **Automated Audit Suite**: All security controls, host allowlists, URL regexes, and recovery routines are verified via automated tests in `SwiftApp/Tests/AuditValidationTests.swift` (`./build.sh --test`).
+- **Automated Audit Suite**: All security controls, host allowlists, URL regexes, decompression bomb guards, HTML sanitizers, and recovery routines are verified via automated tests in `SwiftApp/Tests/AuditValidationTests.swift` compiled directly against production sources (`./build.sh --test`).
 
 ## Configuration
 

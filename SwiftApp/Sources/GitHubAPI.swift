@@ -99,7 +99,7 @@ class GitHubAPI {
         }
         if let fileURL = diskCacheURL(for: urlString),
            let data = try? Data(contentsOf: fileURL),
-           let image = NSImage(data: data) {
+           let image = GitHubAPI.safeDecodeImage(from: data) {
             let cost = Int(image.size.width * image.size.height * 4)
             ramImageCache.setObject(image, forKey: key, cost: cost)
             return image
@@ -114,20 +114,81 @@ class GitHubAPI {
         return fileURL
     }
     
-    /// Strict allowlist validation for hosts eligible to receive the GitHub Authorization header.
-    /// Prevents token exfiltration to attacker-controlled domains (e.g. github.com.attacker.com).
+    /// Strict exact allowlist for hosts eligible to receive sensitive tokens.
+    /// Eliminates wildcard trusts (*.github.com / *.githubusercontent.com) for defense-in-depth.
+    static let exactTrustedHosts: Set<String> = [
+        "api.github.com",
+        "github.com",
+        "raw.githubusercontent.com"
+    ]
+    
+    /// Validates whether a host is strictly in the trusted GitHub host allowlist.
     static func isTrustedGitHubHost(_ host: String?) -> Bool {
         guard let host = host?.lowercased() else { return false }
-        return host == "github.com"
-            || host == "api.github.com"
-            || host == "raw.githubusercontent.com"
-            || host == "user-images.githubusercontent.com"
-            || host == "avatars.githubusercontent.com"
-            || host == "camo.githubusercontent.com"
-            || host == "objects.githubusercontent.com"
-            || host == "githubusercontent.com"
-            || host.hasSuffix(".githubusercontent.com")
-            || host.hasSuffix(".github.com")
+        return exactTrustedHosts.contains(host)
+    }
+    
+    /// Safely inspects image dimensions and pixels via CGImageSource before full bitmap allocation
+    /// to prevent decompression bomb memory spikes. Enforces max dimension <= 4096px and max pixels <= 16 MP.
+    /// Also supports vector image formats (SVG) with payload size guards.
+    static func safeDecodeImage(from data: Data, maxPixelDimension: CGFloat = 4096, maxPixelArea: CGFloat = 16_777_216) -> NSImage? {
+        // 1. Check raster image formats (PNG, JPEG, GIF, TIFF, WebP) via CGImageSource
+        if let source = CGImageSourceCreateWithData(data as CFData, nil),
+           let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+            let width = properties[kCGImagePropertyPixelWidth] as? CGFloat ?? 0
+            let height = properties[kCGImagePropertyPixelHeight] as? CGFloat ?? 0
+            
+            guard width > 0, height > 0,
+                  width <= maxPixelDimension,
+                  height <= maxPixelDimension,
+                  (width * height) <= maxPixelArea else {
+                return nil
+            }
+            return NSImage(data: data)
+        }
+        
+        // 2. Check vector formats (SVG, PDF) natively decodable by NSImage.
+        // Limit raw payload size to 2 MB for vector/XML data to prevent XML entity expansion or excessive parsing.
+        if data.count <= 2 * 1024 * 1024,
+           let image = NSImage(data: data) {
+            let width = image.size.width
+            let height = image.size.height
+            if width > 0, height > 0,
+               width <= maxPixelDimension,
+               height <= maxPixelDimension,
+               (width * height) <= maxPixelArea {
+                return image
+            }
+        }
+        
+        return nil
+    }
+    
+    /// Calculates the total disk space occupied by the image cache in bytes.
+    func getDiskCacheSize() -> Int64 {
+        guard let dir = diskCacheDirectory,
+              let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey], options: .skipsHiddenFiles) else {
+            return 0
+        }
+        var total: Int64 = 0
+        for file in files {
+            if let size = (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize {
+                total += Int64(size)
+            }
+        }
+        return total
+    }
+    
+    /// Clears all in-memory and on-disk cached images.
+    func clearDiskAndMemoryCache() {
+        ramImageCache.removeAllObjects()
+        guard let dir = diskCacheDirectory,
+              let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil, options: .skipsHiddenFiles) else {
+            return
+        }
+        for file in files {
+            try? FileManager.default.removeItem(at: file)
+        }
     }
     
     /// Prunes the disk image cache to stay within limits (max total size 150 MB and max age 30 days).
@@ -194,24 +255,18 @@ class GitHubAPI {
         // 1. If file already exists on disk and is a valid image
         if FileManager.default.fileExists(atPath: fileURL.path),
            let data = try? Data(contentsOf: fileURL),
-           let image = NSImage(data: data) {
+           let image = GitHubAPI.safeDecodeImage(from: data) {
             let cost = Int(image.size.width * image.size.height * 4)
             ramImageCache.setObject(image, forKey: key, cost: cost)
             return fileURL
         }
         
-        // 2. Download asynchronously with authentication headers (strictly for verified GitHub domains)
+        // 2. Download asynchronously. Remote images are public CDN assets and must NOT receive Authorization headers.
         guard let url = URL(string: urlString) else { return nil }
         
         var request = URLRequest(url: url)
         request.timeoutInterval = 15.0
         request.setValue(Constants.userAgent, forHTTPHeaderField: "User-Agent")
-        
-        if let host = url.host?.lowercased(),
-           GitHubAPI.isTrustedGitHubHost(host),
-           let token = ConfigManager.shared.token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
         
         do {
             let (data, response) = try await session.data(for: request)
@@ -219,10 +274,10 @@ class GitHubAPI {
                 return nil
             }
             
-            // Limit image size to 10 MB to prevent memory spikes from gigantic assets
+            // Limit image size to 10 MB and validate dimensions to prevent decompression bombs
             let maxImageBytes = 10 * 1024 * 1024
             guard data.count <= maxImageBytes,
-                  let image = NSImage(data: data) else {
+                  let image = GitHubAPI.safeDecodeImage(from: data) else {
                 return nil
             }
             
@@ -239,12 +294,11 @@ class GitHubAPI {
         }
     }
     
-    /// Fetches an image asynchronously using authenticated requests when available,
-    /// leveraging a 2-tier cache (RAM NSCache + Disk Cache).
+    /// Fetches an image asynchronously leveraging a 2-tier cache (RAM NSCache + Disk Cache).
     func fetchImage(from urlString: String) async -> NSImage? {
         if let localURL = await fetchLocalImageURL(from: urlString),
            let data = try? Data(contentsOf: localURL) {
-            return NSImage(data: data)
+            return GitHubAPI.safeDecodeImage(from: data)
         }
         return nil
     }

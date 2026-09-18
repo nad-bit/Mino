@@ -86,8 +86,7 @@ class NoSearchResultsView: NSView {
         mainStack.arrangedSubviews.filter { $0 !== errorStack }.forEach { $0.removeFromSuperview() }
         
         for btn in tagButtons {
-            btn.contentTintColor = .secondaryLabelColor
-            btn.layer?.backgroundColor = NSColor.clear.cgColor
+            btn.updateDefaultAppearance()
         }
         
         let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
@@ -107,13 +106,13 @@ class NoSearchResultsView: NSView {
             var currentRowStack = createRowStack()
             var currentRowWidth: CGFloat = 0
             let tagSpacing: CGFloat = 8.0
-            let approxRowHeight: CGFloat = 28.0
+            let approxRowHeight: CGFloat = 30.0
             let maxAllowedTagCloudHeight = Constants.menuMaxHeight - 80.0
             
             for tag in suggestedTags {
                 let btn = getOrCreateButton(title: tag, fontSize: baseFontSize - 1)
                 let titleSize = (tag as NSString).size(withAttributes: [.font: font])
-                let btnWidth = ceil(titleSize.width) + 16.0
+                let btnWidth = ceil(titleSize.width) + 20.0
                 
                 // Check if it fits in current row
                 if currentRowWidth + btnWidth > availableWidth && currentRowWidth > 0 {
@@ -162,6 +161,7 @@ class NoSearchResultsView: NSView {
         if let reused = tagButtons.first(where: { $0.superview == nil }) {
             reused.title = title
             reused.font = .systemFont(ofSize: fontSize, weight: .medium)
+            reused.updateDefaultAppearance()
             return reused
         }
         
@@ -198,15 +198,27 @@ class TagButton: NSButton {
         self.isBordered = false
         let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
         self.font = .systemFont(ofSize: baseFontSize - 1, weight: .medium)
-        self.contentTintColor = .secondaryLabelColor
         
         self.wantsLayer = true
         self.layer?.cornerRadius = 6
         self.layer?.masksToBounds = true
+        self.layer?.borderWidth = 0.5
+        updateDefaultAppearance()
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    
+    func updateDefaultAppearance() {
+        self.contentTintColor = .labelColor
+        self.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.12).cgColor
+        self.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.28).cgColor
+    }
+    
+    override var intrinsicContentSize: NSSize {
+        let base = super.intrinsicContentSize
+        return NSSize(width: base.width + 14, height: max(base.height + 4, 22))
     }
     
     override func updateTrackingAreas() {
@@ -216,7 +228,6 @@ class TagButton: NSButton {
         addTrackingArea(area)
         
         // Fix for "ghost hover" when the view moves but the mouse stays still
-        // Optimization: only perform this expensive check if the button is currently hovered.
         let isHovered = self.contentTintColor == .white
         if isHovered, let window = self.window {
             let mouseLocation = window.mouseLocationOutsideOfEventStream
@@ -224,8 +235,7 @@ class TagButton: NSButton {
             let isInside = bounds.contains(localPoint)
             
             if !isInside {
-                self.contentTintColor = .secondaryLabelColor
-                self.layer?.backgroundColor = NSColor.clear.cgColor
+                updateDefaultAppearance()
                 NSCursor.arrow.set()
             }
         }
@@ -233,13 +243,13 @@ class TagButton: NSButton {
     
     override func mouseEntered(with event: NSEvent) {
         self.contentTintColor = .white
-        self.layer?.backgroundColor = NSColor.systemBlue.cgColor
+        self.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        self.layer?.borderColor = NSColor.controlAccentColor.cgColor
         NSCursor.pointingHand.set()
     }
     
     override func mouseExited(with event: NSEvent) {
-        self.contentTintColor = .secondaryLabelColor
-        self.layer?.backgroundColor = NSColor.clear.cgColor
+        updateDefaultAppearance()
         NSCursor.arrow.set()
     }
 }

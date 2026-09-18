@@ -115,7 +115,7 @@ class ShortcutRecorderButton: NSButton {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self = self else { return event }
             
-            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
             
             // Escape cancels the recording
             if event.keyCode == 53 && modifiers.isEmpty {

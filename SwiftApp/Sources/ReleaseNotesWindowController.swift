@@ -54,19 +54,40 @@ class ClickableTextField: NSTextField {
 class ClickableTagPill: ClickableTextField {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.masksToBounds = true
+        layer?.borderWidth = 0.5
+        updateDefaultAppearance()
         setupHover()
     }
     
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.masksToBounds = true
+        layer?.borderWidth = 0.5
+        updateDefaultAppearance()
         setupHover()
+    }
+    
+    func updateDefaultAppearance() {
+        self.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.14)
+        self.textColor = .labelColor
+        self.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.3).cgColor
     }
     
     private func setupHover() {
         self.onHover = { [weak self] isHovered in
             guard let self = self else { return }
-            self.backgroundColor = isHovered ? NSColor.textColor.withAlphaComponent(0.15) : NSColor.textColor.withAlphaComponent(0.08)
-            self.textColor = isHovered ? .labelColor : .secondaryLabelColor
+            if isHovered {
+                self.backgroundColor = .controlAccentColor
+                self.textColor = .white
+                self.layer?.borderColor = NSColor.controlAccentColor.cgColor
+            } else {
+                self.updateDefaultAppearance()
+            }
         }
     }
 }
@@ -157,8 +178,8 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         box.boxType = .custom
         box.cornerRadius = 10
         box.borderWidth = 1
-        box.borderColor = NSColor.separatorColor.withAlphaComponent(0.2)
-        box.fillColor = NSColor.labelColor.withAlphaComponent(0.04)
+        box.borderColor = NSColor.separatorColor.withAlphaComponent(0.18)
+        box.fillColor = NSColor.windowBackgroundColor.withAlphaComponent(0.35)
         box.titlePosition = .noTitle
         box.translatesAutoresizingMaskIntoConstraints = false
         
@@ -386,13 +407,20 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         
         let caskName = ConfigManager.shared.config.repos.first(where: { $0.name == info.name && $0.source == "brew" })?.cask
         
+        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        let offset = baseFontSize - 13.0
+        let titleFontSize = 24 + (offset * 0.5)
+        updateSegmentedControlFontSize()
+        
         // --- TITLE ---
         let attrString = NSMutableAttributedString(string: info.name)
         if let cask = caskName {
             let space = NSAttributedString(string: "  ")
             let attachment = NSTextAttachment()
-            if let image = NSImage(systemSymbolName: "mug", accessibilityDescription: nil) {
-                let font = NSFont.systemFont(ofSize: 24, weight: .bold)
+            let symbolConfig = NSImage.SymbolConfiguration(pointSize: titleFontSize * 0.85, weight: .bold)
+            if let baseImage = NSImage(systemSymbolName: "mug", accessibilityDescription: nil),
+               let image = baseImage.withSymbolConfiguration(symbolConfig) {
+                let font = NSFont.systemFont(ofSize: titleFontSize, weight: .bold)
                 let yOffset = round((font.capHeight - image.size.height) / 2.0)
                 attachment.image = image
                 attachment.bounds = NSRect(x: 0, y: yOffset, width: image.size.width, height: image.size.height)
@@ -401,15 +429,12 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             attrString.append(NSAttributedString(attachment: attachment))
             attrString.append(NSAttributedString(string: " \(cask)"))
         }
-        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
-        let offset = baseFontSize - 13.0
-        let titleFontSize = 24 + (offset * 0.5)
-        updateSegmentedControlFontSize()
         
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
         attrString.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: attrString.length))
         attrString.addAttribute(.font, value: NSFont.systemFont(ofSize: titleFontSize, weight: .bold), range: NSRange(location: 0, length: attrString.length))
+        attrString.addAttribute(.foregroundColor, value: NSColor.labelColor, range: NSRange(location: 0, length: attrString.length))
         titleLabel.attributedStringValue = attrString
         
         // --- DESCRIPTION (About) ---
@@ -622,6 +647,9 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                 }
             }
         }
+        
+        // Structural HTML sanitization pass to strip any lingering executable tags or event handlers
+        processedText = Utils.sanitizeHTML(processedText)
         
         if hasHTML, let htmlData = processedText.data(using: .utf8) {
             let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
@@ -874,6 +902,9 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             fileName = "\(repoClean)-source.\(ext)"
         }
         
+        // Strict filename sanitization: prevents path traversal, control characters, and reserved names
+        fileName = Utils.sanitizeFileName(fileName)
+        
         // Avoid overwriting: add " (1)", " (2)" etc. like macOS
         let destURL = uniqueDestination(for: fileName, in: destDir)
         fileName = destURL.lastPathComponent
@@ -1057,14 +1088,9 @@ class WrappingTagsView: NSView {
         for tag in tags {
             let pillNode = ClickableTagPill(labelWithString: "  #\(tag)  ")
             pillNode.font = .systemFont(ofSize: 11 + offset, weight: .medium)
-            pillNode.textColor = .secondaryLabelColor
-            pillNode.backgroundColor = NSColor.textColor.withAlphaComponent(0.08)
             pillNode.drawsBackground = true
             pillNode.isBordered = false
             pillNode.alignment = .center
-            pillNode.wantsLayer = true
-            pillNode.layer?.cornerRadius = 6
-            pillNode.layer?.masksToBounds = true
             pillNode.sizeToFit()
             
             var f = pillNode.frame

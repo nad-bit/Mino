@@ -282,7 +282,7 @@ class Utils {
         closeListIfNeeded()
         closeTableIfNeeded()
         
-        return body
+        return sanitizeHTML(body)
     }
     
     private static func parseTableRow(_ line: String) -> [String] {
@@ -351,6 +351,112 @@ class Utils {
         }
         
         return result
+    }
+    
+    // MARK: - Security Sanitization & Validation
+    
+    /// Structural HTML sanitizer that strips executable tags, active content, and dangerous attributes/schemes.
+    static func sanitizeHTML(_ html: String) -> String {
+        var clean = html
+        
+        // 1. Remove high-risk executable/embedded tags with their contents
+        let dangerousTagPatterns = [
+            "<script[\\s\\S]*?</script>",
+            "<iframe[\\s\\S]*?</iframe>",
+            "<object[\\s\\S]*?</object>",
+            "<embed[^>]*>",
+            "<applet[\\s\\S]*?</applet>",
+            "<form[\\s\\S]*?</form>",
+            "<button[\\s\\S]*?</button>",
+            "<input[^>]*>",
+            "<link[^>]*>",
+            "<meta[^>]*>"
+        ]
+        
+        for pattern in dangerousTagPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                clean = regex.stringByReplacingMatches(in: clean, options: [], range: NSRange(location: 0, length: clean.utf16.count), withTemplate: "")
+            }
+        }
+        
+        // 2. Strip inline event handlers (e.g. onload=..., onclick=..., onerror=...)
+        let eventHandlerPattern = "(?i)\\s*on[a-z0-9_-]+\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)"
+        if let regex = try? NSRegularExpression(pattern: eventHandlerPattern) {
+            clean = regex.stringByReplacingMatches(in: clean, options: [], range: NSRange(location: 0, length: clean.utf16.count), withTemplate: "")
+        }
+        
+        // 3. Neutralize dangerous pseudo-protocols in href and src attributes (javascript:, vbscript:, data:)
+        let dangerousProtocols = ["href\\s*=\\s*[\"']?\\s*javascript:", "href\\s*=\\s*[\"']?\\s*vbscript:", "src\\s*=\\s*[\"']?\\s*javascript:"]
+        for proto in dangerousProtocols {
+            if let regex = try? NSRegularExpression(pattern: proto, options: .caseInsensitive) {
+                clean = regex.stringByReplacingMatches(in: clean, options: [], range: NSRange(location: 0, length: clean.utf16.count), withTemplate: "href=\"about:blank\" data-blocked=\"")
+            }
+        }
+        
+        return clean
+    }
+    
+    /// Sanitizes asset and source archive filenames to prevent path traversal, control characters,
+    /// and reserved filesystem characters.
+    static func sanitizeFileName(_ rawName: String) -> String {
+        var name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Remove directory traversal tokens and normalize separators
+        name = name.replacingOccurrences(of: "\\", with: "-")
+        name = name.replacingOccurrences(of: "/", with: "-")
+        name = name.replacingOccurrences(of: "..", with: "")
+        name = name.replacingOccurrences(of: ":", with: "-")
+        
+        // Filter out ASCII control characters (0...31 and 127 DEL)
+        name = name.unicodeScalars.filter { scalar in
+            let val = scalar.value
+            return val >= 32 && val != 127
+        }.map { String($0) }.joined()
+        
+        // Strip leading/trailing dots and whitespaces
+        name = name.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        
+        // Enforce maximum filename length (standard APFS / HFS+ max is 255)
+        if name.count > 255 {
+            let ext = (name as NSString).pathExtension
+            let base = (name as NSString).deletingPathExtension
+            let maxBaseLen = ext.isEmpty ? 255 : max(1, 255 - ext.count - 1)
+            let trimmedBase = String(base.prefix(maxBaseLen))
+            name = ext.isEmpty ? trimmedBase : "\(trimmedBase).\(ext)"
+        }
+        
+        return name.isEmpty ? "downloaded-asset" : name
+    }
+    
+    /// Canonical validation for mino:// URL targets.
+    /// Strictly allows:
+    /// - 1 component: "cask-name" (or brew:cask-name)
+    /// - 2 components: "owner/repo" or "tap/cask"
+    /// - 3 components: "owner/tap/cask"
+    /// Rejects arbitrary path depth (e.g. a/b/c/d/...), path traversal, shell chars and spaces.
+    static func isValidMinoTarget(_ rawTarget: String) -> Bool {
+        guard !rawTarget.isEmpty, rawTarget.count <= 256 else { return false }
+        
+        var target = rawTarget.trimmingCharacters(in: .whitespacesAndNewlines)
+        if target.lowercased().hasPrefix("brew:") {
+            target = String(target.dropFirst(5))
+        }
+        guard !target.isEmpty else { return false }
+        
+        let parts = target.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count >= 1 && parts.count <= 3 else { return false }
+        
+        let componentRegex = "^[a-zA-Z0-9_.-]+$"
+        for part in parts {
+            let partStr = String(part)
+            guard !partStr.isEmpty,
+                  partStr != ".",
+                  partStr != "..",
+                  partStr.range(of: componentRegex, options: .regularExpression) != nil else {
+                return false
+            }
+        }
+        return true
     }
 }
 

@@ -70,9 +70,10 @@ class BeerHandlePanel: NSPanel {
         guard !isCurrentlyVisible else { return }
         isCurrentlyVisible = true
         
-        // Match the popover's window level so the handle floats at the same z-order
+        // Match the popover's window level and effective appearance so the handle floats at the same z-order and theme
         if let popoverWindow = popoverWindow {
             self.level = popoverWindow.level
+            self.appearance = popoverWindow.effectiveAppearance
         }
         
         let animation = Constants.beerHandleAnimation

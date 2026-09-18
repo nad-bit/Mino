@@ -165,8 +165,9 @@ class RefreshCoordinator {
         scheduleExactTimer()
         
         delegate.footerView?.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
+        delegate.headerView?.setRefreshing(true, initialProgress: 0.05)
         delegate.refreshQuickAddState()
-        delegate.animateStatusIcon(with: .rotate)
+        delegate.setStatusIconRefreshing(true)
         
         let startTime = Date()
         
@@ -215,6 +216,11 @@ class RefreshCoordinator {
                 // As each worker completes, enqueue the next repo
                 for await result in group {
                     results.append(result)
+                    let totalCount = max(1, sortedRepos.count)
+                    let fraction = max(0.05, min(1.0, Double(results.count) / Double(totalCount)))
+                    await MainActor.run {
+                        delegate.headerView?.updateProgress(fraction: fraction)
+                    }
                     if let nextRepo = repoIterator.next() {
                         let cachedVersion = delegate.repoCache[nextRepo]?.version
                         let looksLikeSHA = cachedVersion?.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
@@ -282,6 +288,8 @@ class RefreshCoordinator {
             }
             
             self.isRefreshing = false
+            delegate.headerView?.setRefreshing(false)
+            delegate.setStatusIconRefreshing(false)
             
             // Release accumulated HTTP connection pools, TLS session tickets,
             // and internal Foundation caches that grow over days of continuous use.
