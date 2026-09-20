@@ -282,6 +282,23 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
+        
+        // Disable Font Panel, Touch Bar sync, spell checking and undo
+        // to prevent 100% CPU spikes during mouse drag text selection
+        textView.usesFontPanel = false
+        textView.usesRuler = false
+        textView.usesFindBar = false
+        textView.isIncrementalSearchingEnabled = false
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.isGrammarCheckingEnabled = false
+        textView.allowsUndo = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticDataDetectionEnabled = false
+        textView.isAutomaticLinkDetectionEnabled = false
+        
         scrollView.documentView = textView
         
         // --- 3. Assets Body (Full height list of release assets, right-edge scrollbar) ---
@@ -349,6 +366,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
     
     override func viewDidAppear() {
         super.viewDidAppear()
+        self.view.window?.acceptsMouseMovedEvents = true
         self.view.window?.makeFirstResponder(self.view)
     }
     
@@ -574,7 +592,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         }
         
         // 2. Always convert Markdown to HTML so headings (##), lists (-/*), links, tables, and paragraphs format cleanly in WebKit
-        processedText = Utils.convertMarkdownToHTML(processedText)
+        processedText = Utils.convertMarkdownToHTML(processedText, repo: info.name)
         let hasHTML = true
         
         let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
@@ -738,6 +756,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                 
                 textView.textStorage?.setAttributedString(htmlAttrStr)
                 textView.scrollToBeginningOfDocument(nil)
+                textView.window?.invalidateCursorRects(for: textView)
                 return
             } catch {
                 print("HTML Parsing failed: \(error), falling back to Markdown")
@@ -775,6 +794,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             textView.string = cleanMarkdown
         }
         textView.scrollToBeginningOfDocument(nil)
+        textView.window?.invalidateCursorRects(for: textView)
     }
     
     // MARK: - Assets Card & Downloading
@@ -1042,10 +1062,6 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         return false
     }
     
-    func textView(_ view: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
-        return nil
-    }
-    
     override func cancelOperation(_ sender: Any?) {
         if let popover = (NSApp.delegate as? AppDelegate)?.releaseNotesPopover {
             popover.close()
@@ -1053,14 +1069,12 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
     }
 }
 
-/// Custom NSTextView subclass that allows clicking on links and showing pointing-hand cursor over links,
-/// while keeping standard arrow cursor (no text selection I-beam line) over plain text,
-/// and providing asymmetrical left/right insets to achieve perfect text symmetry while keeping
-/// the vertical scrollbar flush against the right window edge.
+/// Custom NSTextView subclass providing asymmetrical left/right insets to achieve
+/// perfect text symmetry while keeping the vertical scrollbar flush against the right window edge.
 class ReleaseNotesTextView: NSTextView {
-    override func resetCursorRects() {
-        discardCursorRects()
-        addCursorRect(bounds, cursor: .arrow)
+    /// Suppress context menu cleanly at the view level so right-clicking doesn't prevent closing on outside clicks
+    override func menu(for event: NSEvent) -> NSMenu? {
+        return nil
     }
     
     /// Shifts the text container origin to the right by half the scroller width

@@ -2,8 +2,8 @@
 set -e
 
 APP_NAME="Mino"
-VERSION="2.2.5"
-BUILD_NUMBER="325"
+VERSION="2.2.6"
+BUILD_NUMBER="326"
 BUILD_DIR="build"
 
 if [ "$1" == "--test" ]; then

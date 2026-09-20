@@ -5,6 +5,19 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.6] - 2026-09-20
+
+### Added
+- **Quick Add Keyboard Shortcut (`CMD + V`)**: Added support for `CMD + V` (`⌘V`) while the main popover is open. Instantly adds the repository detected on the clipboard via Quick Add (matching `ENTER` and clicking the Quick Add row), while preserving standard clipboard paste behavior in text input fields when no new repository is detected.
+- **Smart Autolinking in Release Notes**: Enhanced `Utils.convertMarkdownToHTML` with intelligent autolinking for bare URLs (`https://...`), GitHub username mentions (`@user`), and issue/pull-request references (`#123` linked directly to the parent repository). Code blocks and backticked spans (``` ` ```) are strictly protected from mutation.
+- **Automated Verification Coverage (Tests 10 & 11)**: Expanded the production audit test suite (`AuditValidationTests.swift`) with Test 10 (Markdown and mention autolinking validation) and Test 11 (Spanish error and placeholder localization integrity).
+
+### Fixed
+- **Tags Menu Layout Margin Alignment**: Corrected the leading constraint for the "Etiquetas" (Tags) menu design in `RepoMenuItemView.swift` (`setupTagsView`) from `12pt` to `18pt` and updated its width calculations, achieving visual alignment with the "Columnas" and "Tarjetas" layouts, the search header, and the footer.
+- **Context Menu Popover Dismissal Isolation**: Suppressed right-click contextual menus on both the Release Notes text view and the Search Field (`MenuSearchField`), preventing secondary menus from hijacking responder focus and breaking the popover's dismiss-on-outside-click behavior, while preserving right-clicks on repository rows for toggling favorite status.
+- **Spanish Error & Input Placeholder Localizations**: Restored missing localization keys in `Translations.i18n["es"]` for API errors and input placeholders (`apiRepoNotFound`, `apiRateLimit`, `apiHttpError`, `repoPlaceholder`, `brewDownloadErrorTitle`, `brewDownloadErrorMsg`), restoring 100% dictionary completeness between English and Spanish.
+
+
 ## [2.2.5] - 2026-09-18
 
 ### Security

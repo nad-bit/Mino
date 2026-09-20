@@ -83,6 +83,7 @@ class HeaderMenuItemView: NSView {
         
         // Search Field (Setup moved here since it was removed from refresh config block)
         self.searchField = MenuSearchField(appDelegate: appDelegate)
+        self.searchField.delegate = appDelegate
         searchField.placeholderString = Translations.get("search")
         searchField.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2)
         searchField.alignment = .center

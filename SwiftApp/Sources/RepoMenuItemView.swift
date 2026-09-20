@@ -272,10 +272,10 @@ class RepoMenuItemView: NSView {
             return 18 + 12 + 6 + contentWidth + 8 + buttonsWidth + 12
             
         case "tags":
-            // Single line: margin(12) + [warning?] + name + spacing(8) + version + spacing(8) + star(16) + spacing(6) + buttons + margin(12)
+            // Single line: margin(18) + [warning?] + name + spacing(8) + version + spacing(8) + star(16) + spacing(6) + buttons + margin(12)
             let rawVersionWidth = versionLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
             let versionWidth = min(rawVersionWidth, 140)
-            return 12 + (displayData.errorMessage != nil ? 18 : 0) + nameWidth + 8 + versionWidth + 8 + 16 + 6 + buttonsWidth + 12
+            return 18 + (displayData.errorMessage != nil ? 18 : 0) + nameWidth + 8 + versionWidth + 8 + 16 + 6 + buttonsWidth + 12
             
         case "columns":
             // Fixed columns + margins + buttons
@@ -461,7 +461,7 @@ class RepoMenuItemView: NSView {
         buttonStack.setContentHuggingPriority(.required, for: .horizontal)
         
         NSLayoutConstraint.activate([
-            contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            contentStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             contentStack.centerYAnchor.constraint(equalTo: centerYAnchor),
             buttonStack.leadingAnchor.constraint(equalTo: contentStack.trailingAnchor, constant: 6),
             buttonStack.centerYAnchor.constraint(equalTo: centerYAnchor),

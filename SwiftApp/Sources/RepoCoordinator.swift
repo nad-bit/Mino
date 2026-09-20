@@ -152,6 +152,7 @@ class RepoCoordinator {
         vc.loadNotes(for: info)
         popover.contentSize = vc.preferredContentSize
         popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minX)
+        popover.contentViewController?.view.window?.acceptsMouseMovedEvents = true
         
         // Fetch the release body & assets asynchronously ONLY if not already cached in info
         if info.body == nil {

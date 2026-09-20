@@ -7,6 +7,13 @@ public struct RateLimitInfo: Equatable {
     public let resetDate: Date
     public let hasToken: Bool
     
+    public var currentRemaining: Int {
+        if Date() >= resetDate {
+            return limit
+        }
+        return remaining
+    }
+    
     public init(limit: Int, remaining: Int, resetDate: Date, hasToken: Bool) {
         self.limit = limit
         self.remaining = remaining
@@ -23,7 +30,22 @@ class GitHubAPI {
     private(set) var session: URLSession
     
     // MARK: - Rate Limit Tracking
-    private(set) var currentRateLimit: RateLimitInfo?
+    private let rateLimitLock = NSLock()
+    private var windowRateLimits: [Date: RateLimitInfo] = [:]
+    private var latestObservedRateLimit: RateLimitInfo?
+    
+    var currentRateLimit: RateLimitInfo? {
+        rateLimitLock.lock()
+        defer { rateLimitLock.unlock() }
+        let now = Date()
+        // Clean expired windows
+        windowRateLimits = windowRateLimits.filter { $0.key > now }
+        // Return the most constrained active sample, or latest
+        if let active = windowRateLimits.values.min(by: { $0.remaining < $1.remaining }) {
+            return active
+        }
+        return latestObservedRateLimit
+    }
     
     func recordRateLimit(from response: HTTPURLResponse) {
         guard let limitStr = response.value(forHTTPHeaderField: "x-ratelimit-limit"), let limit = Int(limitStr),
@@ -33,10 +55,26 @@ class GitHubAPI {
         }
         let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasToken = token != nil && !token!.isEmpty
-        let info = RateLimitInfo(limit: limit, remaining: remaining, resetDate: Date(timeIntervalSince1970: resetEpoch), hasToken: hasToken)
-        self.currentRateLimit = info
+        let resetDate = Date(timeIntervalSince1970: resetEpoch)
+        let info = RateLimitInfo(limit: limit, remaining: remaining, resetDate: resetDate, hasToken: hasToken)
+        
+        rateLimitLock.lock()
+        latestObservedRateLimit = info
+        if resetDate > Date() {
+            if let existing = windowRateLimits[resetDate] {
+                // The lower remaining count always reflects actual consumption within the same window
+                if remaining < existing.remaining {
+                    windowRateLimits[resetDate] = info
+                }
+            } else {
+                windowRateLimits[resetDate] = info
+            }
+        }
+        let currentBest = windowRateLimits.values.min(by: { $0.remaining < $1.remaining }) ?? info
+        rateLimitLock.unlock()
+        
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: Notification.Name("RateLimitUpdated"), object: info)
+            NotificationCenter.default.post(name: Notification.Name("RateLimitUpdated"), object: currentBest)
         }
     }
     

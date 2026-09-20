@@ -76,11 +76,14 @@ class Utils {
     private static let commentRegex = try? NSRegularExpression(pattern: "<!--[\\s\\S]*?-->")
     private static let orderedListRegex = try? NSRegularExpression(pattern: "^\\d+\\.\\s+(.*)")
     private static let linkRegex = try? NSRegularExpression(pattern: "\\[([^\\]]*?)\\]\\(([^\\)]*?)\\)")
+    private static let bareUrlRegex = try? NSRegularExpression(pattern: "https?://[^\\s<>\"]+")
+    private static let mentionRegex = try? NSRegularExpression(pattern: "(?<=^|[\\s(])@([a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38})(?=[\\s.,;:!?)]|$)")
+    private static let issueRefRegex = try? NSRegularExpression(pattern: "(?<=^|[\\s(,])#([0-9]+)(?=[\\s.,;:!?)]|$)")
     private static let boldRegex = try? NSRegularExpression(pattern: "\\*\\*(.*?)\\*\\*")
     private static let italicRegex = try? NSRegularExpression(pattern: "(?<!\\*)\\*(?!\\*)(.*?)(?<!\\*)\\*(?!\\*)")
     private static let inlineCodeRegex = try? NSRegularExpression(pattern: "`(.*?)`")
 
-    static func convertMarkdownToHTML(_ markdown: String) -> String {
+    static func convertMarkdownToHTML(_ markdown: String, repo: String? = nil) -> String {
         // Strip HTML comments (such as Sparkle signature warnings) to prevent unclosed comments from breaking HTML parsing
         var cleanedMarkdown = markdown
         if let regex = commentRegex {
@@ -128,7 +131,7 @@ class Utils {
                 if !tableHeaderCells.isEmpty {
                     body += "<thead>\n<tr>\n"
                     for cell in tableHeaderCells {
-                        body += "<th>\(processInlineMarkdown(cell))</th>\n"
+                        body += "<th>\(processInlineMarkdown(cell, repo: repo))</th>\n"
                     }
                     body += "</tr>\n</thead>\n"
                 }
@@ -136,7 +139,7 @@ class Utils {
                 for row in tableRows {
                     body += "<tr>\n"
                     for cell in row {
-                        body += "<td>\(processInlineMarkdown(cell))</td>\n"
+                        body += "<td>\(processInlineMarkdown(cell, repo: repo))</td>\n"
                     }
                     body += "</tr>\n"
                 }
@@ -234,7 +237,7 @@ class Utils {
                     inList = true
                 }
                 let itemText = String(trimmedLine.dropFirst(2)).trimmed()
-                body += "<li>\(processInlineMarkdown(itemText))</li>\n"
+                body += "<li>\(processInlineMarkdown(itemText, repo: repo))</li>\n"
                 i += 1
                 continue
             }
@@ -250,7 +253,7 @@ class Utils {
                 }
                 let r = Range(match.range(at: 1), in: trimmedLine)!
                 let itemText = String(trimmedLine[r]).trimmed()
-                body += "<li>\(processInlineMarkdown(itemText))</li>\n"
+                body += "<li>\(processInlineMarkdown(itemText, repo: repo))</li>\n"
                 i += 1
                 continue
             }
@@ -275,7 +278,7 @@ class Utils {
             // Paragraph or plain line
             closeListIfNeeded()
             closeTableIfNeeded()
-            body += "<p>\(processInlineMarkdown(line))</p>\n"
+            body += "<p>\(processInlineMarkdown(line, repo: repo))</p>\n"
             i += 1
         }
         
@@ -297,10 +300,26 @@ class Utils {
         return result
     }
     
-    private static func processInlineMarkdown(_ text: String) -> String {
+    private static func processInlineMarkdown(_ text: String, repo: String? = nil) -> String {
         var result = text
         
-        // Convert links: [text](url) -> <a href="url">text</a>
+        // 0. Temporarily extract inline code `code` -> placeholders to prevent autolinking inside code
+        var codePlaceholders: [String] = []
+        if let regex = inlineCodeRegex {
+            let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
+            for match in matches.reversed() {
+                guard let textRange = Range(match.range(at: 1), in: result),
+                      let fullRange = Range(match.range(at: 0), in: result) else { continue }
+                let codeText = String(result[textRange]).escapingHTML()
+                let replacement = "<code>\(codeText)</code>"
+                let placeholder = "%%%MINOCODE_\(codePlaceholders.count)%%%"
+                codePlaceholders.append(replacement)
+                result.replaceSubrange(fullRange, with: placeholder)
+            }
+        }
+        
+        // 1. Temporarily extract explicit markdown links [text](url) -> placeholders
+        var linkPlaceholders: [String] = []
         if let regex = linkRegex {
             let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
             for match in matches.reversed() {
@@ -310,11 +329,68 @@ class Utils {
                 let linkText = String(result[textRange])
                 let linkUrl = String(result[urlRange])
                 let replacement = "<a href=\"\(linkUrl)\">\(linkText)</a>"
+                let placeholder = "%%%MINOLINK_\(linkPlaceholders.count)%%%"
+                linkPlaceholders.append(replacement)
+                result.replaceSubrange(fullRange, with: placeholder)
+            }
+        }
+        
+        // 2. Autolink bare URLs: https://... or http://...
+        if let regex = bareUrlRegex {
+            let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
+            for match in matches.reversed() {
+                guard let range = Range(match.range, in: result) else { continue }
+                var urlStr = String(result[range])
+                
+                // Trim trailing punctuation (e.g. '.', ',', ')', ':', ';', '!', '?')
+                var trailingPunctuation = ""
+                let punctuationChars = CharacterSet(charactersIn: ".,;:!?)]}")
+                while let lastChar = urlStr.unicodeScalars.last, punctuationChars.contains(lastChar) {
+                    trailingPunctuation = String(urlStr.removeLast()) + trailingPunctuation
+                }
+                
+                guard !urlStr.isEmpty, URL(string: urlStr) != nil else { continue }
+                let replacement = "<a href=\"\(urlStr)\">\(urlStr)</a>" + trailingPunctuation
+                result.replaceSubrange(range, with: replacement)
+            }
+        }
+        
+        // 3. Autolink GitHub mentions: @username
+        if let regex = mentionRegex {
+            let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
+            for match in matches.reversed() {
+                guard let fullRange = Range(match.range, in: result),
+                      let userRange = Range(match.range(at: 1), in: result) else { continue }
+                let username = String(result[userRange])
+                let replacement = "<a href=\"https://github.com/\(username)\">@\(username)</a>"
                 result.replaceSubrange(fullRange, with: replacement)
             }
         }
         
-        // Convert bold: **text** -> <strong>text</strong>
+        // 4. Autolink issue/PR references: #123 (if valid owner/repo)
+        if let cleanRepo = (repo?.contains("/") == true && !repo!.contains(":")) ? repo : nil,
+           let regex = issueRefRegex {
+            let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
+            for match in matches.reversed() {
+                guard let fullRange = Range(match.range, in: result),
+                      let numRange = Range(match.range(at: 1), in: result) else { continue }
+                let issueNum = String(result[numRange])
+                let replacement = "<a href=\"https://github.com/\(cleanRepo)/issues/\(issueNum)\">#\(issueNum)</a>"
+                result.replaceSubrange(fullRange, with: replacement)
+            }
+        }
+        
+        // 5. Restore explicit markdown links
+        for (index, linkHTML) in linkPlaceholders.enumerated().reversed() {
+            result = result.replacingOccurrences(of: "%%%MINOLINK_\(index)%%%", with: linkHTML)
+        }
+        
+        // 6. Restore inline code
+        for (index, codeHTML) in codePlaceholders.enumerated().reversed() {
+            result = result.replacingOccurrences(of: "%%%MINOCODE_\(index)%%%", with: codeHTML)
+        }
+        
+        // 7. Convert bold: **text** -> <strong>text</strong>
         if let regex = boldRegex {
             let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
             for match in matches.reversed() {
@@ -326,7 +402,7 @@ class Utils {
             }
         }
         
-        // Convert italic: *text* -> <em>text</em>
+        // 8. Convert italic: *text* -> <em>text</em>
         if let regex = italicRegex {
             let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
             for match in matches.reversed() {
@@ -334,18 +410,6 @@ class Utils {
                       let fullRange = Range(match.range(at: 0), in: result) else { continue }
                 let italicText = String(result[textRange])
                 let replacement = "<em>\(italicText)</em>"
-                result.replaceSubrange(fullRange, with: replacement)
-            }
-        }
-        
-        // Convert inline code: `code` -> <code>code</code>
-        if let regex = inlineCodeRegex {
-            let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
-            for match in matches.reversed() {
-                guard let textRange = Range(match.range(at: 1), in: result),
-                      let fullRange = Range(match.range(at: 0), in: result) else { continue }
-                let codeText = String(result[textRange]).escapingHTML()
-                let replacement = "<code>\(codeText)</code>"
                 result.replaceSubrange(fullRange, with: replacement)
             }
         }

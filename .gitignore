@@ -45,3 +45,4 @@ ENV/
 *.log
 Icon?
 SwiftApp/Sources/GeneratedColor.swift
+.build/

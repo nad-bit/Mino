@@ -9,7 +9,7 @@ enum SymbolAnimation {
 }
 
 @MainActor
-class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPopoverDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPopoverDelegate, NSTextViewDelegate {
     var statusItem: NSStatusItem!
     private var statusIconView: NSImageView!
     private var statusIndicatorDot: NSBox!
@@ -466,6 +466,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         headerView?.updateSearchOpacity()
     }
     
+    func controlTextDidBeginEditing(_ obj: Notification) {
+        if let field = obj.object as? NSSearchField,
+           let editor = field.currentEditor() as? NSTextView {
+            editor.menu = nil
+        }
+    }
+    
+    func textView(_ textView: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
+        return nil
+    }
+    
     func updatePopularTagsCache() {
         let repos = ConfigManager.shared.config.repos
         if repos.isEmpty {
@@ -878,6 +889,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             case "z": // CMD+Z → Undo last delete
                 repoCoordinator.undoLastDelete()
                 return true
+            case "v": // CMD+V → Quick Add repo if available
+                refreshQuickAddState()
+                if headerView?.quickAddRepoStr != nil {
+                    headerView?.addClicked()
+                    return true
+                }
+                break
             case "\u{7F}": // CMD+Backspace → Delete
                 mainPopoverVC.triggerActionOnHighlighted(.delete)
                 return true
@@ -907,41 +925,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     }
 }
 
-// MARK: - MenuSearchFieldCell (Symmetrical centering for search field)
-
-class MenuSearchFieldCell: NSSearchFieldCell {
-    
-    override func searchTextRect(forBounds rect: NSRect) -> NSRect {
-        var textRect = super.searchTextRect(forBounds: rect)
-        
-        // Symmetrically balance horizontal insets so text & placeholder are centered
-        // exactly at rect.midX regardless of whether cancel button is visible or hidden.
-        let leftButtonWidth = searchButtonCell?.image?.size.width ?? 14.0
-        let rightButtonWidth = cancelButtonCell?.image?.size.width ?? 14.0
-        let sideMargin = ceil(max(leftButtonWidth, rightButtonWidth) + 8.0)
-        
-        let availableWidth = rect.width - (sideMargin * 2.0)
-        if availableWidth > 0 {
-            textRect.origin.x = round(rect.origin.x + sideMargin)
-            textRect.size.width = round(availableWidth)
-        }
-        return textRect
-    }
-}
-
 // MARK: - MenuSearchField (subclass for AppDelegate reference)
 
 class MenuSearchField: NSSearchField {
-    override class var cellClass: AnyClass? {
-        get { MenuSearchFieldCell.self }
-        set { }
-    }
-    
     private weak var appDelegate: AppDelegate?
     
     convenience init(appDelegate: AppDelegate) {
         self.init(frame: .zero)
         self.appDelegate = appDelegate
+    }
+    
+    override class var defaultMenu: NSMenu? {
+        return nil
+    }
+    
+    override func menu(for event: NSEvent) -> NSMenu? {
+        return nil
+    }
+    
+    override func rightMouseDown(with event: NSEvent) {
+        // Suppress right-click context menu
+    }
+    
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if let event = NSApp.currentEvent, (event.type == .rightMouseDown || event.type == .rightMouseUp) {
+            let localPoint = convert(point, from: superview)
+            if bounds.contains(localPoint) {
+                return self
+            }
+        }
+        return super.hitTest(point)
     }
     
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

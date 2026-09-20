@@ -24,6 +24,7 @@ class MainPopoverViewController: NSViewController {
     
     // Centralized Mouse Tracking
     private var mouseMonitor: Any?
+    private var rightClickMonitor: Any?
     internal var currentlyHighlightedRow: RepoMenuItemView?
     internal var currentlyHighlightedRowIndex: Int?
     private var lastMousePosition: NSPoint = .zero
@@ -135,6 +136,18 @@ class MainPopoverViewController: NSViewController {
             return event
         }
         
+        // Suppress right-click context menu specifically on search field
+        rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown]) { [weak self] event in
+            guard let self = self, let searchField = self.headerView?.searchField else { return event }
+            if let window = searchField.window, event.window == window {
+                let pointInField = searchField.convert(event.locationInWindow, from: nil)
+                if searchField.bounds.contains(pointInField) {
+                    return nil // Drop the right-click event so no context menu is ever opened
+                }
+            }
+            return event
+        }
+        
         // Force initial update to highlight whatever is under the mouse initially
         DispatchQueue.main.async { [weak self] in
             self?.updateHighlightUnderMouse(force: true)
@@ -162,6 +175,11 @@ class MainPopoverViewController: NSViewController {
         super.viewWillDisappear()
         if let monitor = mouseMonitor {
             NSEvent.removeMonitor(monitor)
+            mouseMonitor = nil
+        }
+        if let monitor = rightClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            rightClickMonitor = nil
         }
     }
     

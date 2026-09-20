@@ -49,6 +49,12 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         NotificationCenter.default.addObserver(self, selector: #selector(configDidUpdate), name: Notification.Name("ConfigChanged"), object: nil)
     }
     
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        loadCurrentSettings()
+        updateRateLimitToolTip()
+    }
+    
     override func viewDidAppear() {
         super.viewDidAppear()
         self.view.window?.makeFirstResponder(self.view)
@@ -666,40 +672,35 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     }
     
     private func updateRateLimitToolTip() {
-        // 1. Instantly apply live cached rate limit if available
-        if let cached = GitHubAPI.shared.currentRateLimit {
-            applyRateLimitToUI(cached)
+        // 1. Immediately apply the lowest/most constrained count observed by Mino's repo requests
+        if let current = GitHubAPI.shared.currentRateLimit {
+            applyRateLimitToUI(current)
         }
-        
-        // 2. Fetch fresh limits with no caching
-        guard let url = URL(string: "\(Constants.githubAPIBaseURL)/rate_limit") else { return }
-        var request = URLRequest(url: url)
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
         
         let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasToken = token != nil && !token!.isEmpty
-        if hasToken, let token = token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        
+        // 2. Fetch fresh headers from GitHub in background
+        let endpoint = hasToken ? "\(Constants.githubAPIBaseURL)/user" : "\(Constants.githubAPIBaseURL)/rate_limit"
+        guard let url = URL(string: endpoint) else { return }
+        
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
+        if hasToken {
+            request.setValue("Bearer \(token!)", forHTTPHeaderField: "Authorization")
         }
         
         Task {
             do {
-                let (data, response) = try await GitHubAPI.shared.session.data(for: request)
+                let (_, response) = try await GitHubAPI.shared.session.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
                 
-                GitHubAPI.shared.recordRateLimit(from: httpResponse)
-                
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let resources = json["resources"] as? [String: Any],
-                   let core = resources["core"] as? [String: Any],
-                   let limit = core["limit"] as? Int,
-                   let remaining = core["remaining"] as? Int,
-                   let resetEpoch = core["reset"] as? TimeInterval {
-                    
-                    let resetDate = Date(timeIntervalSince1970: resetEpoch)
-                    let info = RateLimitInfo(limit: limit, remaining: remaining, resetDate: resetDate, hasToken: hasToken)
-                    
+                // Parse rate limit from response headers (always accurate)
+                if let limitStr = httpResponse.value(forHTTPHeaderField: "x-ratelimit-limit"), let limit = Int(limitStr),
+                   let remainingStr = httpResponse.value(forHTTPHeaderField: "x-ratelimit-remaining"), let remaining = Int(remainingStr),
+                   let resetStr = httpResponse.value(forHTTPHeaderField: "x-ratelimit-reset"), let resetEpoch = Double(resetStr) {
+                    let info = RateLimitInfo(limit: limit, remaining: remaining, resetDate: Date(timeIntervalSince1970: resetEpoch), hasToken: hasToken)
                     await MainActor.run {
                         self.applyRateLimitToUI(info)
                     }
@@ -718,10 +719,11 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         let timeString = formatter.string(from: resetDate)
         
         let minutesRemaining = max(0, Int(resetDate.timeIntervalSinceNow / 60))
+        let currentRemaining = info.currentRemaining
         
         let title = Translations.get("rateLimitTitle")
         let status = Translations.get(info.hasToken ? "rateLimitStatusAuth" : "rateLimitStatusPublic")
-        let remainingText = Translations.get("rateLimitRemaining").format(with: ["remaining": "\(info.remaining)", "limit": "\(info.limit)"])
+        let remainingText = Translations.get("rateLimitRemaining").format(with: ["remaining": "\(currentRemaining)", "limit": "\(info.limit)"])
         let resetText = Translations.get("rateLimitReset").format(with: ["minutes": "\(minutesRemaining)", "time": timeString])
         let tip = info.hasToken ? "" : Translations.get("rateLimitTip")
         

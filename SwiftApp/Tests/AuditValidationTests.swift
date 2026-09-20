@@ -24,6 +24,8 @@ struct AuditValidationTests {
         testConfigManagerAtomicityAndRecovery()
         testGitHubAPI403Discrimination()
         testUntrustedTapExtraction()
+        testMarkdownAutolinking()
+        testSpanishAPIErrorTranslations()
         
         print("\n🎉 ALL AUDIT VERIFICATION TESTS PASSED SUCCESSFULLY!\n")
     }
@@ -300,4 +302,51 @@ struct AuditValidationTests {
         let extractedClean = HomebrewManager.shared.extractTrustTarget(from: cleanOutput)
         assertTest(extractedClean == nil, "No trust target extracted on normal output")
     }
+    
+    // --------------------------------------------------------
+    // Test 10: Markdown Autolinking (Bare URLs, Mentions, Issues)
+    // --------------------------------------------------------
+    static func testMarkdownAutolinking() {
+        print("\n[Test 10] Testing Utils.convertMarkdownToHTML autolinking...")
+        
+        // 1. Bare URLs (e.g., kiwix-apple release notes)
+        let bareURLText = "Localisation updates from https://translatewiki.net and https://github.com/kiwix/kiwix-apple/pull/1676."
+        let htmlWithURL = Utils.convertMarkdownToHTML(bareURLText, repo: "kiwix/kiwix-apple")
+        assertTest(htmlWithURL.contains("<a href=\"https://translatewiki.net\">https://translatewiki.net</a>"), "Bare URL converted to link")
+        assertTest(htmlWithURL.contains("<a href=\"https://github.com/kiwix/kiwix-apple/pull/1676\">https://github.com/kiwix/kiwix-apple/pull/1676</a>."), "Trailing period excluded from link")
+        
+        // 2. Mentions & Issue references
+        let mentionAndIssue = "- Accessibility improvements (@BPerlakiH #1688, #1689)"
+        let htmlMentions = Utils.convertMarkdownToHTML(mentionAndIssue, repo: "kiwix/kiwix-apple")
+        assertTest(htmlMentions.contains("<a href=\"https://github.com/BPerlakiH\">@BPerlakiH</a>"), "GitHub mention autolinked")
+        assertTest(htmlMentions.contains("<a href=\"https://github.com/kiwix/kiwix-apple/issues/1688\">#1688</a>"), "Issue reference autolinked")
+        assertTest(htmlMentions.contains("<a href=\"https://github.com/kiwix/kiwix-apple/issues/1689\">#1689</a>"), "Second issue reference autolinked")
+        
+        // 3. Explicit markdown links preserved
+        let explicitLink = "See [Release Notes](https://example.com/notes) for details."
+        let htmlExplicit = Utils.convertMarkdownToHTML(explicitLink)
+        assertTest(htmlExplicit.contains("<a href=\"https://example.com/notes\">Release Notes</a>"), "Explicit markdown link preserved")
+        
+        // 4. Inline code protection (no autolinking inside `code`)
+        let codeProtection = "Use `#123` or `@admin` or `https://secret.local` in config."
+        let htmlCode = Utils.convertMarkdownToHTML(codeProtection, repo: "owner/repo")
+        assertTest(htmlCode.contains("<code>#123</code>"), "Code issue ref not linked")
+        assertTest(htmlCode.contains("<code>@admin</code>"), "Code mention not linked")
+        assertTest(!htmlCode.contains("https://secret.local\">"), "Code URL not linked")
+    }
+    
+    // --------------------------------------------------------
+    // Test 11: Spanish API Error Translations
+    // --------------------------------------------------------
+    static func testSpanishAPIErrorTranslations() {
+        print("\n[Test 11] Testing Spanish Error Translations (Translations.i18n)...")
+        
+        let esDict = Translations.i18n["es"]
+        assertTest(esDict != nil, "Spanish dictionary exists")
+        assertTest(esDict?["apiRepoNotFound"] == "Repositorio no encontrado o privado", "apiRepoNotFound translated in Spanish")
+        assertTest(esDict?["apiRateLimit"] == "Límite de peticiones a la API excedido", "apiRateLimit translated in Spanish")
+        assertTest(esDict?["apiHttpError"] == "Error HTTP {code}", "apiHttpError translated in Spanish")
+        assertTest(esDict?["repoPlaceholder"] == "propietario/repo o cask", "repoPlaceholder translated in Spanish")
+    }
 }
+

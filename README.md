@@ -174,6 +174,7 @@ Use these shortcuts while the main menu is open:
 |----------|--------|
 | `CMD + ,` | Open Preferences |
 | `CMD + N` | Open new "Multi-Hunt" batch addition window |
+| `CMD + V` | Quick Add repository detected on clipboard |
 | `CMD + F` | Focus Search field |
 | `CMD + R` | Refresh metadata and version for selected repo (or full refresh if none selected) |
 | `CMD + C` | Copy GitHub URL of selected repo to clipboard |
