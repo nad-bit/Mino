@@ -78,14 +78,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             // Remove default image and title to allow custom view
             btn.image = nil
             btn.title = ""
+            btn.toolTip = Translations.get("meow")
             
-            // Create a custom image view to support AppKit SF Symbol animations
-            let eyeImage = NSImage(systemSymbolName: "eye", accessibilityDescription: "Mino")!
-            eyeImage.isTemplate = true
+            // Create custom image view using signature Feline Eye vector icon
+            let hasPulse = UserDefaults.standard.bool(forKey: "HasUnreadPulse")
+            let eyeImage = FelineEyeIcon.createIcon(hasUpdates: hasPulse)
             
             statusIconView = NSImageView(image: eyeImage)
             statusIconView.translatesAutoresizingMaskIntoConstraints = false
             statusIconView.wantsLayer = true // REQUIRED for layer-backed symbol effects
+            statusIconView.toolTip = Translations.get("meow")
             
             btn.addSubview(statusIconView)
             
@@ -96,22 +98,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
                 statusIconView.heightAnchor.constraint(equalToConstant: 16) // typical SF symbol aspect ratio inside button
             ])
             
-            // Add the red iris overlay
+            // Legacy indicator overlay maintained for backward compatibility (kept hidden)
             statusIndicatorDot = NSBox()
             statusIndicatorDot.boxType = .custom
-            statusIndicatorDot.isTransparent = false
-            statusIndicatorDot.fillColor = .systemRed
-            statusIndicatorDot.cornerRadius = 2.0
-            statusIndicatorDot.translatesAutoresizingMaskIntoConstraints = false
+            statusIndicatorDot.isTransparent = true
             statusIndicatorDot.isHidden = true
-            
+            statusIndicatorDot.translatesAutoresizingMaskIntoConstraints = false
             btn.addSubview(statusIndicatorDot)
-            NSLayoutConstraint.activate([
-                statusIndicatorDot.widthAnchor.constraint(equalToConstant: 4),
-                statusIndicatorDot.heightAnchor.constraint(equalToConstant: 4),
-                statusIndicatorDot.centerXAnchor.constraint(equalTo: statusIconView.centerXAnchor, constant: 0),
-                statusIndicatorDot.centerYAnchor.constraint(equalTo: statusIconView.centerYAnchor, constant: 0) 
-            ])
         }
         
         let hasPulse = UserDefaults.standard.bool(forKey: "HasUnreadPulse")
@@ -450,8 +443,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     }
     
     func updateStatusIcon(hasUpdates: Bool) {
-        // Show or hide the red pupil overlay
-        statusIndicatorDot.isHidden = !hasUpdates
+        statusIconView?.image = FelineEyeIcon.createIcon(hasUpdates: hasUpdates)
+        statusIndicatorDot?.isHidden = true
+        statusIconView?.toolTip = Translations.get("meow")
+        statusItem?.button?.toolTip = Translations.get("meow")
         
         // Sync beer handle visibility with the Red Eye state
         updateBeerHandleVisibility()
@@ -513,38 +508,57 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             return
         }
         
-        if #available(macOS 14.0, *) {
-            switch animation {
-            case .bounce:
-                imageView.addSymbolEffect(.bounce, options: .nonRepeating)
-            case .replaceWithSlash:
-                let slashImg = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: nil)!
-                let normalImg = NSImage(systemSymbolName: "eye", accessibilityDescription: nil)!
-                slashImg.isTemplate = true
-                normalImg.isTemplate = true
-                
-                imageView.setSymbolImage(slashImg, contentTransition: .replace.downUp.byLayer)
-                
-                // Revert after 2 seconds
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    imageView.setSymbolImage(normalImg, contentTransition: .replace.upUp.byLayer)
-                }
-            case .wiggle:
-                if #available(macOS 15.0, *) {
-                    imageView.addSymbolEffect(.wiggle, options: .nonRepeating)
-                } else {
-                    imageView.addSymbolEffect(.bounce, options: .nonRepeating) // Fallback
-                }
-            case .rotate:
-                if #available(macOS 15.0, *) {
-                    imageView.addSymbolEffect(.rotate, options: .nonRepeating)
-                } else {
-                    imageView.addSymbolEffect(.pulse, options: .nonRepeating) // Fallback
-                }
-            case .scale:
-                // Use a bounce.down effect to emulate a "click/scale" interaction
-                imageView.addSymbolEffect(.bounce.down, options: .nonRepeating)
+        // Ensure anchorPoint is centered at (0.5, 0.5) so scale/rotation pivots around center
+        if let layer = imageView.layer, layer.anchorPoint != CGPoint(x: 0.5, y: 0.5) {
+            let frame = imageView.frame
+            layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            layer.position = CGPoint(x: frame.midX, y: frame.midY)
+        }
+        
+        switch animation {
+        case .bounce:
+            let bounce = CAKeyframeAnimation(keyPath: "transform.translation.y")
+            bounce.values = [0, 4.0, -2.0, 1.5, 0]
+            bounce.keyTimes = [0.0, 0.25, 0.5, 0.75, 1.0]
+            bounce.duration = 0.4
+            bounce.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            imageView.layer?.add(bounce, forKey: "mino.bounce")
+            
+        case .replaceWithSlash:
+            let slashImg = FelineEyeIcon.createSlashIcon()
+            imageView.image = slashImg
+            
+            // Revert after 2 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                guard let self = self else { return }
+                let currentPulse = UserDefaults.standard.bool(forKey: "HasUnreadPulse")
+                self.statusIconView?.image = FelineEyeIcon.createIcon(hasUpdates: currentPulse)
             }
+            
+        case .wiggle:
+            let wiggle = CAKeyframeAnimation(keyPath: "transform.rotation.z")
+            let angle: CGFloat = 0.24 // ~14 degrees
+            wiggle.values = [0, -angle, angle, -angle * 0.6, angle * 0.6, -angle * 0.2, 0]
+            wiggle.keyTimes = [0.0, 0.18, 0.36, 0.54, 0.72, 0.88, 1.0]
+            wiggle.duration = 0.5
+            wiggle.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            imageView.layer?.add(wiggle, forKey: "mino.wiggle")
+            
+        case .rotate:
+            let rotate = CABasicAnimation(keyPath: "transform.rotation.z")
+            rotate.fromValue = 0
+            rotate.toValue = -2.0 * CGFloat.pi
+            rotate.duration = 0.55
+            rotate.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            imageView.layer?.add(rotate, forKey: "mino.rotate")
+            
+        case .scale:
+            let scale = CAKeyframeAnimation(keyPath: "transform.scale")
+            scale.values = [1.0, 0.78, 1.15, 0.95, 1.0]
+            scale.keyTimes = [0.0, 0.25, 0.55, 0.8, 1.0]
+            scale.duration = 0.35
+            scale.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            imageView.layer?.add(scale, forKey: "mino.scale")
         }
     }
     
@@ -552,20 +566,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         guard let imageView = statusIconView else { return }
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { return }
         
-        if #available(macOS 14.0, *) {
-            if isRefreshing {
-                if #available(macOS 15.0, *) {
-                    imageView.addSymbolEffect(.rotate.byLayer, options: .repeating)
-                } else {
-                    imageView.addSymbolEffect(.pulse.byLayer, options: .repeating)
-                }
-            } else {
-                if #available(macOS 15.0, *) {
-                    imageView.removeSymbolEffect(ofType: .rotate)
-                } else {
-                    imageView.removeSymbolEffect(ofType: .pulse)
-                }
+        // Ensure anchorPoint is centered at (0.5, 0.5)
+        if let layer = imageView.layer, layer.anchorPoint != CGPoint(x: 0.5, y: 0.5) {
+            let frame = imageView.frame
+            layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            layer.position = CGPoint(x: frame.midX, y: frame.midY)
+        }
+        
+        if isRefreshing {
+            if imageView.layer?.animation(forKey: "mino.refreshRotation") == nil {
+                let rotation = CABasicAnimation(keyPath: "transform.rotation.z")
+                rotation.fromValue = 0
+                rotation.toValue = -2.0 * CGFloat.pi
+                rotation.duration = 1.0
+                rotation.repeatCount = .infinity
+                rotation.isRemovedOnCompletion = false
+                imageView.layer?.add(rotation, forKey: "mino.refreshRotation")
             }
+        } else {
+            imageView.layer?.removeAnimation(forKey: "mino.refreshRotation")
         }
     }
     

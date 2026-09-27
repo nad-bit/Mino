@@ -42,8 +42,8 @@ class NoSearchResultsView: NSView {
         addSubview(mainStack)
         
         // --- Error Stack Component (Icon + Label) ---
-        let config = NSImage.SymbolConfiguration(pointSize: Constants.menuBaseFontSize + 1, weight: .semibold)
-        let image = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "No results")?.withSymbolConfiguration(config)
+        let iconSize = NSSize(width: Constants.menuBaseFontSize + 5, height: Constants.menuBaseFontSize + 3)
+        let image = FelineEyeIcon.createSlashIcon(size: iconSize)
         
         iconView.image = image
         iconView.contentTintColor = .systemRed

@@ -1,4 +1,5 @@
 import Cocoa
+import CryptoKit
 
 class Utils {
     private static let isoFormatter = ISO8601DateFormatter()
@@ -450,10 +451,25 @@ class Utils {
         }
         
         // 3. Neutralize dangerous pseudo-protocols in href and src attributes (javascript:, vbscript:, data:)
-        let dangerousProtocols = ["href\\s*=\\s*[\"']?\\s*javascript:", "href\\s*=\\s*[\"']?\\s*vbscript:", "src\\s*=\\s*[\"']?\\s*javascript:"]
-        for proto in dangerousProtocols {
+        let dangerousHrefProtocols = [
+            "href\\s*=\\s*[\"']?\\s*javascript:",
+            "href\\s*=\\s*[\"']?\\s*vbscript:",
+            "href\\s*=\\s*[\"']?\\s*data:"
+        ]
+        for proto in dangerousHrefProtocols {
             if let regex = try? NSRegularExpression(pattern: proto, options: .caseInsensitive) {
                 clean = regex.stringByReplacingMatches(in: clean, options: [], range: NSRange(location: 0, length: clean.utf16.count), withTemplate: "href=\"about:blank\" data-blocked=\"")
+            }
+        }
+        
+        let dangerousSrcProtocols = [
+            "src\\s*=\\s*[\"']?\\s*javascript:",
+            "src\\s*=\\s*[\"']?\\s*vbscript:",
+            "src\\s*=\\s*[\"']?\\s*data:"
+        ]
+        for proto in dangerousSrcProtocols {
+            if let regex = try? NSRegularExpression(pattern: proto, options: .caseInsensitive) {
+                clean = regex.stringByReplacingMatches(in: clean, options: [], range: NSRange(location: 0, length: clean.utf16.count), withTemplate: "src=\"about:blank\" data-blocked=\"")
             }
         }
         
@@ -521,6 +537,23 @@ class Utils {
             }
         }
         return true
+    }
+    
+    /// Computes the cryptographic SHA-256 digest of a local file in lowercase hex format.
+    static func computeSHA256(for fileURL: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil }
+        defer { try? handle.close() }
+        
+        var hasher = SHA256()
+        while autoreleasepool(invoking: {
+            let chunk = handle.readData(ofLength: 65_536)
+            guard !chunk.isEmpty else { return false }
+            hasher.update(data: chunk)
+            return true
+        }) {}
+        
+        let digest = hasher.finalize()
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 }
 

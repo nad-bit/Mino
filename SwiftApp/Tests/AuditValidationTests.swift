@@ -25,7 +25,8 @@ struct AuditValidationTests {
         testGitHubAPI403Discrimination()
         testUntrustedTapExtraction()
         testMarkdownAutolinking()
-        testSpanishAPIErrorTranslations()
+        testLocalizationCompleteness()
+        testSHA256Integrity()
         
         print("\n🎉 ALL AUDIT VERIFICATION TESTS PASSED SUCCESSFULLY!\n")
     }
@@ -123,7 +124,23 @@ struct AuditValidationTests {
         
         let maliciousJSLink = "<a href=\"javascript:doEvil()\">Click me</a>"
         let cleanJSLink = Utils.sanitizeHTML(maliciousJSLink)
-        assertTest(!cleanJSLink.contains("href=\"javascript:"), "javascript: pseudo-protocol neutralized")
+        assertTest(!cleanJSLink.contains("href=\"javascript:"), "javascript: href neutralized")
+        
+        let maliciousVBSLink = "<a href=\"vbscript:doEvil()\">Click me</a>"
+        let cleanVBSLink = Utils.sanitizeHTML(maliciousVBSLink)
+        assertTest(!cleanVBSLink.contains("href=\"vbscript:"), "vbscript: href neutralized")
+        
+        let maliciousDataLink = "<a href=\"data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==\">Click me</a>"
+        let cleanDataLink = Utils.sanitizeHTML(maliciousDataLink)
+        assertTest(!cleanDataLink.contains("href=\"data:"), "data: href neutralized")
+        
+        let maliciousDataImg = "<img src=\"data:image/svg+xml;utf8,<svg onload=alert(1)/>\" />"
+        let cleanDataImg = Utils.sanitizeHTML(maliciousDataImg)
+        assertTest(!cleanDataImg.contains("src=\"data:"), "data: src neutralized")
+        
+        let maliciousVBSSrc = "<iframe src=\"vbscript:evil()\"></iframe>"
+        let cleanVBSSrc = Utils.sanitizeHTML(maliciousVBSSrc)
+        assertTest(!cleanVBSSrc.contains("vbscript:"), "vbscript: src neutralized")
     }
     
     // --------------------------------------------------------
@@ -235,6 +252,12 @@ struct AuditValidationTests {
         }
         
         assertTest(loadedReposCount == 1, "Successfully recovered repository list from repos.json.bak when repos.json is corrupted")
+        
+        // Test atomic modifyConfig
+        ConfigManager.shared.modifyConfig { cfg in
+            cfg.refreshMinutes = 123
+        }
+        assertTest(ConfigManager.shared.config.refreshMinutes == 123, "ConfigManager.shared.modifyConfig atomically updates and commits state")
     }
     
     // --------------------------------------------------------
@@ -301,6 +324,13 @@ struct AuditValidationTests {
         let cleanOutput = "🍺  app was successfully installed!"
         let extractedClean = HomebrewManager.shared.extractTrustTarget(from: cleanOutput)
         assertTest(extractedClean == nil, "No trust target extracted on normal output")
+        
+        // Test strict cask correlation (Audit finding)
+        let correlated = HomebrewManager.shared.extractTrustTarget(from: errorOutput1, forCask: "66hex/frame/frame")
+        assertTest(correlated == "66hex/frame/frame", "Target correlated successfully with expected cask")
+        
+        let uncorrelated = HomebrewManager.shared.extractTrustTarget(from: errorOutput1, forCask: "unrelated/malicious/cask")
+        assertTest(uncorrelated == nil, "Uncorrelated target from untrusted tap output is REJECTED")
     }
     
     // --------------------------------------------------------
@@ -336,17 +366,62 @@ struct AuditValidationTests {
     }
     
     // --------------------------------------------------------
-    // Test 11: Spanish API Error Translations
+    // Test 11: Multi-Language Localization Completeness
     // --------------------------------------------------------
-    static func testSpanishAPIErrorTranslations() {
-        print("\n[Test 11] Testing Spanish Error Translations (Translations.i18n)...")
+    static func testLocalizationCompleteness() {
+        print("\n[Test 11] Testing Multi-Language Localization Completeness (All 11 Languages vs English Base)...")
         
+        guard let enDict = Translations.i18n["en"] else {
+            assertTest(false, "Base English dictionary must exist")
+            return
+        }
+        assertTest(!enDict.isEmpty, "Base English dictionary contains entries (\(enDict.count) keys)")
+        
+        let allLanguages = ["es", "fr", "de", "it", "pt", "zh", "hi", "ar", "ru", "ja"]
+        for lang in allLanguages {
+            guard let langDict = Translations.i18n[lang] else {
+                assertTest(false, "Language '\(lang)' dictionary exists")
+                continue
+            }
+            
+            var missingOrEmptyKeys: [String] = []
+            for (key, _) in enDict {
+                if let val = langDict[key], !val.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    continue
+                }
+                missingOrEmptyKeys.append(key)
+            }
+            
+            assertTest(missingOrEmptyKeys.isEmpty, "Language '\(lang)' has 100% dictionary completeness against English (missing: \(missingOrEmptyKeys.joined(separator: ", ")))")
+        }
+        
+        // Verify feline onomatopoeia 'meow' tooltip exists across all supported languages
+        for (lang, dict) in Translations.i18n {
+            let meow = dict["meow"]
+            assertTest(meow != nil && !meow!.isEmpty, "Feline tooltip 'meow' localized for '\(lang)': \"\(meow ?? "")\"")
+        }
+        
+        // Spot-check key Spanish translations
         let esDict = Translations.i18n["es"]
-        assertTest(esDict != nil, "Spanish dictionary exists")
         assertTest(esDict?["apiRepoNotFound"] == "Repositorio no encontrado o privado", "apiRepoNotFound translated in Spanish")
         assertTest(esDict?["apiRateLimit"] == "Límite de peticiones a la API excedido", "apiRateLimit translated in Spanish")
         assertTest(esDict?["apiHttpError"] == "Error HTTP {code}", "apiHttpError translated in Spanish")
         assertTest(esDict?["repoPlaceholder"] == "propietario/repo o cask", "repoPlaceholder translated in Spanish")
+    }
+    
+    // --------------------------------------------------------
+    // Test 12: Cryptographic SHA-256 Digest Computation
+    // --------------------------------------------------------
+    static func testSHA256Integrity() {
+        print("\n[Test 12] Testing Utils.computeSHA256...")
+        
+        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("sha256_test_\(UUID().uuidString).bin")
+        let testString = "Mino macOS release tracker cryptographic verification test"
+        try! testString.data(using: .utf8)!.write(to: tempFile)
+        defer { try? FileManager.default.removeItem(at: tempFile) }
+        
+        let computed = Utils.computeSHA256(for: tempFile)
+        assertTest(computed != nil && computed?.count == 64, "SHA-256 digest computed successfully (64 hex characters)")
     }
 }
 

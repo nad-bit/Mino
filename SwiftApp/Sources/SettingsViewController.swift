@@ -1,7 +1,13 @@
 import Cocoa
 
 class SettingsView: NSView {
+    var onAppearanceChanged: (() -> Void)?
     override var acceptsFirstResponder: Bool { true }
+    
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChanged?()
+    }
 }
 
 @MainActor
@@ -39,6 +45,10 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
 
     override func loadView() {
         let view = SettingsView(frame: NSRect(x: 0, y: 0, width: 480, height: 100))
+        view.onAppearanceChanged = { [weak self] in
+            let hasToken = ConfigManager.shared.token != nil && !ConfigManager.shared.token!.isEmpty
+            self?.updateTokenBadgeStyle(hasToken: hasToken)
+        }
         self.view = view
         setupUI()
     }
@@ -261,24 +271,36 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         }
     }
     
-    private func loadCurrentSettings() {
-        // Load Token - two exclusive states
-        let hasToken = ConfigManager.shared.token != nil && !ConfigManager.shared.token!.isEmpty
-        
+    private func updateTokenBadgeStyle(hasToken: Bool) {
         if hasToken {
             tokenStatusLabel.stringValue = Translations.get("connected").uppercased()
-            tokenStatusLabel.textColor = .systemGreen
-            tokenBadge.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.15).cgColor
+            let isDark = (view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+            let bgAlpha: CGFloat = isDark ? 0.28 : 0.38
+            let borderAlpha: CGFloat = isDark ? 0.45 : 0.65
+            
+            tokenStatusLabel.textColor = isDark ? .systemGreen : NSColor(srgbRed: 0.10, green: 0.50, blue: 0.20, alpha: 1.0)
+            tokenBadge.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(bgAlpha).cgColor
+            tokenBadge.layer?.borderColor = NSColor.systemGreen.withAlphaComponent(borderAlpha).cgColor
+            tokenBadge.layer?.borderWidth = 0.5
             tokenConnectBtn.isHidden = true
             tokenDeleteBtn.isHidden = false
         } else {
             tokenStatusLabel.stringValue = Translations.get("configureToken").uppercased()
             tokenStatusLabel.textColor = .secondaryLabelColor
-            tokenBadge.layer?.backgroundColor = nil // Remove gray pill
+            tokenBadge.layer?.backgroundColor = nil
+            tokenBadge.layer?.borderColor = nil
+            tokenBadge.layer?.borderWidth = 0
             tokenConnectBtn.isHidden = false
             tokenDeleteBtn.isHidden = true
             tokenConnectBtn.isEnabled = true
         }
+    }
+    
+    private func loadCurrentSettings() {
+        // Load Token - two exclusive states
+        let hasToken = ConfigManager.shared.token != nil && !ConfigManager.shared.token!.isEmpty
+        
+        updateTokenBadgeStyle(hasToken: hasToken)
         
         isConfirmingDelete = false
         styleButtonAsBadge(tokenDeleteBtn, titleKey: "deleteOnly")

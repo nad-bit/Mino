@@ -27,7 +27,14 @@ class GitHubAPI {
     /// Shared across the module so GitHubAuth and RepoCoordinator
     /// reuse the same cache-disabled, timeout-configured session
     /// instead of falling back to URLSession.shared.
-    private(set) var session: URLSession
+    private let sessionLock = NSLock()
+    private var _session: URLSession
+    
+    var session: URLSession {
+        sessionLock.lock()
+        defer { sessionLock.unlock() }
+        return _session
+    }
     
     // MARK: - Rate Limit Tracking
     private let rateLimitLock = NSLock()
@@ -186,16 +193,39 @@ class GitHubAPI {
         }
         
         // 2. Check vector formats (SVG, PDF) natively decodable by NSImage.
-        // Limit raw payload size to 2 MB for vector/XML data to prevent XML entity expansion or excessive parsing.
-        if data.count <= 2 * 1024 * 1024,
-           let image = NSImage(data: data) {
-            let width = image.size.width
-            let height = image.size.height
-            if width > 0, height > 0,
-               width <= maxPixelDimension,
-               height <= maxPixelDimension,
-               (width * height) <= maxPixelArea {
-                return image
+        // Limit raw payload size to 2 MB for vector/XML data.
+        if data.count <= 2 * 1024 * 1024 {
+            // Guard: Scan XML/SVG data for dangerous entity expansion or external doctype
+            if let sample = String(data: data.prefix(2048), encoding: .utf8)?.lowercased() {
+                if sample.contains("<!entity") || (sample.contains("<!doctype") && sample.contains("system")) {
+                    return nil
+                }
+            }
+            
+            // For PDF data, inspect page box before rendering to prevent oversized pages
+            if data.starts(with: [0x25, 0x50, 0x44, 0x46]) /* %PDF */ {
+                if let provider = CGDataProvider(data: data as CFData),
+                   let pdfDoc = CGPDFDocument(provider),
+                   let page = pdfDoc.page(at: 1) {
+                    let box = page.getBoxRect(.mediaBox)
+                    guard box.width > 0, box.height > 0,
+                          box.width <= maxPixelDimension,
+                          box.height <= maxPixelDimension,
+                          (box.width * box.height) <= maxPixelArea else {
+                        return nil
+                    }
+                }
+            }
+            
+            if let image = NSImage(data: data) {
+                let width = image.size.width
+                let height = image.size.height
+                if width > 0, height > 0,
+                   width <= maxPixelDimension,
+                   height <= maxPixelDimension,
+                   (width * height) <= maxPixelArea {
+                    return image
+                }
             }
         }
         
@@ -342,7 +372,7 @@ class GitHubAPI {
     }
     
     private init() {
-        self.session = URLSession(configuration: GitHubAPI.makeConfiguration())
+        self._session = URLSession(configuration: GitHubAPI.makeConfiguration())
         self.pruneDiskCacheIfNeeded()
     }
     
@@ -360,8 +390,11 @@ class GitHubAPI {
     /// TLS session tickets, and internal credential caches accumulated over
     /// multiple refresh cycles) and creates a fresh replacement.
     func resetSession() {
-        session.finishTasksAndInvalidate()
-        session = URLSession(configuration: GitHubAPI.makeConfiguration())
+        sessionLock.lock()
+        let oldSession = _session
+        _session = URLSession(configuration: GitHubAPI.makeConfiguration())
+        sessionLock.unlock()
+        oldSession.finishTasksAndInvalidate()
         pruneDiskCacheIfNeeded()
     }
     
@@ -685,6 +718,18 @@ class GitHubAPI {
         return (fallbackBody, nil)
     }
     
+    /// Delegate enforcing defense-in-depth credential stripping on HTTP redirects.
+    private final class SafeDownloadRedirectDelegate: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            var redirectedRequest = request
+            if let host = request.url?.host?.lowercased(), !GitHubAPI.isTrustedGitHubHost(host) {
+                // Strip Authorization header when redirected outside exact trusted hosts (e.g. AWS S3 CDN)
+                redirectedRequest.setValue(nil, forHTTPHeaderField: "Authorization")
+            }
+            completionHandler(redirectedRequest)
+        }
+    }
+    
     /// Downloads a release asset to destinationURL reporting progress callbacks (bytesReceived, totalBytes).
     func downloadAsset(urlString: String, destinationURL: URL, progress: @escaping (Int64, Int64) -> Void) async throws {
         guard let url = URL(string: urlString) else {
@@ -705,10 +750,11 @@ class GitHubAPI {
         dlConfig.timeoutIntervalForRequest = 300
         dlConfig.timeoutIntervalForResource = 3600
         dlConfig.httpAdditionalHeaders = ["User-Agent": Constants.userAgent]
-        let dlSession = URLSession(configuration: dlConfig)
+        let dlDelegate = SafeDownloadRedirectDelegate()
+        let dlSession = URLSession(configuration: dlConfig, delegate: dlDelegate, delegateQueue: nil)
         defer { dlSession.finishTasksAndInvalidate() }
         
-        let (bytes, response) = try await dlSession.bytes(for: request)
+        let (bytes, response) = try await dlSession.bytes(for: request, delegate: dlDelegate)
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 500
             throw NSError(domain: "DownloadError", code: code, userInfo: [NSLocalizedDescriptionKey: "HTTP \(code)"])

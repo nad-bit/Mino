@@ -5,6 +5,28 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.7] - 2026-09-27
+
+### Security
+- **Comprehensive HTML Sanitization**: Neutralized executable pseudo-protocols (`javascript:`, `vbscript:`, and `data:`) across both `href` and `src` attributes in `Utils.sanitizeHTML(_:)` to prevent stored XSS vectors in release notes.
+- **HTTP Redirect Credential Stripping**: Added `SafeDownloadRedirectDelegate` to asset and source archive downloads, ensuring `Authorization: Bearer` headers are immediately purged if requests are redirected away from trusted GitHub hosts (e.g. to third-party CDNs such as AWS S3).
+- **Pre-Decode Protection Against XML Entities & Oversized PDFs**: Enhanced `GitHubAPI.safeDecodeImage` to detect and reject XML entity expansion (`<!ENTITY`, `<!DOCTYPE`) payloads before vector parsing, and enforce bounding box limits on PDF documents via `CGPDFDocument`.
+- **Atomic URLSession Swapping**: Protected `GitHubAPI._session` with `NSLock` synchronization, guaranteeing atomic pointer reassignment and teardown in `resetSession()` during high-concurrency background refreshes.
+- **Atomic Configuration Transactions**: Introduced `ConfigManager.modifyConfig(_:)` executing under recursive mutex locks to guarantee isolated read-mutate-write cycles, alongside thread-safe helpers (`addRepo`, `removeRepo`, `toggleFavorite`, `updateDownloadPath`).
+- **Strict Homebrew Trust Target Correlation**: Hardened `HomebrewManager.extractTrustTarget` with canonical syntax validation (`Utils.isValidMinoTarget`) and exact correlation against the requested cask name, preventing manipulation via crafted stderr output. Upgraded `HomebrewManager` to strict `Sendable` conformance.
+- **Streaming SHA-256 Digest Calculation**: Added `Utils.computeSHA256(for:)` leveraging Apple's `CryptoKit` with 64KB chunked streaming to enable asset verification with $O(1)$ memory consumption.
+- **Expanded Audit Verification Suite**: Expanded `AuditValidationTests.swift` with Test 12 (CryptoKit SHA-256 verification), upgraded Test 11 to audit multi-language localization completeness across all 11 supported locales against the English base dictionary, and updated Tests 4, 7, and 9 for 100% automated regression coverage against all audit findings.
+
+### Added
+- **Exclusive Feline Eye Iconography & Branding**: Introduced a custom-designed feline eye symbol featuring a vertical slit pupil and subtle anatomical tilt (12°), procedurally drawn with Core Graphics in `FelineEyeIcon.swift`.
+- **Refined AppIcon & Asset Catalog**: Generated unified macOS icon assets from the new solid-fill feline design (widened 3.5pt pupil), updating `AppIcon.icns`, application binaries, and repository documentation.
+- **Fluid Menu Bar Layer Animations**: Reimplemented menu bar status icon animations (`Bounce`, `Wiggle`, `Rotate`, `Scale`, and `Refresh`) using Core Animation layer transforms (`CAKeyframeAnimation` / `CABasicAnimation`), delivering smooth micro-interactions independent of native SF Symbols.
+- **Localized Feline Status Tooltip ("Miau")**: Hovering over the menu bar status icon displays a localized feline onomatopoeia tooltip across all 11 supported languages (`en`: "Meow", `es`: "Miau", `fr`: "Miaou", `de`: "Miau", `it`: "Miao", `pt`: "Miau", `zh`: "喵", `hi`: "म्याऊँ", `ar`: "مواء", `ru`: "Мяу", `ja`: "ニャー").
+- **100% Dictionary Completeness Across All 11 Supported Locales**: Synchronized all settings, storage, cache, and Homebrew integration keys across French, German, Italian, Portuguese, Chinese, Hindi, Arabic, Russian, and Japanese, bringing each language to 138/138 keys identical to the base English catalog.
+
+### Improved
+- **High-Contrast Connection Status Badge**: Enhanced GitHub authentication status pill in Preferences with increased background opacity (0.38 in Light Mode, 0.28 in Dark Mode), a crisp 0.5pt border outline, and deep emerald typography for pristine legibility across light and dark desktop themes.
+
 ## [2.2.6] - 2026-09-20
 
 ### Added

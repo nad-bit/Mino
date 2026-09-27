@@ -1,6 +1,6 @@
 import Foundation
 
-final class HomebrewManager: @unchecked Sendable {
+final class HomebrewManager: Sendable {
     static let shared = HomebrewManager()
     
     var brewPath: String? {
@@ -53,38 +53,59 @@ final class HomebrewManager: @unchecked Sendable {
         return await trustTarget(cask)
     }
     
-    func extractTrustTarget(from output: String) -> String? {
+    func extractTrustTarget(from output: String, forCask expectedCask: String? = nil) -> String? {
+        var candidate: String?
+        
         // Pattern 1: Run `brew trust --cask <target>`
         if let regex = try? NSRegularExpression(pattern: "brew trust --cask\\s+([^`\\r\\n]+)", options: .caseInsensitive) {
             let range = NSRange(location: 0, length: output.utf16.count)
             if let match = regex.firstMatch(in: output, options: [], range: range),
                let matchRange = Range(match.range(at: 1), in: output) {
                 let target = String(output[matchRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !target.isEmpty { return target }
+                if !target.isEmpty { candidate = target }
             }
         }
         
         // Pattern 2: Error: Refusing to load cask <target> from untrusted tap
-        if let regex = try? NSRegularExpression(pattern: "refusing to load cask\\s+([^\\s]+)\\s+from untrusted tap", options: .caseInsensitive) {
+        if candidate == nil, let regex = try? NSRegularExpression(pattern: "refusing to load cask\\s+([^\\s]+)\\s+from untrusted tap", options: .caseInsensitive) {
             let range = NSRange(location: 0, length: output.utf16.count)
             if let match = regex.firstMatch(in: output, options: [], range: range),
                let matchRange = Range(match.range(at: 1), in: output) {
                 let target = String(output[matchRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !target.isEmpty { return target }
+                if !target.isEmpty { candidate = target }
             }
         }
         
         // Pattern 3: Run `brew trust <tap>`
-        if let regex = try? NSRegularExpression(pattern: "brew trust\\s+([^`\\r\\n]+)", options: .caseInsensitive) {
+        if candidate == nil, let regex = try? NSRegularExpression(pattern: "brew trust\\s+([^`\\r\\n]+)", options: .caseInsensitive) {
             let range = NSRange(location: 0, length: output.utf16.count)
             if let match = regex.firstMatch(in: output, options: [], range: range),
                let matchRange = Range(match.range(at: 1), in: output) {
                 let target = String(output[matchRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !target.isEmpty { return target }
+                if !target.isEmpty { candidate = target }
             }
         }
         
-        return nil
+        guard let target = candidate else { return nil }
+        
+        // 1. Canonical Target Validation (reject shell characters, limit to 3 path components)
+        guard Utils.isValidMinoTarget(target) else { return nil }
+        
+        // 2. Strict Cask Correlation: When an expected cask is specified,
+        // target must match the cask itself, the tap prefix, or contain the cask name.
+        if let expected = expectedCask {
+            let normTarget = target.lowercased()
+            let normExpected = expected.lowercased()
+            let isExactMatch = normTarget == normExpected
+            let isTapOfCask = normExpected.hasPrefix(normTarget + "/")
+            let isCaskInTap = normTarget.hasSuffix("/" + normExpected)
+            
+            guard isExactMatch || isTapOfCask || isCaskInTap else {
+                return nil
+            }
+        }
+        
+        return target
     }
     
     func listCasks() async -> [String] {
@@ -142,7 +163,7 @@ final class HomebrewManager: @unchecked Sendable {
                             return
                         }
                     } else if canRetry, let errStr = String(data: errData, encoding: .utf8),
-                              let target = self.extractTrustTarget(from: errStr) {
+                              let target = self.extractTrustTarget(from: errStr, forCask: cask) {
                         Task {
                             let trusted = await self.trustTarget(target)
                             if trusted {
@@ -173,7 +194,7 @@ final class HomebrewManager: @unchecked Sendable {
         var result = await executeInstallProcess(cask: cask)
         
         // If it failed due to an untrusted tap/cask, extract target from Homebrew output, trust it, and retry once
-        if !result.success, let target = extractTrustTarget(from: result.message) {
+        if !result.success, let target = extractTrustTarget(from: result.message, forCask: cask) {
             let trusted = await trustTarget(target)
             if trusted {
                 result = await executeInstallProcess(cask: cask)

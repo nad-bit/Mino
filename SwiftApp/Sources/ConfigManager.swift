@@ -101,7 +101,22 @@ class ConfigManager {
         self.token = getTokenFromKeychain()
     }
     
+    /// Atomically mutates the configuration under lock and immediately commits changes to disk.
+    /// Eliminates lost updates during concurrent read-modify-write cycles.
+    func modifyConfig(_ mutation: (inout AppConfig) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        mutation(&_config)
+        saveConfigLocked()
+    }
+    
     func saveConfig() {
+        lock.lock()
+        defer { lock.unlock() }
+        saveConfigLocked()
+    }
+    
+    private func saveConfigLocked() {
         do {
             if !FileManager.default.fileExists(atPath: configDir.path) {
                 try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true, attributes: nil)
@@ -109,7 +124,7 @@ class ConfigManager {
             
             let encoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
-            let data = try encoder.encode(config)
+            let data = try encoder.encode(_config)
             
             // If current configFile exists and is valid, back it up before replacing
             if FileManager.default.fileExists(atPath: configFile.path) {
@@ -124,6 +139,37 @@ class ConfigManager {
         }
         
         NotificationCenter.default.post(name: Notification.Name("ConfigChanged"), object: nil)
+    }
+    
+    // MARK: - Atomic Domain Methods
+    
+    func addRepo(name: String, source: String = "manual", cask: String? = nil) {
+        modifyConfig { cfg in
+            if !cfg.repos.contains(where: { $0.name == name }) {
+                cfg.repos.append(RepoConfig(name: name, source: source, cask: cask, tags: nil, repoDescription: nil, isFavorite: false))
+            }
+        }
+    }
+    
+    func removeRepo(named name: String) {
+        modifyConfig { cfg in
+            cfg.repos.removeAll { $0.name == name }
+        }
+    }
+    
+    func toggleFavorite(for repoName: String) {
+        modifyConfig { cfg in
+            if let idx = cfg.repos.firstIndex(where: { $0.name == repoName }) {
+                let current = cfg.repos[idx].isFavorite ?? false
+                cfg.repos[idx].isFavorite = !current
+            }
+        }
+    }
+    
+    func updateDownloadPath(_ path: String) {
+        modifyConfig { cfg in
+            cfg.downloadPath = path
+        }
     }
     
     // MARK: - Keychain Methods

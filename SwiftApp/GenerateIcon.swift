@@ -23,55 +23,79 @@ ctx.drawLinearGradient(gradient, start: CGPoint(x: 0, y: iconSize.height), end: 
 
 bgPath.addClip()
 
-// Configure the "eye.fill" symbol
-var activeTintColor: NSColor = .systemBlue
-let symbolConfig = NSImage.SymbolConfiguration(pointSize: 600, weight: .semibold)
-if let symbol = NSImage(systemSymbolName: "eye.fill", accessibilityDescription: nil)?.withSymbolConfiguration(symbolConfig) {
-    let curatedColors: [NSColor] = [
-        .systemBlue, .systemCyan, .systemPurple, .systemOrange,
-        .systemPink, .systemIndigo, .systemTeal, .systemMint,
-        .systemGreen, .systemYellow, .systemRed,
-        NSColor(calibratedRed: 0.0, green: 0.9, blue: 0.7, alpha: 1.0), // Neon Turquoise
-        NSColor(calibratedRed: 0.9, green: 0.1, blue: 0.5, alpha: 1.0), // Electric Pink
-        NSColor(calibratedRed: 0.5, green: 0.0, blue: 1.0, alpha: 1.0), // Deep Violet
-        NSColor(calibratedRed: 1.0, green: 0.6, blue: 0.0, alpha: 1.0), // Bright Mango
-        NSColor(calibratedRed: 0.1, green: 0.8, blue: 0.3, alpha: 1.0),  // Toxic Green
-        NSColor(calibratedRed: 1.0, green: 0.84, blue: 0.0, alpha: 1.0), // Cyberpunk Yellow
-        NSColor(calibratedRed: 0.86, green: 0.08, blue: 0.24, alpha: 1.0), // Crimson Red
-        NSColor(calibratedRed: 0.25, green: 0.41, blue: 0.88, alpha: 1.0), // Royal Blue
-        NSColor(calibratedRed: 0.6, green: 0.4, blue: 0.8, alpha: 1.0), // Amethyst
-        NSColor(calibratedRed: 1.0, green: 0.2, blue: 0.2, alpha: 1.0), // Neon Red
-        NSColor(calibratedRed: 0.0, green: 0.98, blue: 0.6, alpha: 1.0), // Spring Green
-        NSColor(calibratedRed: 1.0, green: 0.0, blue: 1.0, alpha: 1.0), // Magenta
-        NSColor(calibratedRed: 0.0, green: 1.0, blue: 1.0, alpha: 1.0), // Cyan
-        NSColor(calibratedRed: 1.0, green: 0.5, blue: 0.0, alpha: 1.0)  // Safety Orange
-    ]
-    activeTintColor = curatedColors.randomElement() ?? .systemBlue
-    let tintedSymbol = NSImage(size: symbol.size)
-    tintedSymbol.lockFocus()
-    activeTintColor.set()
-    let rect = NSRect(origin: .zero, size: symbol.size)
-    rect.fill()
-    symbol.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1.0)
-    tintedSymbol.unlockFocus()
-    
-    // Center logic
-    let xOffset = (iconSize.width - tintedSymbol.size.width) / 2.0
-    let yOffset = (iconSize.height - tintedSymbol.size.height) / 2.0
-    let symbolRect = NSRect(x: xOffset, y: yOffset, width: tintedSymbol.size.width, height: tintedSymbol.size.height)
-    
-    // Add subtle shadow for depth
-    let shadow = NSShadow()
-    shadow.shadowColor = NSColor.black.withAlphaComponent(0.6)
-    shadow.shadowOffset = NSSize(width: 0, height: -10)
-    shadow.shadowBlurRadius = 15
-    shadow.set()
-    
-    tintedSymbol.draw(in: symbolRect)
-} else {
-    print("Could not find eye.fill symbol")
-    exit(1)
-}
+// Configure the signature Feline Eye (Option A: Solid Fill with Cutout Slit Pupil)
+let curatedColors: [NSColor] = [
+    .systemBlue, .systemCyan, .systemPurple, .systemOrange,
+    .systemPink, .systemIndigo, .systemTeal, .systemMint,
+    .systemGreen, .systemYellow, .systemRed,
+    NSColor(calibratedRed: 0.0, green: 0.9, blue: 0.7, alpha: 1.0), // Neon Turquoise
+    NSColor(calibratedRed: 0.9, green: 0.1, blue: 0.5, alpha: 1.0), // Electric Pink
+    NSColor(calibratedRed: 0.5, green: 0.0, blue: 1.0, alpha: 1.0), // Deep Violet
+    NSColor(calibratedRed: 1.0, green: 0.6, blue: 0.0, alpha: 1.0), // Bright Mango
+    NSColor(calibratedRed: 0.1, green: 0.8, blue: 0.3, alpha: 1.0),  // Toxic Green
+    NSColor(calibratedRed: 1.0, green: 0.84, blue: 0.0, alpha: 1.0), // Cyberpunk Yellow
+    NSColor(calibratedRed: 0.86, green: 0.08, blue: 0.24, alpha: 1.0), // Crimson Red
+    NSColor(calibratedRed: 0.25, green: 0.41, blue: 0.88, alpha: 1.0), // Royal Blue
+    NSColor(calibratedRed: 0.6, green: 0.4, blue: 0.8, alpha: 1.0), // Amethyst
+    NSColor(calibratedRed: 1.0, green: 0.2, blue: 0.2, alpha: 1.0), // Neon Red
+    NSColor(calibratedRed: 0.0, green: 0.98, blue: 0.6, alpha: 1.0), // Spring Green
+    NSColor(calibratedRed: 1.0, green: 0.0, blue: 1.0, alpha: 1.0), // Magenta
+    NSColor(calibratedRed: 0.0, green: 1.0, blue: 1.0, alpha: 1.0), // Cyan
+    NSColor(calibratedRed: 1.0, green: 0.5, blue: 0.0, alpha: 1.0)  // Safety Orange
+]
+var activeTintColor: NSColor = curatedColors.randomElement() ?? .systemCyan
+
+let scale: CGFloat = 36.0
+let eyeWidth: CGFloat = 18.0 * scale
+let eyeHeight: CGFloat = 16.0 * scale
+let originX = (iconSize.width - eyeWidth) / 2.0
+let originY = (iconSize.height - eyeHeight) / 2.0
+
+ctx.saveGState()
+ctx.translateBy(x: originX, y: originY)
+ctx.scaleBy(x: scale, y: scale)
+
+// Add subtle shadow for depth
+let shadow = NSShadow()
+shadow.shadowColor = NSColor.black.withAlphaComponent(0.6)
+shadow.shadowOffset = NSSize(width: 0, height: -10 / scale)
+shadow.shadowBlurRadius = 18 / scale
+shadow.set()
+
+// 1. Solid Outer Almond Shape
+let eyePath = NSBezierPath()
+let left = CGPoint(x: 1.5, y: 7.2)
+let right = CGPoint(x: 16.5, y: 8.8)
+eyePath.move(to: left)
+eyePath.curve(to: right, controlPoint1: CGPoint(x: 6.0, y: 14.8), controlPoint2: CGPoint(x: 12.5, y: 14.8))
+eyePath.curve(to: left, controlPoint1: CGPoint(x: 12.0, y: 2.2), controlPoint2: CGPoint(x: 6.0, y: 1.2))
+eyePath.close()
+
+// 2. Cutout Vertical Pupil (negative space using evenOdd winding rule)
+let pupil = NSBezierPath()
+let center = CGPoint(x: 9.0, y: 8.0)
+let pWidth: CGFloat = 3.5 // Widened, prominent predatory cutout pupil
+let pHeight: CGFloat = 9.6
+let top = CGPoint(x: center.x, y: center.y + pHeight / 2.0)
+let bottom = CGPoint(x: center.x, y: center.y - pHeight / 2.0)
+let halfW = pWidth / 2.0
+
+pupil.move(to: top)
+pupil.curve(to: bottom,
+            controlPoint1: CGPoint(x: center.x + halfW * 1.3, y: center.y + pHeight * 0.15),
+            controlPoint2: CGPoint(x: center.x + halfW * 1.3, y: center.y - pHeight * 0.15))
+pupil.curve(to: top,
+            controlPoint1: CGPoint(x: center.x - halfW * 1.3, y: center.y - pHeight * 0.15),
+            controlPoint2: CGPoint(x: center.x - halfW * 1.3, y: center.y + pHeight * 0.15))
+pupil.close()
+
+eyePath.append(pupil)
+eyePath.windingRule = .evenOdd
+
+activeTintColor.setFill()
+eyePath.fill()
+
+ctx.restoreGState()
 
 image.unlockFocus()
 

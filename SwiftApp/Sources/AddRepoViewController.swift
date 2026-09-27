@@ -37,11 +37,8 @@ class AddRepoViewController: NSViewController, NSTextFieldDelegate, NSWindowDele
         // Animated Eye Icon - The centerpiece
         eyeImageView = NSImageView()
         eyeImageView.translatesAutoresizingMaskIntoConstraints = false
-        if let eyeImage = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
-            let config = NSImage.SymbolConfiguration(pointSize: 32, weight: .light)
-            eyeImageView.image = eyeImage.withSymbolConfiguration(config)
-            eyeImageView.contentTintColor = Utils.appIconColor
-        }
+        eyeImageView.image = FelineEyeIcon.createIcon(size: NSSize(width: 60, height: 40))
+        eyeImageView.contentTintColor = Utils.appIconColor
         eyeImageView.imageScaling = .scaleProportionallyUpOrDown
         eyeImageView.wantsLayer = true
         mainStack.addArrangedSubview(eyeImageView)
@@ -121,11 +118,8 @@ class AddRepoViewController: NSViewController, NSTextFieldDelegate, NSWindowDele
     }
     
     func resetAndPrepare() {
-        if let normalEye = NSImage(systemSymbolName: "eye", accessibilityDescription: "Watching Symbol") {
-            let config = NSImage.SymbolConfiguration(pointSize: 32, weight: .light)
-            eyeImageView.image = normalEye.withSymbolConfiguration(config)
-            eyeImageView.contentTintColor = Utils.appIconColor
-        }
+        eyeImageView.image = FelineEyeIcon.createIcon(size: NSSize(width: 60, height: 40))
+        eyeImageView.contentTintColor = Utils.appIconColor
         
         checkClipboardForRepo()
         
@@ -162,11 +156,8 @@ class AddRepoViewController: NSViewController, NSTextFieldDelegate, NSWindowDele
         eyeImageView.layer?.removeAllAnimations()
         eyeImageView.alphaValue = 1.0
         
-        if let strikeEye = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "Ouch") {
-            let config = NSImage.SymbolConfiguration(pointSize: 32, weight: .light)
-            eyeImageView.image = strikeEye.withSymbolConfiguration(config)
-            eyeImageView.contentTintColor = .systemRed
-        }
+        eyeImageView.image = FelineEyeIcon.createSlashIcon(size: NSSize(width: 60, height: 40))
+        eyeImageView.contentTintColor = .systemRed
         
         if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             let shake = CAKeyframeAnimation(keyPath: "transform.translation.x")
@@ -219,9 +210,12 @@ class AddRepoViewController: NSViewController, NSTextFieldDelegate, NSWindowDele
     
     private func playSuccessAnimation() {
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
-        if #available(macOS 14.0, *) {
-            eyeImageView.addSymbolEffect(.bounce, options: .nonRepeating)
-        }
+        let bounce = CAKeyframeAnimation(keyPath: "transform.translation.y")
+        bounce.values = [0, 6.0, -3.0, 2.0, 0]
+        bounce.keyTimes = [0.0, 0.25, 0.5, 0.75, 1.0]
+        bounce.duration = 0.4
+        bounce.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        eyeImageView.layer?.add(bounce, forKey: "successBounce")
     }
     
     // MARK: - NSTextFieldDelegate

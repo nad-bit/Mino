@@ -141,17 +141,19 @@ Mino adheres to strict defense-in-depth principles across authentication, networ
 
 - **Least Privilege OAuth Scope**: Uses GitHub's official Device Authorization Flow with an empty scope (`""`), granting public read access and the full 5,000 req/hr API quota with zero access to private code or write permissions.
 - **Exact Endpoints GitHub Host Allowlist**: Authorization headers (`Authorization: Bearer`) are exclusively dispatched to Mino's verified API endpoints (`api.github.com`, `raw.githubusercontent.com`, and `github.com`), completely rejecting arbitrary subdomains or third-party hosts. Remote asset and avatar downloads are proactively isolated without credentials.
+- **Credential Stripping on Third-Party Redirects**: Downloads through `URLSession` utilize `SafeDownloadRedirectDelegate` to strip `Authorization: Bearer` headers immediately if GitHub redirects requests to external cloud storage (e.g. AWS S3 CDNs).
 - **Secure Keychain Storage**: Tokens are stored and updated via native macOS Keychain Services (`SecItemUpdate` / `SecItemAdd`)—never written in raw configuration files or system logs.
 - **Link & Protocol Isolation**: Clickable links in release notes strictly enforce `https://`, `http://`, or `mailto:` protocols to prevent execution of dangerous system schemes (`file://`, `shortcuts://`, `terminal://`, etc.).
-- **Structural HTML & Markdown Sanitization**: Release notes are sanitized prior to HTML parsing, stripping high-risk executable tags (`<script>`, `<iframe>`, `<object>`, `<embed>`, `<form>`), inline JavaScript event handlers (`onload`, `onclick`, `onerror`), and pseudo-protocols (`javascript:`, `data:`).
-- **Decompression Bomb Protection**: Remote images are inspected using `CGImageSource` metadata prior to rasterization, validating pixel dimensions (max 4,096 px) and total pixel area (max 16 megapixels) to neutralize decompression bombs without allocating memory.
+- **Structural HTML & Markdown Sanitization**: Release notes are sanitized prior to HTML parsing, stripping high-risk executable tags (`<script>`, `<iframe>`, `<object>`, `<embed>`, `<form>`), inline JavaScript event handlers (`onload`, `onclick`, `onerror`), and dangerous pseudo-protocols (`javascript:`, `vbscript:`, `data:`) across both `href` and `src` attributes.
+- **Pre-Decode XML Entity & Decompression Bomb Protection**: Remote images are inspected using `CGImageSource` metadata prior to rasterization, validating pixel dimensions (max 4,096 px) and total pixel area (max 16 megapixels). Vector inputs are screened to reject XML entity expansion (`<!ENTITY`, `<!DOCTYPE`) and PDF documents enforce bounding box limits before allocation.
 - **Asset Filename Sanitization**: File downloads are sanitized against directory traversal sequences (`../`), path separators, and ASCII control characters to safeguard the local filesystem.
 - **Canonical `mino://` URL Scheme Depth Limit**: Custom scheme targets are validated against strict depth constraints (maximum 3 path segments: `owner/repo`, `tap/cask`, or `cask`), rejecting nested paths and command injections.
 - **Atomic Persistence & Fail-Safe Recovery**: Configuration (`repos.json`) is saved via atomic writes (`.atomic`) and continuously mirrored to `repos.json.bak`. If corruption ever occurs, Mino automatically restores from backup to safeguard your repository collection.
-- **Thread-Safe State Isolation**: Global mutable configuration and token state are protected with recursive locks (`NSRecursiveLock`) to prevent race conditions between background refresh tasks and UI events.
-- **Automatic Homebrew Tap Trust Remediation**: Diagnostics from third-party tap installations are automatically parsed (`extractTrustTarget`), executing `brew trust --cask` and retrying seamlessly without user friction.
+- **Atomic Transactions & Thread-Safe Concurrency**: Configuration state is managed through `ConfigManager.modifyConfig` executing under recursive mutex locks, and `GitHubAPI` sessions are atomically swapped under synchronization locks to eliminate multithreaded race conditions.
+- **Strict Homebrew Tap Target Correlation**: Diagnostics from third-party tap installations are validated against canonical syntax (`Utils.isValidMinoTarget`) and strictly correlated with the requested cask name, preventing manipulation through crafted diagnostic output.
+- **Streaming Cryptographic Hashes**: Incorporates `Utils.computeSHA256` via Apple's `CryptoKit` with 64KB chunked streaming to verify file integrity with $O(1)$ memory consumption.
 - **Resource Protection & Memory Guards**: Remote release images are capped at 10 MB in memory, and the local disk cache (`~/Library/Caches/com.nad.mino/ReleaseImages`) is managed with automated background LRU pruning (150 MB quota / 30-day TTL).
-- **Automated Audit Suite**: All security controls, host allowlists, URL regexes, decompression bomb guards, HTML sanitizers, and recovery routines are verified via automated tests in `SwiftApp/Tests/AuditValidationTests.swift` compiled directly against production sources (`./build.sh --test`).
+- **Automated Verification Suite (12 Tests)**: All security controls, host allowlists, URL regexes, decompression bomb guards, HTML sanitizers, multi-language localization integrity, and recovery routines are verified via automated tests in `SwiftApp/Tests/AuditValidationTests.swift` compiled directly against production sources (`./build.sh --test`).
 
 ## Configuration
 
@@ -172,24 +174,24 @@ Use these shortcuts while the main menu is open:
 
 | Shortcut | Action |
 |----------|--------|
-| `CMD + ,` | Open Preferences |
+| `CMD + M` | Open About Mino panel |
+| `CMD + I` | Show Release Notes & Assets for selected repo |
 | `CMD + N` | Open new "Multi-Hunt" batch addition window |
+| `CMD + O` | Open selected repo on GitHub |
+| `CMD + ,` | Open Preferences |
 | `CMD + V` | Quick Add repository detected on clipboard |
 | `CMD + F` | Focus Search field |
 | `CMD + R` | Refresh metadata and version for selected repo (or full refresh if none selected) |
 | `CMD + C` | Copy GitHub URL of selected repo to clipboard |
-| `CMD + O` | Open selected repo on GitHub |
-| `CMD + I` | Show Release Notes & Assets for selected repo |
 | `CMD + S` | Mark or unmark selected repo as Starred (Favorite) |
 | `CMD + B` | Install or update the focused repo via Homebrew |
 | `CMD + Z` | Undo last repository deletion |
-| `CMD + M` | Open About Mino panel |
 | `CMD + Q` | Quit Mino |
 | `TAB`     | Switch focus between Search field and Repo list |
 | `↑↓`     | Navigate up and down the Repo list |
 | `←→`     | Cycle through inline action buttons on the selected repo |
 | `ENTER`   | Trigger the focused action button, or open repo on GitHub if no button is focused |
-| `CMD + DELETE` | Delete the selected repo |
+| `CMD + ⌫` | Delete the selected repo |
 | `ESC`     | Close any active popover |
 
 ## Architecture
