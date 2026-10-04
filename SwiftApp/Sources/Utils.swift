@@ -83,6 +83,7 @@ class Utils {
     private static let boldRegex = try? NSRegularExpression(pattern: "\\*\\*(.*?)\\*\\*")
     private static let italicRegex = try? NSRegularExpression(pattern: "(?<!\\*)\\*(?!\\*)(.*?)(?<!\\*)\\*(?!\\*)")
     private static let inlineCodeRegex = try? NSRegularExpression(pattern: "`(.*?)`")
+    private static let rawHtmlTagRegex = try? NSRegularExpression(pattern: "<[^>]+>")
 
     static func convertMarkdownToHTML(_ markdown: String, repo: String? = nil) -> String {
         // Strip HTML comments (such as Sparkle signature warnings) to prevent unclosed comments from breaking HTML parsing
@@ -102,6 +103,7 @@ class Utils {
           table { border-collapse: collapse; width: 100%; margin: 8px 0; }
           th, td { border: 1px solid rgba(128,128,128,0.3); padding: 5px 8px; text-align: left; }
           th { background-color: rgba(128,128,128,0.15); font-weight: bold; }
+          blockquote { border-left: 3px solid rgba(128,128,128,0.35); margin: 6px 0; padding: 2px 0 2px 10px; color: rgba(128,128,128,0.9); }
         </style>
         """
         
@@ -111,8 +113,16 @@ class Utils {
         var inList = false
         var inOrderedList = false
         var inTable = false
+        var inBlockquote = false
         var tableHeaderCells: [String] = []
         var tableRows: [[String]] = []
+        
+        func closeBlockquoteIfNeeded() {
+            if inBlockquote {
+                body += "</blockquote>\n"
+                inBlockquote = false
+            }
+        }
         
         func closeListIfNeeded() {
             if inList {
@@ -159,6 +169,7 @@ class Utils {
             if line.trimmed().hasPrefix("```") {
                 closeListIfNeeded()
                 closeTableIfNeeded()
+                closeBlockquoteIfNeeded()
                 if inCodeBlock {
                     body += "</code></pre>\n"
                     inCodeBlock = false
@@ -217,6 +228,7 @@ class Utils {
             if trimmedLine.hasPrefix("#") {
                 closeListIfNeeded()
                 closeTableIfNeeded()
+                closeBlockquoteIfNeeded()
                 var level = 0
                 while level < trimmedLine.count && trimmedLine[trimmedLine.index(trimmedLine.startIndex, offsetBy: level)] == "#" {
                     level += 1
@@ -259,6 +271,32 @@ class Utils {
                 continue
             }
             
+            // Blockquotes
+            if trimmedLine.hasPrefix(">") {
+                closeListIfNeeded()
+                closeTableIfNeeded()
+                if !inBlockquote {
+                    body += "<blockquote>\n"
+                    inBlockquote = true
+                }
+                var quoteContent = String(trimmedLine.dropFirst())
+                if quoteContent.hasPrefix(" ") {
+                    quoteContent = String(quoteContent.dropFirst())
+                }
+                let trimmedContent = quoteContent.trimmed()
+                if trimmedContent.isEmpty {
+                    body += "<br/>\n"
+                } else if trimmedContent.hasPrefix("<") {
+                    body += "\(trimmedContent)\n"
+                } else {
+                    body += "<p>\(processInlineMarkdown(quoteContent, repo: repo))</p>\n"
+                }
+                i += 1
+                continue
+            }
+            
+            closeBlockquoteIfNeeded()
+            
             // Preserve raw HTML tags (e.g. <img src="..." />, <div align="center">, <p align="center">, etc.)
             if trimmedLine.hasPrefix("<") {
                 closeListIfNeeded()
@@ -285,6 +323,7 @@ class Utils {
         
         closeListIfNeeded()
         closeTableIfNeeded()
+        closeBlockquoteIfNeeded()
         
         return sanitizeHTML(body)
     }
@@ -304,7 +343,20 @@ class Utils {
     private static func processInlineMarkdown(_ text: String, repo: String? = nil) -> String {
         var result = text
         
-        // 0. Temporarily extract inline code `code` -> placeholders to prevent autolinking inside code
+        // 0. Temporarily extract raw HTML tags <...> -> placeholders to prevent autolinking inside attributes (e.g. src="https://...")
+        var htmlPlaceholders: [String] = []
+        if let regex = rawHtmlTagRegex {
+            let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
+            for match in matches.reversed() {
+                guard let fullRange = Range(match.range, in: result) else { continue }
+                let tag = String(result[fullRange])
+                let placeholder = "%%%MINOHTML_\(htmlPlaceholders.count)%%%"
+                htmlPlaceholders.append(tag)
+                result.replaceSubrange(fullRange, with: placeholder)
+            }
+        }
+        
+        // 1. Temporarily extract inline code `code` -> placeholders to prevent autolinking inside code
         var codePlaceholders: [String] = []
         if let regex = inlineCodeRegex {
             let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count))
@@ -415,6 +467,11 @@ class Utils {
             }
         }
         
+        // 9. Restore raw HTML tags
+        for (index, tagHTML) in htmlPlaceholders.enumerated().reversed() {
+            result = result.replacingOccurrences(of: "%%%MINOHTML_\(index)%%%", with: tagHTML)
+        }
+        
         return result
     }
     
@@ -450,11 +507,12 @@ class Utils {
             clean = regex.stringByReplacingMatches(in: clean, options: [], range: NSRange(location: 0, length: clean.utf16.count), withTemplate: "")
         }
         
-        // 3. Neutralize dangerous pseudo-protocols in href and src attributes (javascript:, vbscript:, data:)
+        // 3. Neutralize dangerous pseudo-protocols in href and src attributes (javascript:, vbscript:, data:, file:)
         let dangerousHrefProtocols = [
             "href\\s*=\\s*[\"']?\\s*javascript:",
             "href\\s*=\\s*[\"']?\\s*vbscript:",
-            "href\\s*=\\s*[\"']?\\s*data:"
+            "href\\s*=\\s*[\"']?\\s*data:",
+            "href\\s*=\\s*[\"']?\\s*file:"
         ]
         for proto in dangerousHrefProtocols {
             if let regex = try? NSRegularExpression(pattern: proto, options: .caseInsensitive) {
@@ -465,7 +523,8 @@ class Utils {
         let dangerousSrcProtocols = [
             "src\\s*=\\s*[\"']?\\s*javascript:",
             "src\\s*=\\s*[\"']?\\s*vbscript:",
-            "src\\s*=\\s*[\"']?\\s*data:"
+            "src\\s*=\\s*[\"']?\\s*data:",
+            "src\\s*=\\s*[\"']?\\s*file:"
         ]
         for proto in dangerousSrcProtocols {
             if let regex = try? NSRegularExpression(pattern: proto, options: .caseInsensitive) {
@@ -554,6 +613,42 @@ class Utils {
         
         let digest = hasher.finalize()
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+    
+    /// Extracts SHA-256 checksums mapped to filenames from release notes or checksum text blocks.
+    /// Supports standard formats: sha256sum (`<hash>  <file>`), BSD (`SHA256 (<file>) = <hash>`), and labeled (`<file>: <hash>`).
+    static func extractChecksums(from text: String) -> [String: String] {
+        var checksums: [String: String] = [:]
+        
+        // 1. Standard sha256sum format: "<64-hex> [*]<filename>"
+        if let regex = try? NSRegularExpression(pattern: "(?i)\\b([a-f0-9]{64})\\s+[*]?([^\\s\\r\\n]+)") {
+            let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count))
+            for match in matches {
+                if let hashRange = Range(match.range(at: 1), in: text),
+                   let fileRange = Range(match.range(at: 2), in: text) {
+                    let hash = String(text[hashRange]).lowercased()
+                    let file = String(text[fileRange]).lowercased()
+                    let cleanFile = (file as NSString).lastPathComponent
+                    checksums[cleanFile] = hash
+                }
+            }
+        }
+        
+        // 2. BSD format: "SHA256 (<filename>) = <64-hex>"
+        if let regex = try? NSRegularExpression(pattern: "(?i)SHA256\\s*\\(([^)]+)\\)\\s*=\\s*([a-f0-9]{64})") {
+            let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count))
+            for match in matches {
+                if let fileRange = Range(match.range(at: 1), in: text),
+                   let hashRange = Range(match.range(at: 2), in: text) {
+                    let file = String(text[fileRange]).lowercased()
+                    let hash = String(text[hashRange]).lowercased()
+                    let cleanFile = (file as NSString).lastPathComponent
+                    checksums[cleanFile] = hash
+                }
+            }
+        }
+        
+        return checksums
     }
 }
 

@@ -3,5 +3,5 @@
 import Cocoa
 
 struct AppPersonality {
-    static let color = NSColor(calibratedRed: 0.8969085216522217, green: 0.18046194314956665, blue: 0.3045524060726166, alpha: 1.0)
+    static let color = NSColor(calibratedRed: 0.42745098039215684, green: 0.48627450980392156, blue: 1.0, alpha: 1.0)
 }

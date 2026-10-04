@@ -34,7 +34,7 @@ class HeaderMenuItemView: NSView {
     
     /// Target width set by AppDelegate after calculating menu size
     private var widthConstraint: NSLayoutConstraint?
-    var targetWidth: CGFloat = Constants.menuMinWidth {
+    var targetWidth: CGFloat = Constants.menuWidth {
         didSet {
             widthConstraint?.constant = targetWidth
             widthConstraint?.isActive = true
@@ -48,7 +48,7 @@ class HeaderMenuItemView: NSView {
     
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
-        super.init(frame: NSRect(x: 0, y: 0, width: Constants.menuMinWidth, height: Constants.menuHeaderFooterHeight))
+        super.init(frame: NSRect(x: 0, y: 0, width: Constants.menuWidth, height: Constants.menuHeaderFooterHeight))
         self.autoresizingMask = [.width]
         self.wantsLayer = true
         setupView()
@@ -205,7 +205,7 @@ class HeaderMenuItemView: NSView {
         updateFontSize()
         
         // Define width constraint (initially inactive until targetWidth is set)
-        widthConstraint = widthAnchor.constraint(equalToConstant: Constants.menuMinWidth)
+        widthConstraint = widthAnchor.constraint(equalToConstant: Constants.menuWidth)
     }
     
     func updateFontSize() {

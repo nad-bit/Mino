@@ -42,6 +42,10 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     private var indicatorSaveWorkItem: DispatchWorkItem?
     private var textSizeSaveWorkItem: DispatchWorkItem?
     private var generalSaveWorkItem: DispatchWorkItem?
+    
+    // Throttle properties for rate limit hover checks
+    private var lastRateLimitFetchDate: Date?
+    private var isFetchingRateLimit = false
 
     override func loadView() {
         let view = SettingsView(frame: NSRect(x: 0, y: 0, width: 480, height: 100))
@@ -423,6 +427,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         if let token = token {
             _ = ConfigManager.shared.saveTokenToKeychain(token)
             ConfigManager.shared.token = token
+            GitHubAPI.shared.clearRateLimits()
             self.loadCurrentSettings()
             HUDPanel.shared.show(title: Translations.get("configureToken"), subtitle: Translations.get("tokenValidationSuccess"))
             if let delegate = NSApp.delegate as? AppDelegate {
@@ -448,6 +453,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
             isConfirmingDelete = false
             _ = ConfigManager.shared.deleteTokenFromKeychain()
             ConfigManager.shared.token = nil
+            GitHubAPI.shared.clearRateLimits()
             self.loadCurrentSettings()
             HUDPanel.shared.show(title: Translations.get("configureToken"), subtitle: Translations.get("tokenValidationEmpty"))
             
@@ -693,14 +699,28 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         }
     }
     
-    private func updateRateLimitToolTip() {
-        // 1. Immediately apply the lowest/most constrained count observed by Mino's repo requests
-        if let current = GitHubAPI.shared.currentRateLimit {
-            applyRateLimitToUI(current)
-        }
-        
+    private func updateRateLimitToolTip(force: Bool = false) {
         let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasToken = token != nil && !token!.isEmpty
+        
+        // 1. Immediately apply the lowest/most constrained count observed for the current auth scope
+        if let current = GitHubAPI.shared.currentRateLimit {
+            applyRateLimitToUI(current)
+        } else {
+            let title = Translations.get("rateLimitTitle")
+            let status = Translations.get(hasToken ? "rateLimitStatusAuth" : "rateLimitStatusPublic")
+            let initialTip = "\(title)\n\(status)"
+            self.tokenBadge.toolTip = initialTip
+            self.tokenStatusLabel.toolTip = initialTip
+        }
+        
+        // Check cooldown and in-flight status unless forced
+        if !force {
+            if isFetchingRateLimit { return }
+            if let lastFetch = lastRateLimitFetchDate, Date().timeIntervalSince(lastFetch) < 3.0 {
+                return
+            }
+        }
         
         // 2. Fetch fresh headers from GitHub in background
         let endpoint = hasToken ? "\(Constants.githubAPIBaseURL)/user" : "\(Constants.githubAPIBaseURL)/rate_limit"
@@ -713,18 +733,23 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
             request.setValue("Bearer \(token!)", forHTTPHeaderField: "Authorization")
         }
         
+        isFetchingRateLimit = true
+        lastRateLimitFetchDate = Date()
+        
         Task {
+            defer {
+                Task { @MainActor in
+                    self.isFetchingRateLimit = false
+                }
+            }
             do {
                 let (_, response) = try await GitHubAPI.shared.session.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
                 
-                // Parse rate limit from response headers (always accurate)
-                if let limitStr = httpResponse.value(forHTTPHeaderField: "x-ratelimit-limit"), let limit = Int(limitStr),
-                   let remainingStr = httpResponse.value(forHTTPHeaderField: "x-ratelimit-remaining"), let remaining = Int(remainingStr),
-                   let resetStr = httpResponse.value(forHTTPHeaderField: "x-ratelimit-reset"), let resetEpoch = Double(resetStr) {
-                    let info = RateLimitInfo(limit: limit, remaining: remaining, resetDate: Date(timeIntervalSince1970: resetEpoch), hasToken: hasToken)
-                    await MainActor.run {
-                        self.applyRateLimitToUI(info)
+                await MainActor.run {
+                    GitHubAPI.shared.recordRateLimit(from: httpResponse)
+                    if let best = GitHubAPI.shared.currentRateLimit {
+                        self.applyRateLimitToUI(best)
                     }
                 }
             } catch {

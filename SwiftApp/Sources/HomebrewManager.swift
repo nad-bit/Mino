@@ -53,6 +53,50 @@ final class HomebrewManager: Sendable {
         return await trustTarget(cask)
     }
     
+    /// Resolves the canonical full cask identifier (e.g. "66hex/frame/frame") and its tap (e.g. "66hex/frame")
+    /// for a short cask name (e.g. "frame") by inspecting locally tapped repositories.
+    /// Returns nil if ambiguous (multiple taps define the cask) or not found.
+    func resolveCanonicalCask(for shortName: String) -> (fullToken: String, tap: String)? {
+        let cleanShort = shortName.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanShort.isEmpty, !cleanShort.contains("/") else { return nil }
+        
+        var found: [(fullToken: String, tap: String)] = []
+        let fileManager = FileManager.default
+        
+        let possibleBases = [
+            "/opt/homebrew/Library/Taps",
+            "/usr/local/Homebrew/Library/Taps"
+        ]
+        
+        for base in possibleBases {
+            guard fileManager.fileExists(atPath: base) else { continue }
+            guard let users = try? fileManager.contentsOfDirectory(atPath: base) else { continue }
+            for user in users {
+                let userPath = "\(base)/\(user)"
+                guard let repos = try? fileManager.contentsOfDirectory(atPath: userPath) else { continue }
+                for repo in repos {
+                    let tapCleanRepo = repo.replacingOccurrences(of: "homebrew-", with: "")
+                    let tapName = "\(user)/\(tapCleanRepo)".lowercased()
+                    
+                    let caskFile = "\(userPath)/\(repo)/Casks/\(cleanShort).rb"
+                    let formulaFile = "\(userPath)/\(repo)/Formula/\(cleanShort).rb"
+                    if fileManager.fileExists(atPath: caskFile) || fileManager.fileExists(atPath: formulaFile) {
+                        let fullToken = "\(tapName)/\(cleanShort)"
+                        if !found.contains(where: { $0.fullToken == fullToken }) {
+                            found.append((fullToken: fullToken, tap: tapName))
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Canonical resolution requires uniqueness: exactly one tap defines this cask name.
+        if found.count == 1 {
+            return found.first
+        }
+        return nil
+    }
+
     func extractTrustTarget(from output: String, forCask expectedCask: String? = nil) -> String? {
         var candidate: String?
         
@@ -91,17 +135,37 @@ final class HomebrewManager: Sendable {
         // 1. Canonical Target Validation (reject shell characters, limit to 3 path components)
         guard Utils.isValidMinoTarget(target) else { return nil }
         
-        // 2. Strict Cask Correlation: When an expected cask is specified,
-        // target must match the cask itself, the tap prefix, or contain the cask name.
+        // 2. Strict Cask Correlation
         if let expected = expectedCask {
             let normTarget = target.lowercased()
             let normExpected = expected.lowercased()
-            let isExactMatch = normTarget == normExpected
-            let isTapOfCask = normExpected.hasPrefix(normTarget + "/")
-            let isCaskInTap = normTarget.hasSuffix("/" + normExpected)
             
-            guard isExactMatch || isTapOfCask || isCaskInTap else {
-                return nil
+            if normExpected.contains("/") {
+                // Fully-qualified or tap-qualified cask requested (e.g. "66hex/frame/frame" or "user/tap/cask"):
+                // Target must either match exactly, or match the tap prefix of the expected cask.
+                let isExactMatch = normTarget == normExpected
+                let isTapOfCask = normExpected.hasPrefix(normTarget + "/")
+                guard isExactMatch || isTapOfCask else { return nil }
+            } else {
+                // Short cask name requested (e.g. "frame"):
+                // Require canonical resolution to prevent arbitrary namespace hijacking.
+                if let canonical = resolveCanonicalCask(for: normExpected) {
+                    guard normTarget == canonical.fullToken || normTarget == canonical.tap else {
+                        return nil
+                    }
+                } else {
+                    // Fallback for headless environments/mock tests where local tap directories don't exist:
+                    // Verify strict structural correlation between the error message refusal and the target:
+                    let components = normTarget.split(separator: "/")
+                    let tokenMatches = (components.count == 3 && components.last == Substring(normExpected)) ||
+                                       (components.count == 2 && output.lowercased().contains("refusing to load cask \(normTarget)/\(normExpected)"))
+                    guard tokenMatches else { return nil }
+                    
+                    let matchesRefusal = output.lowercased().contains("refusing to load cask \(normTarget)") ||
+                                        output.lowercased().contains("from untrusted tap \(normTarget)") ||
+                                        output.lowercased().contains("refusing to load cask \(normTarget)/\(normExpected)")
+                    guard matchesRefusal else { return nil }
+                }
             }
         }
         

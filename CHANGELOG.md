@@ -5,6 +5,29 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.8] - 2026-10-04
+
+### Security
+- **Strict Rate Limit Scope Segregation**: Hardened `GitHubAPI.currentRateLimit` and `GitHubAPI.recordRateLimit` to isolate unauthenticated IP quotas (60 req/hr) from authenticated user quotas (5,000 req/hr). Mismatched or public rate limit responses are rejected whenever an authenticated token is active, preventing quota pollution, desynchronization, and state leakage across sessions.
+- **Immediate Rate Limit Cache Invalidation (`clearRateLimits()`)**: Implemented synchronous cache purging across all rate limit windows when connecting or deleting tokens in Preferences, preventing stale in-memory quota tracking from preceding authentication states.
+- **Embedded HTML Tag & Attribute Shielding**: Updated `Utils.processInlineMarkdown` to extract and shield raw HTML tags (`<[^>]+>`) with temporary placeholders before running inline markdown link/URL regex passes, preventing regex corruption of `src` and `href` attributes inside embedded HTML elements (e.g. `<img ... />` inside blockquotes).
+
+### Added
+- **GitHub Error Code Warning Tooltip**: The red triangle icon (`exclamationmark.triangle.fill`) for repositories with errors now displays the raw error code sent by GitHub (e.g. `Error HTTP 404`, `Error HTTP 403`, `Error HTTP 429`) in its tooltip, cleanly complementing the localized user-friendly explanation shown in the repository name tooltip (`⚠️ Repositorio no encontrado o privado`).
+- **Native Markdown Blockquote (`<blockquote>`) Formatting**: Implemented semantic blockquote parsing for Markdown lines beginning with `>` in `Utils.convertMarkdownToHTML`, rendering with a left-accent border line (`border-left`) aligned with GitHub's web presentation.
+- **Rate Limit Hover Throttling & In-Flight Guards**: Added a 3-second cooldown window and concurrent in-flight lock (`isFetchingRateLimit`) when hovering over the "Connected to GitHub" status badge in Preferences, providing instantaneous zero-latency display of cached metrics while preventing redundant GitHub API quota consumption from rapid cursor oscillations.
+- **Curated Default Repositories**: Updated `Models.swift` with modern macOS utilities and tools (`Homebrew/brewui`, `robbietilton/Compositor`, `vorssaint/vorssaint-utils`, `Licoy/StrokeMouse`, `USBridge-Technologies/USBridge-Remote`, `TokTok/qTox`, `aimen08/noty`, `apedley/transmogrify`).
+- **Expanded Audit Verification Suite (16 Test Suites)**: Added Test 16 for error code tracking, HTTP status formatting, and warning tooltip discrimination across UI modes, bringing the test suite to 16 fully automated test suites covering cryptographic verification, cache safety, rate limits, and macOS status bar compatibility.
+
+### Improved
+- **Consolidated Menu Bar Layout & Dimensioning**: Consolidated the popover width calculation into a single source of truth (`Constants.menuWidth = 512.0`), removing the redundant $O(N)$ CoreText string measuring loop on popover presentation and removing dead calculation methods in `RepoMenuItemView`.
+- **UI Aesthetic Harmonization**:
+  - Aligned search tag pill opacity in `NoSearchResultsView` (`0.14` background / `0.30` border) with `ReleaseNotesWindowController` (`ClickableTagPill`).
+  - Harmonized card container borders (`createCardBox`) in `ReleaseNotesWindowController` (`0.20` border alpha) with Preferences group boxes (`SettingsViewController`).
+- **Optical Calibration in Feline Eye Iconography**:
+  - Calibrated vertical pupil centering in `FelineEyeIcon.swift` ($y = 8.18\,\text{pt}$, height $7.0\,\text{pt}$) to guarantee an optically symmetric $\approx 0.70\,\text{pt}$ breathing opening at both upper and lower almond vertices.
+  - Aligned the application icon in `GenerateIcon.swift` to Option A (solid filled almond with personality accent color and `.evenOdd` cutout pupil, $h=9.2\,\text{pt}$, center $y=8.18\,\text{pt}$, width $3.2\,\text{pt}$).
+
 ## [2.2.7] - 2026-09-27
 
 ### Security

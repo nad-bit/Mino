@@ -25,9 +25,11 @@ enum Constants {
     // UI Constants
     static let newReleaseThresholdDays: Int = 7 // Fallback default, overridden by config
     static let menuHeaderFooterHeight: CGFloat = 54.0
-    static let menuMinWidth: CGFloat = 512.0
-    static let menuDefaultWidth: CGFloat = 512.0
-    static let menuMaxWidth: CGFloat = 512.0
+    static let menuWidth: CGFloat = 512.0
+    // Backward compatibility aliases
+    static var menuMinWidth: CGFloat { menuWidth }
+    static var menuDefaultWidth: CGFloat { menuWidth }
+    static var menuMaxWidth: CGFloat { menuWidth }
     static let menuMaxHeight: CGFloat = 688.0
     static let notesWindowWidth: CGFloat = 640.0
     static let notesWindowHeight: CGFloat = 580.0
@@ -42,7 +44,7 @@ enum Constants {
     static let beerHandleEnabled: Bool = true          // Master toggle for the handle
     static let beerHandleDesign: BeerHandleDesign = .curved  // .curved (D shape) or .rectangular
     static let beerHandleAnimation: BeerHandleAnimation = .slide // .fade or .slide
-    static let beerHandleWidth: CGFloat = menuMaxWidth / 4 // Extends 1/4 of menu width to the right
+    static let beerHandleWidth: CGFloat = menuWidth / 4 // Extends 1/4 of menu width to the right
     static let beerHandleThickness: CGFloat = menuHeaderFooterHeight // Tube thickness = header/footer height
     static let beerHandleMinHeight: CGFloat = menuMaxHeight - (2*menuHeaderFooterHeight) // Hide if menu shorter than its max height (2 * header+footer)
     static let beerHandleGapFromMenu: CGFloat = 1.0   // Horizontal gap between popover edge and handle

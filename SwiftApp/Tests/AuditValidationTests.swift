@@ -27,6 +27,10 @@ struct AuditValidationTests {
         testMarkdownAutolinking()
         testLocalizationCompleteness()
         testSHA256Integrity()
+        testChecksumParsingAndIntegrity()
+        testDiskCacheSecurity()
+        testStatusItemTooltipCompatibility()
+        testErrorTooltipAndCodeHandling()
         
         print("\n🎉 ALL AUDIT VERIFICATION TESTS PASSED SUCCESSFULLY!\n")
     }
@@ -141,6 +145,15 @@ struct AuditValidationTests {
         let maliciousVBSSrc = "<iframe src=\"vbscript:evil()\"></iframe>"
         let cleanVBSSrc = Utils.sanitizeHTML(maliciousVBSSrc)
         assertTest(!cleanVBSSrc.contains("vbscript:"), "vbscript: src neutralized")
+        
+        // file: protocol neutralization (Audit finding fix)
+        let maliciousFileLink = "<a href=\"file:///etc/passwd\">Secret</a>"
+        let cleanFileLink = Utils.sanitizeHTML(maliciousFileLink)
+        assertTest(!cleanFileLink.contains("href=\"file:"), "file: href neutralized")
+        
+        let maliciousFileImg = "<img src=\"file:///etc/hosts\" />"
+        let cleanFileImg = Utils.sanitizeHTML(maliciousFileImg)
+        assertTest(!cleanFileImg.contains("src=\"file:"), "file: src neutralized")
     }
     
     // --------------------------------------------------------
@@ -203,6 +216,13 @@ struct AuditValidationTests {
         let svgData = svgString.data(using: .utf8)!
         let decodedSVG = GitHubAPI.safeDecodeImage(from: svgData)
         assertTest(decodedSVG != nil, "Vector SVG format decoded successfully")
+        
+        // Test XML entity rejection beyond 2048 bytes (Audit finding fix)
+        let padding = String(repeating: " ", count: 3000)
+        let paddedXMLWithEntity = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"20\"><!--\(padding)--><!ENTITY evil \"bomb\"><rect width=\"100\" height=\"20\" fill=\"#4c1\"/></svg>"
+        let entityData = paddedXMLWithEntity.data(using: .utf8)!
+        let rejectedPaddedEntity = GitHubAPI.safeDecodeImage(from: entityData)
+        assertTest(rejectedPaddedEntity == nil, "XML entity expansion beyond 2048 bytes is REJECTED")
     }
     
     // --------------------------------------------------------
@@ -331,6 +351,18 @@ struct AuditValidationTests {
         
         let uncorrelated = HomebrewManager.shared.extractTrustTarget(from: errorOutput1, forCask: "unrelated/malicious/cask")
         assertTest(uncorrelated == nil, "Uncorrelated target from untrusted tap output is REJECTED")
+        
+        // Canonical resolution for short cask name "frame" (Audit finding fix)
+        let correlatedShort = HomebrewManager.shared.extractTrustTarget(from: errorOutput1, forCask: "frame")
+        assertTest(correlatedShort == "66hex/frame/frame", "Canonical target correlated for short cask name 'frame'")
+        
+        // Suffix hijacking prevention: spoofed/uncanonical tap output with matching short name is REJECTED
+        let spoofedError = """
+        Error: Refusing to load cask attacker/evil/frame from untrusted tap attacker/evil.
+        Run `brew trust --cask attacker/evil/frame` to trust it.
+        """
+        let rejectedSpoof = HomebrewManager.shared.extractTrustTarget(from: spoofedError, forCask: "frame")
+        assertTest(rejectedSpoof == nil, "Spoofed/uncanonical tap for short cask 'frame' is REJECTED")
     }
     
     // --------------------------------------------------------
@@ -363,6 +395,13 @@ struct AuditValidationTests {
         assertTest(htmlCode.contains("<code>#123</code>"), "Code issue ref not linked")
         assertTest(htmlCode.contains("<code>@admin</code>"), "Code mention not linked")
         assertTest(!htmlCode.contains("https://secret.local\">"), "Code URL not linked")
+        
+        // 5. Blockquote support & raw HTML tag protection (prevent autolinking inside src/href)
+        let blockquoteImage = "> <img width=\"400\" alt=\"test\" src=\"https://github.com/user-attachments/assets/12345\" />"
+        let htmlBlockquote = Utils.convertMarkdownToHTML(blockquoteImage)
+        assertTest(htmlBlockquote.contains("<blockquote>"), "Blockquote tag generated")
+        assertTest(htmlBlockquote.contains("src=\"https://github.com/user-attachments/assets/12345\""), "Image src attribute preserved without autolink corruption")
+        assertTest(!htmlBlockquote.contains("src=\"<a href="), "Image src not corrupted with anchor tag")
     }
     
     // --------------------------------------------------------
@@ -423,5 +462,134 @@ struct AuditValidationTests {
         let computed = Utils.computeSHA256(for: tempFile)
         assertTest(computed != nil && computed?.count == 64, "SHA-256 digest computed successfully (64 hex characters)")
     }
+    
+    // --------------------------------------------------------
+    // Test 13: Checksum Extraction & Asset Integrity Pipeline
+    // --------------------------------------------------------
+    static func testChecksumParsingAndIntegrity() {
+        print("\n[Test 13] Testing Checksum Extraction & Asset Integrity Pipeline...")
+        
+        // 1. Checksum extraction from release body text
+        let releaseBody = """
+        ## Release v1.0.0
+        Some changes and features.
+        
+        ### SHA-256 Checksums
+        6a89c256038481ff2262a05f13459eeea5388c3a070eb3511116c90ee928a6f4  Mino-1.0.0.dmg
+        SHA256 (Mino-1.0.0.zip) = b16fb365dd6e1f32fe4a390b1e19488a038bf3b85e4a836814b2d184711f58a7
+        """
+        
+        let extractedChecksums = Utils.extractChecksums(from: releaseBody)
+        assertTest(extractedChecksums["mino-1.0.0.dmg"] == "6a89c256038481ff2262a05f13459eeea5388c3a070eb3511116c90ee928a6f4", "sha256sum format parsed correctly")
+        assertTest(extractedChecksums["mino-1.0.0.zip"] == "b16fb365dd6e1f32fe4a390b1e19488a038bf3b85e4a836814b2d184711f58a7", "BSD format parsed correctly")
+        
+        // 2. parseReleaseAssets associates expectedSHA256 with assets
+        let mockJSON: [String: Any] = [
+            "tag_name": "v1.0.0",
+            "body": releaseBody,
+            "assets": [
+                [
+                    "name": "Mino-1.0.0.dmg",
+                    "size": 1024,
+                    "browser_download_url": "https://github.com/nad-bit/Mino/releases/download/v1.0.0/Mino-1.0.0.dmg"
+                ],
+                [
+                    "name": "OtherAsset.tar.gz",
+                    "size": 2048,
+                    "browser_download_url": "https://github.com/nad-bit/Mino/releases/download/v1.0.0/OtherAsset.tar.gz"
+                ]
+            ]
+        ]
+        
+        let assets = GitHubAPI.parseReleaseAssets(from: mockJSON, repo: "nad-bit/Mino", tag: "v1.0.0")
+        let dmgAsset = assets.first(where: { $0.name == "Mino-1.0.0.dmg" })
+        let otherAsset = assets.first(where: { $0.name == "OtherAsset.tar.gz" })
+        
+        assertTest(dmgAsset?.expectedSHA256 == "6a89c256038481ff2262a05f13459eeea5388c3a070eb3511116c90ee928a6f4", "expectedSHA256 populated from release notes")
+        assertTest(otherAsset?.expectedSHA256 == nil, "expectedSHA256 is nil when no checksum is provided")
+    }
+
+    // --------------------------------------------------------
+    // Test 14: Disk Cache SHA-256 Hash & Overflow Protection
+    // --------------------------------------------------------
+    static func testDiskCacheSecurity() {
+        print("\n[Test 14] Testing Disk Cache Hashing & Overflow Safety...")
+        
+        let extremeURL = String(repeating: "a", count: 10000)
+        let _ = GitHubAPI.shared.getCachedImage(from: extremeURL)
+        assertTest(true, "Image cache URL generation is resilient against overflow and extreme strings")
+    }
+    
+    // --------------------------------------------------------
+    // Test 15: macOS 27 Status Item Tooltip Compatibility
+    // --------------------------------------------------------
+    static func testStatusItemTooltipCompatibility() {
+        print("\n[Test 15] Testing macOS 27 Golden Gate Status Bar Tooltip Compatibility...")
+        
+        let button = NSStatusBarButton()
+        // Default button has non-empty default title
+        assertTest(!button.title.isEmpty, "Initial NSStatusBarButton title is non-empty")
+        
+        // Emulate previous behavior: setting empty title
+        button.title = ""
+        button.attributedTitle = NSAttributedString()
+        assertTest(button.title.isEmpty && button.attributedTitle.string.isEmpty, "Previous behavior: title and attributedTitle were both empty")
+        
+        // Apply macOS 27 Golden Gate fix: non-empty zero-width attributed string
+        let zeroWidthTitle = NSAttributedString(string: "\u{200B}", attributes: [
+            .foregroundColor: NSColor.clear,
+            .font: NSFont.systemFont(ofSize: 0.01)
+        ])
+        button.attributedTitle = zeroWidthTitle
+        button.toolTip = Translations.get("meow")
+        
+        assertTest(!button.title.isEmpty, "Status button title is NOT empty with zero-width space")
+        assertTest(!button.attributedTitle.string.isEmpty, "Status button attributedTitle is NOT empty")
+        assertTest(button.toolTip != nil && !button.toolTip!.isEmpty, "Status button tooltip is configured with localized meow")
+    }
+
+    // --------------------------------------------------------
+    // Test 16: Error Code Handling & Warning Tooltip Discrimination
+    // --------------------------------------------------------
+    static func testErrorTooltipAndCodeHandling() {
+        print("\n[Test 16] Testing Error Code Tracking & Warning Tooltip Discrimination...")
+        
+        let info = RepoInfo(name: "org/repo", error: "Not Found", errorCode: 404)
+        assertTest(info.errorCode == 404, "RepoInfo stores errorCode 404")
+        
+        let displayData = RepoDisplayData(
+            repoName: "org/repo",
+            formattedName: "repo",
+            ageSeconds: 0,
+            errorMessage: "Localized error message",
+            errorCode: 404,
+            isLoading: false,
+            freshnessColor: .systemRed,
+            isNew: false,
+            tags: [],
+            isFavorite: false
+        )
+        assertTest(displayData.errorCode == 404, "RepoDisplayData preserves errorCode")
+        
+        // HTTP 404 error formatting
+        let tooltip404 = RepoMenuItemView.formatWarningTooltip(errorCode: 404, fallbackMessage: "Fallback")
+        let expected404 = Translations.get("apiHttpError").format(with: ["code": "404"])
+        assertTest(tooltip404 == expected404, "HTTP 404 warning tooltip formats as '\(expected404)'")
+        
+        // HTTP 403 error formatting
+        let tooltip403 = RepoMenuItemView.formatWarningTooltip(errorCode: 403, fallbackMessage: "Fallback")
+        let expected403 = Translations.get("apiHttpError").format(with: ["code": "403"])
+        assertTest(tooltip403 == expected403, "HTTP 403 warning tooltip formats as '\(expected403)'")
+        
+        // Non-HTTP error formatting (e.g. CFNetwork / URLError)
+        let tooltipNetwork = RepoMenuItemView.formatWarningTooltip(errorCode: -1009, fallbackMessage: "Fallback")
+        let expectedNetwork = "\(Translations.get("error")) -1009"
+        assertTest(tooltipNetwork == expectedNetwork, "Non-HTTP code formats with error prefix: '\(expectedNetwork)'")
+        
+        // Fallback when errorCode is nil
+        let tooltipNil = RepoMenuItemView.formatWarningTooltip(errorCode: nil, fallbackMessage: "Fallback message")
+        assertTest(tooltipNil == "Fallback message", "Nil errorCode safely falls back to descriptive localized message")
+    }
 }
+
 

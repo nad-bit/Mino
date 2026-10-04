@@ -10,7 +10,7 @@ class NoSearchResultsView: NSView {
     private var tagButtons: [TagButton] = []
     
     var onTagSelected: ((String) -> Void)?
-    var targetWidth: CGFloat = Constants.menuDefaultWidth {
+    var targetWidth: CGFloat = Constants.menuWidth {
         didSet {
             if oldValue != targetWidth {
                 invalidateIntrinsicContentSize()
@@ -19,7 +19,7 @@ class NoSearchResultsView: NSView {
     }
     
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: Constants.menuDefaultWidth, height: 40))
+        super.init(frame: NSRect(x: 0, y: 0, width: Constants.menuWidth, height: 40))
         self.translatesAutoresizingMaskIntoConstraints = false
         setupView()
     }
@@ -212,8 +212,8 @@ class TagButton: NSButton {
     
     func updateDefaultAppearance() {
         self.contentTintColor = .labelColor
-        self.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.12).cgColor
-        self.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.28).cgColor
+        self.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.14).cgColor
+        self.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.30).cgColor
     }
     
     override var intrinsicContentSize: NSSize {

@@ -75,10 +75,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         
         if let btn = statusItem.button {
-            // Remove default image and title to allow custom view
+            // Remove default image to allow custom view
             btn.image = nil
-            btn.title = ""
+            // macOS 27 Golden Gate Compatibility:
+            // Tooltips on status bar items are automatically suppressed if both title and attributedTitle
+            // are empty. We assign a zero-width space with clear color so that neither title nor
+            // attributedTitle is empty, ensuring tooltips appear seamlessly without affecting visual layout.
+            let zeroWidthTitle = NSAttributedString(string: "\u{200B}", attributes: [
+                .foregroundColor: NSColor.clear,
+                .font: NSFont.systemFont(ofSize: 0.01)
+            ])
+            btn.attributedTitle = zeroWidthTitle
             btn.toolTip = Translations.get("meow")
+            btn.setAccessibilityTitle(Translations.get("meow"))
+            btn.setAccessibilityLabel(Translations.get("meow"))
+            btn.setAccessibilityHelp(Translations.get("meow"))
             
             // Create custom image view using signature Feline Eye vector icon
             let hasPulse = UserDefaults.standard.bool(forKey: "HasUnreadPulse")
@@ -88,6 +99,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             statusIconView.translatesAutoresizingMaskIntoConstraints = false
             statusIconView.wantsLayer = true // REQUIRED for layer-backed symbol effects
             statusIconView.toolTip = Translations.get("meow")
+            statusIconView.setAccessibilityLabel(Translations.get("meow"))
             
             btn.addSubview(statusIconView)
             
@@ -445,8 +457,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     func updateStatusIcon(hasUpdates: Bool) {
         statusIconView?.image = FelineEyeIcon.createIcon(hasUpdates: hasUpdates)
         statusIndicatorDot?.isHidden = true
-        statusIconView?.toolTip = Translations.get("meow")
-        statusItem?.button?.toolTip = Translations.get("meow")
+        let meow = Translations.get("meow")
+        statusIconView?.toolTip = meow
+        statusIconView?.setAccessibilityLabel(meow)
+        
+        let zeroWidthTitle = NSAttributedString(string: "\u{200B}", attributes: [
+            .foregroundColor: NSColor.clear,
+            .font: NSFont.systemFont(ofSize: 0.01)
+        ])
+        statusItem?.button?.attributedTitle = zeroWidthTitle
+        statusItem?.button?.toolTip = meow
+        statusItem?.button?.setAccessibilityTitle(meow)
+        statusItem?.button?.setAccessibilityLabel(meow)
+        statusItem?.button?.setAccessibilityHelp(meow)
         
         // Sync beer handle visibility with the Red Eye state
         updateBeerHandleVisibility()

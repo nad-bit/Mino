@@ -113,10 +113,10 @@ enum FelineEyeIcon {
     
     private static func createPupilPath(hasUpdates: Bool) -> NSBezierPath {
         let path = NSBezierPath()
-        let center = CGPoint(x: 9.0, y: 8.0)
+        let center = CGPoint(x: 9.0, y: 8.18)
         // Widened pupils: 2.6pt idle, 4.8pt active red
         let pWidth: CGFloat = hasUpdates ? 4.8 : 2.6
-        let pHeight: CGFloat = 8.4
+        let pHeight: CGFloat = 7.0
         let top = CGPoint(x: center.x, y: center.y + pHeight / 2.0)
         let bottom = CGPoint(x: center.x, y: center.y - pHeight / 2.0)
         let halfW = pWidth / 2.0

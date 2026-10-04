@@ -5,6 +5,7 @@ struct ReleaseAsset: Codable, Equatable {
     var size: Int64?
     var downloadURL: String
     var isSourceArchive: Bool
+    var expectedSHA256: String? = nil
 }
 
 struct RepoInfo: Codable, Equatable {
@@ -14,6 +15,7 @@ struct RepoInfo: Codable, Equatable {
     var body: String?
     var error: String?
     var assets: [ReleaseAsset]?
+    var errorCode: Int? = nil
 }
 
 struct RepoConfig: Codable, Equatable {
@@ -95,6 +97,14 @@ struct AppConfig: Codable {
             RepoConfig(name: "jaywcjlove/awesome-swift-macos-apps", source: "manual"),
             RepoConfig(name: "nickybmon/OpenEmu-Silicon", source: "manual"),
             RepoConfig(name: "ganeshmshetty/openclip", source: "manual"),
+            RepoConfig(name: "Homebrew/brewui", source: "brew", cask: "homebrew-app"),
+            RepoConfig(name: "robbietilton/Compositor", source: "brew", cask: "robbietilton-compositor"),
+            RepoConfig(name: "vorssaint/vorssaint-utils", source: "brew", cask: "vorssaint"),
+            RepoConfig(name: "Licoy/StrokeMouse", source: "brew", cask: "licoy/tap/strokemouse"),
+            RepoConfig(name: "USBridge-Technologies/USBridge-Remote", source: "manual"),
+            RepoConfig(name: "TokTok/qTox", source: "manual"),
+            RepoConfig(name: "aimen08/noty", source: "manual"),
+RepoConfig(name: "apedley/transmogrify", source: "manual"),
             RepoConfig(name: "idawnlight/ShichiZip", source: "brew", cask: "shichizip")
         ]
         self.refreshMinutes = Constants.defaultRefreshIntervalMinutes

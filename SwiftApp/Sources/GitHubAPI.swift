@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CryptoKit
 
 public struct RateLimitInfo: Equatable {
     public let limit: Int
@@ -41,17 +42,33 @@ class GitHubAPI {
     private var windowRateLimits: [Date: RateLimitInfo] = [:]
     private var latestObservedRateLimit: RateLimitInfo?
     
+    func clearRateLimits() {
+        rateLimitLock.lock()
+        defer { rateLimitLock.unlock() }
+        windowRateLimits.removeAll()
+        latestObservedRateLimit = nil
+    }
+    
     var currentRateLimit: RateLimitInfo? {
         rateLimitLock.lock()
         defer { rateLimitLock.unlock() }
         let now = Date()
-        // Clean expired windows
-        windowRateLimits = windowRateLimits.filter { $0.key > now }
-        // Return the most constrained active sample, or latest
+        let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasToken = token != nil && !token!.isEmpty
+        
+        // Clean expired windows AND windows from a mismatched auth state (e.g. 60 vs 5000)
+        windowRateLimits = windowRateLimits.filter { (resetDate, info) in
+            resetDate > now && info.hasToken == hasToken
+        }
+        
+        // Return the most constrained active sample matching current auth state, or latest matching sample
         if let active = windowRateLimits.values.min(by: { $0.remaining < $1.remaining }) {
             return active
         }
-        return latestObservedRateLimit
+        if let latest = latestObservedRateLimit, latest.hasToken == hasToken {
+            return latest
+        }
+        return nil
     }
     
     func recordRateLimit(from response: HTTPURLResponse) {
@@ -61,13 +78,26 @@ class GitHubAPI {
             return
         }
         let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasToken = token != nil && !token!.isEmpty
+        let hasTokenConfigured = token != nil && !token!.isEmpty
+        // Responses with limit > 60 were authenticated by GitHub (typically 5,000 or 15,000).
+        let isAuthResponse = limit > 60
+        
+        // If the response authentication status doesn't match current configuration,
+        // ignore it so public requests don't corrupt authenticated views or vice versa.
+        if hasTokenConfigured != isAuthResponse {
+            return
+        }
+        
         let resetDate = Date(timeIntervalSince1970: resetEpoch)
-        let info = RateLimitInfo(limit: limit, remaining: remaining, resetDate: resetDate, hasToken: hasToken)
+        let info = RateLimitInfo(limit: limit, remaining: remaining, resetDate: resetDate, hasToken: isAuthResponse)
         
         rateLimitLock.lock()
+        let now = Date()
+        // Purge expired or mismatched samples
+        windowRateLimits = windowRateLimits.filter { $0.key > now && $0.value.hasToken == isAuthResponse }
+        
         latestObservedRateLimit = info
-        if resetDate > Date() {
+        if resetDate > now {
             if let existing = windowRateLimits[resetDate] {
                 // The lower remaining count always reflects actual consumption within the same window
                 if remaining < existing.remaining {
@@ -127,7 +157,7 @@ class GitHubAPI {
     
     private func diskCacheURL(for urlString: String) -> URL? {
         guard let dir = diskCacheDirectory else { return nil }
-        let hash = abs(urlString.utf8.reduce(5381) { ($0 << 5) &+ $0 &+ Int($1) })
+        let hash = SHA256.hash(data: Data(urlString.utf8)).map { String(format: "%02x", $0) }.joined()
         let rawExt = (urlString as NSString).pathExtension.lowercased()
         let cleanExt = rawExt.components(separatedBy: "?").first ?? ""
         let ext = (cleanExt.isEmpty || cleanExt.count > 4) ? "png" : cleanExt
@@ -175,7 +205,7 @@ class GitHubAPI {
     
     /// Safely inspects image dimensions and pixels via CGImageSource before full bitmap allocation
     /// to prevent decompression bomb memory spikes. Enforces max dimension <= 4096px and max pixels <= 16 MP.
-    /// Also supports vector image formats (SVG) with payload size guards.
+    /// Also supports vector image formats (SVG) with payload size guards and PDF bounding checks across all pages.
     static func safeDecodeImage(from data: Data, maxPixelDimension: CGFloat = 4096, maxPixelArea: CGFloat = 16_777_216) -> NSImage? {
         // 1. Check raster image formats (PNG, JPEG, GIF, TIFF, WebP) via CGImageSource
         if let source = CGImageSourceCreateWithData(data as CFData, nil),
@@ -195,18 +225,26 @@ class GitHubAPI {
         // 2. Check vector formats (SVG, PDF) natively decodable by NSImage.
         // Limit raw payload size to 2 MB for vector/XML data.
         if data.count <= 2 * 1024 * 1024 {
-            // Guard: Scan XML/SVG data for dangerous entity expansion or external doctype
-            if let sample = String(data: data.prefix(2048), encoding: .utf8)?.lowercased() {
-                if sample.contains("<!entity") || (sample.contains("<!doctype") && sample.contains("system")) {
+            // Guard: Scan XML/SVG data for dangerous entity expansion or external doctype across the entire payload
+            if let fullText = String(data: data, encoding: .utf8)?.lowercased() {
+                if fullText.contains("<!entity") || (fullText.contains("<!doctype") && fullText.contains("system")) {
                     return nil
                 }
             }
             
-            // For PDF data, inspect page box before rendering to prevent oversized pages
+            // For PDF data, inspect page count and bounding boxes of all pages before rendering
             if data.starts(with: [0x25, 0x50, 0x44, 0x46]) /* %PDF */ {
-                if let provider = CGDataProvider(data: data as CFData),
-                   let pdfDoc = CGPDFDocument(provider),
-                   let page = pdfDoc.page(at: 1) {
+                guard let provider = CGDataProvider(data: data as CFData),
+                      let pdfDoc = CGPDFDocument(provider) else {
+                    return nil
+                }
+                let pageCount = pdfDoc.numberOfPages
+                // Limit page count for vector icons/badges to prevent multi-page resource exhaustion
+                guard pageCount > 0 && pageCount <= 10 else {
+                    return nil
+                }
+                for pageNum in 1...pageCount {
+                    guard let page = pdfDoc.page(at: pageNum) else { return nil }
                     let box = page.getBoxRect(.mediaBox)
                     guard box.width > 0, box.height > 0,
                           box.width <= maxPixelDimension,
@@ -421,16 +459,26 @@ class GitHubAPI {
             // unauthenticated API (e.g. org repos). Return the error instead so the
             // existing cache entry is preserved by triggerFullRefresh.
             if releaseError.code == 404 && hasExistingRelease {
-                return RepoInfo(name: repo, error: releaseError.localizedDescription)
+                return RepoInfo(name: repo, error: releaseError.localizedDescription, errorCode: releaseError.code)
+            }
+            
+            // Only fall back to commits if the release wasn't found (404)
+            // (i.e. the repo exists but hasn't published formal releases).
+            // For other HTTP errors (401, 403, 429, 5xx) or network errors,
+            // commits fetch would fail identically and waste rate limit.
+            if releaseError.code != 404 {
+                return RepoInfo(name: repo, error: releaseError.localizedDescription, errorCode: releaseError.code)
             }
             
             do {
                 // Try Commits fallback
                 let commitData = try await fetchCommits(repo: repo, headers: requestHeaders)
                 return commitData
-            } catch let commitError {
-                // If both fail, return the descriptive localized error message
-                return RepoInfo(name: repo, error: commitError.localizedDescription)
+            } catch let commitError as NSError {
+                // If both fail, return the descriptive localized error message and original code
+                return RepoInfo(name: repo, error: commitError.localizedDescription, errorCode: commitError.code)
+            } catch {
+                return RepoInfo(name: repo, error: error.localizedDescription, errorCode: (error as NSError).code)
             }
         }
     }
@@ -464,7 +512,7 @@ class GitHubAPI {
         let version = json?["tag_name"] as? String
         let date = json?["published_at"] as? String
         let body = json?["body"] as? String
-        let assets = json != nil ? GitHubAPI.parseReleaseAssets(from: json!, repo: repo, tag: version) : nil
+        let assets = json != nil ? GitHubAPI.parseReleaseAssets(from: json!, repo: repo, tag: version, releaseBody: body) : nil
         
         if version != nil && date != nil {
             return RepoInfo(name: repo, version: version, date: date, body: body, assets: assets)
@@ -473,8 +521,10 @@ class GitHubAPI {
         }
     }
     
-    static func parseReleaseAssets(from json: [String: Any], repo: String, tag: String?) -> [ReleaseAsset] {
+    static func parseReleaseAssets(from json: [String: Any], repo: String, tag: String?, releaseBody: String? = nil) -> [ReleaseAsset] {
         var result: [ReleaseAsset] = []
+        let bodyText = releaseBody ?? json["body"] as? String ?? ""
+        let checksums = Utils.extractChecksums(from: bodyText)
         
         // 1. User-uploaded release assets
         if let assetsArray = json["assets"] as? [[String: Any]] {
@@ -482,7 +532,8 @@ class GitHubAPI {
                 guard let name = assetDict["name"] as? String,
                       let downloadURL = assetDict["browser_download_url"] as? String else { continue }
                 let size = assetDict["size"] as? Int64
-                result.append(ReleaseAsset(name: name, size: size, downloadURL: downloadURL, isSourceArchive: false))
+                let expectedSHA = checksums[name.lowercased()]
+                result.append(ReleaseAsset(name: name, size: size, downloadURL: downloadURL, isSourceArchive: false, expectedSHA256: expectedSHA))
             }
         }
         
@@ -698,8 +749,8 @@ class GitHubAPI {
                     
                     if httpResponse.statusCode == 200,
                        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        let assets = GitHubAPI.parseReleaseAssets(from: json, repo: repo, tag: tag)
                         let rawBody = json["body_html"] as? String ?? json["body"] as? String
+                        let assets = GitHubAPI.parseReleaseAssets(from: json, repo: repo, tag: tag, releaseBody: rawBody)
                         if let body = rawBody, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             return (body, assets)
                         }
@@ -730,8 +781,10 @@ class GitHubAPI {
         }
     }
     
-    /// Downloads a release asset to destinationURL reporting progress callbacks (bytesReceived, totalBytes).
-    func downloadAsset(urlString: String, destinationURL: URL, progress: @escaping (Int64, Int64) -> Void) async throws {
+    /// Downloads a release asset to destinationURL reporting progress callbacks (bytesReceived, totalBytes),
+    /// while calculating its SHA-256 digest in real-time streaming mode and verifying integrity against expectedSHA256 if supplied.
+    @discardableResult
+    func downloadAsset(urlString: String, destinationURL: URL, expectedSHA256: String? = nil, progress: @escaping (Int64, Int64) -> Void) async throws -> String {
         guard let url = URL(string: urlString) else {
             throw URLError(.badURL)
         }
@@ -785,11 +838,13 @@ class GitHubAPI {
         let bufferSize = 65_536
         var buffer = Data()
         buffer.reserveCapacity(bufferSize)
+        var hasher = SHA256()
         
         for try await byte in bytes {
             buffer.append(byte)
             if buffer.count >= bufferSize {
                 handle.write(buffer)
+                hasher.update(data: buffer)
                 receivedBytes += Int64(buffer.count)
                 buffer.removeAll(keepingCapacity: true)
                 progress(receivedBytes, totalBytes)
@@ -799,13 +854,27 @@ class GitHubAPI {
         // Flush remaining bytes
         if !buffer.isEmpty {
             handle.write(buffer)
+            hasher.update(data: buffer)
             receivedBytes += Int64(buffer.count)
         }
         
         try handle.close()
-        progress(receivedBytes, totalBytes > 0 ? totalBytes : receivedBytes)
+        let computedDigest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
         
+        if let expected = expectedSHA256?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !expected.isEmpty {
+            if computedDigest.lowercased() != expected {
+                if fileManager.fileExists(atPath: tempURL.path) {
+                    try? fileManager.removeItem(at: tempURL)
+                }
+                throw NSError(domain: "IntegrityError", code: -42, userInfo: [
+                    NSLocalizedDescriptionKey: "SHA-256 integrity verification failed: expected \(expected), but got \(computedDigest)"
+                ])
+            }
+        }
+        
+        progress(receivedBytes, totalBytes > 0 ? totalBytes : receivedBytes)
         try fileManager.moveItem(at: tempURL, to: destinationURL)
+        return computedDigest
     }
     
     func validateToken(_ token: String) async -> Bool {

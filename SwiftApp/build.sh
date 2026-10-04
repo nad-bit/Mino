@@ -2,8 +2,8 @@
 set -e
 
 APP_NAME="Mino"
-VERSION="2.2.7"
-BUILD_NUMBER="327"
+VERSION="2.2.8"
+BUILD_NUMBER="328"
 BUILD_DIR="build"
 
 if [ "$1" == "--test" ]; then
@@ -219,9 +219,7 @@ if [ "$1" == "--release" ] || [ "$1" == "--publish-tap" ]; then
     
     rm -rf "$TAP_CLONE_DIR"
     # Clone via HTTPS which will use the system keychain / git credential manager
-    git clone "$TAP_REPO" "$TAP_CLONE_DIR" 2>/dev/null || true
-    
-    if [ -d "$TAP_CLONE_DIR" ]; then
+    if git clone "$TAP_REPO" "$TAP_CLONE_DIR" 2>/dev/null; then
         mkdir -p "$TAP_CLONE_DIR/Casks"
         cp "mino.rb" "$TAP_CLONE_DIR/Casks/mino.rb"
         
@@ -237,12 +235,14 @@ if [ "$1" == "--release" ] || [ "$1" == "--publish-tap" ]; then
                 echo "✅ Homebrew Tap updated successfully!"
             else
                 echo "⚠️  Failed to push to Homebrew Tap. You may need to update the file manually."
+                if [ "$1" == "--publish-tap" ]; then exit 1; fi
             fi
         else
             echo "✅ Homebrew Tap is already up to date."
         fi
     else
-         echo "⚠️  Could not clone Homebrew Tap. You may not have SSH access configured for this repo."
+         echo "⚠️  Could not clone Homebrew Tap. Please verify network access and credentials."
+         if [ "$1" == "--publish-tap" ]; then exit 1; fi
     fi
 else
     echo -e "\n⏩ Skipping Homebrew Tap update. Use './build.sh --publish-tap' to push to the tap."

@@ -178,7 +178,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         box.boxType = .custom
         box.cornerRadius = 10
         box.borderWidth = 1
-        box.borderColor = NSColor.separatorColor.withAlphaComponent(0.18)
+        box.borderColor = NSColor.separatorColor.withAlphaComponent(0.20)
         box.fillColor = NSColor.windowBackgroundColor.withAlphaComponent(0.35)
         box.titlePosition = .noTitle
         box.translatesAutoresizingMaskIntoConstraints = false
@@ -664,6 +664,12 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                     processedText.replaceSubrange(fullRange, with: replacement)
                 }
             }
+            
+            // Neutralize any residual file:// image schemes to prevent local filesystem traversal
+            let fileImgPattern = "(<img[^>]+src=[\"'])(file://[^\"']+)([\"'])"
+            if let regex = try? NSRegularExpression(pattern: fileImgPattern, options: .caseInsensitive) {
+                processedText = regex.stringByReplacingMatches(in: processedText, options: [], range: NSRange(location: 0, length: processedText.utf16.count), withTemplate: "$1about:blank$3")
+            }
         }
         
         // Structural HTML sanitization pass to strip any lingering executable tags or event handlers
@@ -936,7 +942,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         
         Task {
             do {
-                try await GitHubAPI.shared.downloadAsset(urlString: asset.downloadURL, destinationURL: destURL) { received, total in
+                let computedSHA = try await GitHubAPI.shared.downloadAsset(urlString: asset.downloadURL, destinationURL: destURL, expectedSHA256: asset.expectedSHA256) { received, total in
                     let now = Date()
                     let sinceLastUI = now.timeIntervalSince(lastUIUpdate)
                     let isFinished = total > 0 && received >= total
@@ -984,9 +990,10 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                     let finalSize = (try? destURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map { Int64($0) } ?? asset.size ?? 0
                     let sizeStr = self.formatBytes(finalSize)
                     let compText = Translations.get("downloadSuccess")
+                    let shaBadge = "SHA-256: \(computedSHA.prefix(8))..."
                     let subtitle = sizeStr.isEmpty || sizeStr == "0 bytes"
-                        ? compText
-                        : "\(sizeStr)  ·  \(compText)"
+                        ? "\(compText)  ·  \(shaBadge)"
+                        : "\(sizeStr)  ·  \(compText)  ·  \(shaBadge)"
                     
                     HUDPanel.shared.showDownloadCompletion(title: fileName, subtitle: subtitle, destinationURL: destURL)
                 }

@@ -262,6 +262,7 @@ class RefreshCoordinator {
                     // Update only checking error, but preserve version/date/body
                     if var existingInfo = delegate.repoCache[repo] {
                         existingInfo.error = info.error
+                        existingInfo.errorCode = info.errorCode
                         // We intentionally don't update version to keep the cache alive
                         delegate.repoCache[repo] = existingInfo
                     } else {

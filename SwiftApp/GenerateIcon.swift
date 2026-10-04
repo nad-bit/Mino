@@ -62,7 +62,7 @@ shadow.shadowOffset = NSSize(width: 0, height: -10 / scale)
 shadow.shadowBlurRadius = 18 / scale
 shadow.set()
 
-// 1. Solid Outer Almond Shape
+// 1. Solid Outer Almond Shape (Filled Iris)
 let eyePath = NSBezierPath()
 let left = CGPoint(x: 1.5, y: 7.2)
 let right = CGPoint(x: 16.5, y: 8.8)
@@ -71,11 +71,11 @@ eyePath.curve(to: right, controlPoint1: CGPoint(x: 6.0, y: 14.8), controlPoint2:
 eyePath.curve(to: left, controlPoint1: CGPoint(x: 12.0, y: 2.2), controlPoint2: CGPoint(x: 6.0, y: 1.2))
 eyePath.close()
 
-// 2. Cutout Vertical Pupil (negative space using evenOdd winding rule)
+// 2. Cutout Vertical Pupil (negative space using evenOdd winding rule - Option A: Elongated Symmetric)
 let pupil = NSBezierPath()
-let center = CGPoint(x: 9.0, y: 8.0)
-let pWidth: CGFloat = 3.5 // Widened, prominent predatory cutout pupil
-let pHeight: CGFloat = 9.6
+let center = CGPoint(x: 9.0, y: 8.18)
+let pWidth: CGFloat = 3.2
+let pHeight: CGFloat = 9.2
 let top = CGPoint(x: center.x, y: center.y + pHeight / 2.0)
 let bottom = CGPoint(x: center.x, y: center.y - pHeight / 2.0)
 let halfW = pWidth / 2.0

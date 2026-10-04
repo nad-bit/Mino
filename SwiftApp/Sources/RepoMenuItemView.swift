@@ -9,6 +9,7 @@ struct RepoDisplayData {
     var ageSeconds: Double
     var originalDate: String?     // Raw ISO8601 date from GitHub
     var errorMessage: String?
+    var errorCode: Int? = nil
     var isLoading: Bool
     var caskName: String?
     var freshnessColor: NSColor   // 🟢/🟡/⚪ mapped to NSColor
@@ -120,6 +121,19 @@ class RepoMenuItemView: NSView {
         iv.widthAnchor.constraint(equalToConstant: width).isActive = true
         iv.setContentHuggingPriority(.required, for: .horizontal)
         return iv
+    }
+    
+    /// Formats the warning icon tooltip to display the original error code sent by GitHub,
+    /// or falls back to the descriptive message if no code is present.
+    nonisolated static func formatWarningTooltip(errorCode: Int?, fallbackMessage: String?) -> String? {
+        if let code = errorCode {
+            if code >= 100 && code < 600 {
+                return Translations.get("apiHttpError").format(with: ["code": "\(code)"])
+            } else {
+                return "\(Translations.get("error")) \(code)"
+            }
+        }
+        return fallbackMessage
     }
     
     // Data (var for cell reuse via reconfigure(with:))
@@ -254,45 +268,6 @@ class RepoMenuItemView: NSView {
         needsDisplay = true
     }
     
-    /// Calculates the ideal width this row needs to show its content without truncation.
-    func calculateDesiredWidth() -> CGFloat {
-        let nameWidth = titleLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
-        let buttonCount = buttonStack.arrangedSubviews.count
-        let btnHeight = (layoutMode == "cards") ? baseFontSize + 22 : baseFontSize + 8
-        let buttonsWidth = CGFloat(buttonCount) * (btnHeight + 4)
-        
-        switch layoutMode {
-        case "cards":
-            // Cards have two lines, name is on top.
-            // Width = margins (18+12) + icon/dot (12) + spacing (6) + max(name, subtitle) + spacing (8) + buttons
-            let subWidth = subtitleLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
-            let rawVersionWidth = versionLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
-            let versionWidth = min(rawVersionWidth, 160)
-            let contentWidth = max(nameWidth + 6 + versionWidth, subWidth + 20) // 20 for star
-            return 18 + 12 + 6 + contentWidth + 8 + buttonsWidth + 12
-            
-        case "tags":
-            // Single line: margin(18) + [warning?] + name + spacing(8) + version + spacing(8) + star(16) + spacing(6) + buttons + margin(12)
-            let rawVersionWidth = versionLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
-            let versionWidth = min(rawVersionWidth, 140)
-            return 18 + (displayData.errorMessage != nil ? 18 : 0) + nameWidth + 8 + versionWidth + 8 + 16 + 6 + buttonsWidth + 12
-            
-        case "columns":
-            // Fixed columns + margins + buttons
-            // If nameColumnWidth or versionColumnWidth are set, use them as minimums
-            let showDot = ConfigManager.shared.config.showNewIndicator ?? false
-            let hasLeadingSlot = showDot || displayData.errorMessage != nil
-            let leadingMargin: CGFloat = hasLeadingSlot ? 12 : 18
-            let dotWidth: CGFloat = hasLeadingSlot ? (max(14, ceil(baseFontSize - 4) + 4) + 6) : 0
-            let rawVersionWidth = versionLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 1000, height: 50)).width ?? 0
-            let versionWidth = versionColumnWidth > 0 ? versionColumnWidth : min(rawVersionWidth, 120)
-            let totalColumns = dotWidth + (nameColumnWidth > 0 ? nameColumnWidth : nameWidth) + versionWidth + 60 + 20 // 60 for age, 20 for star
-            return leadingMargin + totalColumns + 8 + buttonsWidth + 12
-            
-        default:
-            return 400
-        }
-    }
     
     override func viewWillMove(toSuperview newSuperview: NSView?) {
         super.viewWillMove(toSuperview: newSuperview)
@@ -431,7 +406,8 @@ class RepoMenuItemView: NSView {
         // Build content row: [⚠?] name + version/star
         var contentViews: [NSView] = []
         if data.errorMessage != nil {
-            let warningView = makeWarningView(pointSize: baseFontSize - 3, tooltip: data.errorMessage)
+            let tooltip = RepoMenuItemView.formatWarningTooltip(errorCode: data.errorCode, fallbackMessage: data.errorMessage)
+            let warningView = makeWarningView(pointSize: baseFontSize - 3, tooltip: tooltip)
             contentViews.append(warningView)
         }
         contentViews.append(contentsOf: [titleLabel, versionLabel, starLabel])
@@ -486,7 +462,8 @@ class RepoMenuItemView: NSView {
         var topRowViews: [NSView] = []
         if data.errorMessage != nil {
             // SF Symbol warning replaces the freshness dot
-            let warningView = makeWarningView(pointSize: baseFontSize - 3, tooltip: data.errorMessage)
+            let tooltip = RepoMenuItemView.formatWarningTooltip(errorCode: data.errorCode, fallbackMessage: data.errorMessage)
+            let warningView = makeWarningView(pointSize: baseFontSize - 3, tooltip: tooltip)
             topRowViews.append(warningView)
         }
         topRowViews.append(contentsOf: [titleLabel, versionLabel])
@@ -669,7 +646,8 @@ class RepoMenuItemView: NSView {
         var leadingSlotView: NSView? = nil
         if data.errorMessage != nil {
             // SF Symbol warning replaces the freshness dot
-            let warningView = makeWarningView(pointSize: dotFontSize + 2, slotWidth: slotWidth, tooltip: data.errorMessage)
+            let tooltip = RepoMenuItemView.formatWarningTooltip(errorCode: data.errorCode, fallbackMessage: data.errorMessage)
+            let warningView = makeWarningView(pointSize: dotFontSize + 2, slotWidth: slotWidth, tooltip: tooltip)
             rowViews.append(warningView)
             leadingSlotView = warningView
         } else if showDot {

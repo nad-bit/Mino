@@ -342,28 +342,7 @@ class MainPopoverViewController: NSViewController {
         // 5. Build Row Views & Calculate Target Width
         let baseFontSize = config.menuFontSize ?? Constants.menuBaseFontSize
         let rowHeight: CGFloat = (currentLayout == "cards") ? baseFontSize + 27 : baseFontSize + 9
-        
-        var maxNameWidth: CGFloat = 0
-        var maxVersionWidth: CGFloat = 0
-        let nameFont = NSFont.systemFont(ofSize: baseFontSize, weight: .bold)
-        let versionFont = NSFont.systemFont(ofSize: baseFontSize - 2, weight: .medium)
-        let attrs: (NSFont) -> [NSAttributedString.Key: Any] = { [.font: $0] }
-
-        for repoObj in sortedRepos {
-            let info = appDelegate.repoCache[repoObj.name] ?? RepoInfo(name: repoObj.name, error: nil)
-            var formattedName = repoObj.name
-            if !config.showOwner {
-                formattedName = String(repoObj.name.split(separator: "/").last ?? Substring(repoObj.name))
-            }
-            let nameSize = (formattedName as NSString).size(withAttributes: attrs(nameFont))
-            maxNameWidth = max(maxNameWidth, nameSize.width)
-            let verText = info.version ?? "…"
-            let verSize = (verText as NSString).size(withAttributes: attrs(versionFont))
-            maxVersionWidth = max(maxVersionWidth, verSize.width)
-        }
-        
-        let rowContentWidth = maxNameWidth + maxVersionWidth + 120 // padding/icons
-        let targetWidth = ceil(min(Constants.menuMaxWidth, max(Constants.menuDefaultWidth, rowContentWidth)))
+        let targetWidth = Constants.menuWidth
         self.lastTargetWidth = targetWidth
         
         if sortedRepos.isEmpty {
@@ -422,6 +401,7 @@ class MainPopoverViewController: NSViewController {
                     ageSeconds: ageInfo.seconds,
                     originalDate: info.date,
                     errorMessage: isError ? info.error : nil,
+                    errorCode: isError ? info.errorCode : nil,
                     isLoading: isLoading,
                     caskName: repoObj.cask,
                     freshnessColor: freshnessColor,
@@ -473,7 +453,7 @@ class MainPopoverViewController: NSViewController {
             scrollView.heightAnchor.constraint(equalToConstant: targetScrollHeight).isActive = true
         }
         
-        let targetWidth = self.lastTargetWidth ?? Constants.menuDefaultWidth
+        let targetWidth = self.lastTargetWidth ?? Constants.menuWidth
         let headerFooterHeight = Constants.menuHeaderFooterHeight * 2
         self.preferredContentSize = NSSize(width: targetWidth, height: targetScrollHeight + headerFooterHeight)
         
