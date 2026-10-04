@@ -16,6 +16,11 @@ struct RepoInfo: Codable, Equatable {
     var error: String?
     var assets: [ReleaseAsset]?
     var errorCode: Int? = nil
+    var isNotModified: Bool = false
+    
+    enum CodingKeys: String, CodingKey {
+        case name, version, date, body, error, assets, errorCode
+    }
 }
 
 struct RepoConfig: Codable, Equatable {

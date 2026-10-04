@@ -164,6 +164,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
     private var assetsScrollView: NSScrollView!
     private(set) var currentRepoName: String?
     private var repoReleasesURL: URL?
+    private var activeDownloadTask: Task<Void, Never>?
     
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -541,12 +542,12 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             }
         }
         
-        // Synchronously check RAM and Disk cache for already-downloaded images
+        // Fast path: Synchronously check in-memory RAM cache only (0ms I/O on MainActor)
         var initialPreloaded: [String: NSImage] = [:]
         var uncachedEntries: [(raw: String, full: String)] = []
         
         for entry in imageURLsOrdered {
-            if let cached = GitHubAPI.shared.getCachedImage(from: entry.full) {
+            if let cached = GitHubAPI.shared.getRAMCachedImage(from: entry.full) {
                 initialPreloaded[entry.raw] = cached
                 initialPreloaded[entry.full] = cached
             } else {
@@ -554,10 +555,10 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             }
         }
         
-        // Render initial body (renders WITH cached images instantly on Frame #1!)
+        // Render initial body (renders text immediately without blocking on disk reads)
         renderNotesBody(bodyText: rawBody, info: info, preloadedImages: initialPreloaded)
         
-        // Asynchronously fetch any remaining uncached images via GitHubAPI
+        // Asynchronously resolve disk cache hits and download any missing images in background
         if !uncachedEntries.isEmpty {
             let repoName = info.name
             Task { [weak self] in
@@ -569,9 +570,10 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                     }
                 }
                 
-                await MainActor.run {
+                let completedImages = preloaded
+                await MainActor.run { [weak self] in
                     guard let self = self, self.currentRepoName == repoName else { return }
-                    self.renderNotesBody(bodyText: rawBody, info: info, preloadedImages: preloaded)
+                    self.renderNotesBody(bodyText: rawBody, info: info, preloadedImages: completedImages)
                 }
             }
         }
@@ -935,12 +937,11 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         let destURL = uniqueDestination(for: fileName, in: destDir)
         fileName = destURL.lastPathComponent
         
-        HUDPanel.shared.showDownloadProgress(title: fileName, status: "...", details: "", progress: 0.0)
-        
         let startTime = Date()
         var lastUIUpdate = Date.distantPast
         
-        Task {
+        var downloadTask: Task<Void, Never>?
+        downloadTask = Task {
             do {
                 let computedSHA = try await GitHubAPI.shared.downloadAsset(urlString: asset.downloadURL, destinationURL: destURL, expectedSHA256: asset.expectedSHA256) { received, total in
                     let now = Date()
@@ -987,23 +988,39 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                 }
                 
                 await MainActor.run {
+                    self.activeDownloadTask = nil
                     let finalSize = (try? destURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map { Int64($0) } ?? asset.size ?? 0
                     let sizeStr = self.formatBytes(finalSize)
                     let compText = Translations.get("downloadSuccess")
-                    let shaBadge = "SHA-256: \(computedSHA.prefix(8))..."
-                    let subtitle = sizeStr.isEmpty || sizeStr == "0 bytes"
-                        ? "\(compText)  ·  \(shaBadge)"
-                        : "\(sizeStr)  ·  \(compText)  ·  \(shaBadge)"
+                    let subtitle = (sizeStr.isEmpty || sizeStr == "0 bytes")
+                        ? compText
+                        : "\(sizeStr) • \(compText)"
+                    let shaBadge = !computedSHA.isEmpty ? "SHA-256: \(computedSHA.prefix(8))..." : nil
                     
-                    HUDPanel.shared.showDownloadCompletion(title: fileName, subtitle: subtitle, destinationURL: destURL)
+                    HUDPanel.shared.showDownloadCompletion(title: fileName, subtitle: subtitle, sha: shaBadge, destinationURL: destURL)
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    self.activeDownloadTask = nil
+                    try? FileManager.default.removeItem(at: destURL)
+                    HUDPanel.shared.showCancellation(title: fileName, subtitle: Translations.get("downloadCancelled"), duration: 2.5)
                 }
             } catch {
                 await MainActor.run {
+                    self.activeDownloadTask = nil
                     let failTitle = Translations.get("downloadFailed").format(with: ["filename": fileName])
                     HUDPanel.shared.showCompletion(title: failTitle, subtitle: error.localizedDescription, isSuccess: false)
                 }
             }
         }
+        self.activeDownloadTask = downloadTask
+        
+        HUDPanel.shared.showDownloadProgress(title: fileName, status: "...", details: "", progress: 0.0, onCancel: { [weak self] in
+            downloadTask?.cancel()
+            self?.activeDownloadTask = nil
+            try? FileManager.default.removeItem(at: destURL)
+            HUDPanel.shared.showCancellation(title: fileName, subtitle: Translations.get("downloadCancelled"), duration: 2.5)
+        })
     }
     
     /// Formats bytes with fixed 2-decimal precision to avoid text width jumps (e.g. "12.50 MB" not "12.5 MB").

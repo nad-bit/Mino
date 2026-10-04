@@ -23,17 +23,21 @@ class InteractiveHUDView: NSVisualEffectView {
 class HUDPanel: NSPanel {
     static let shared = HUDPanel()
     
-    private let visualEffect: InteractiveHUDView
-    private let iconView: NSImageView
-    private let textLabel: NSTextField
-    private let subtitleLabel: NSTextField
-    private let detailLabel: NSTextField
-    private let progressBar: NSProgressIndicator
+    let visualEffect: InteractiveHUDView
+    let iconView: NSImageView
+    let textLabel: NSTextField
+    let subtitleLabel: NSTextField
+    let detailLabel: NSTextField
+    let progressBar: NSProgressIndicator
     
     // Path badge for destination folder display & interaction
-    private let pathBadge: NSStackView
-    private let pathIcon: NSImageView
-    private let pathLabel: NSTextField
+    let pathBadge: NSStackView
+    let pathIcon: NSImageView
+    let pathLabel: NSTextField
+    
+    // Interruptible operation controls (e.g. downloads)
+    let cancelButton: NSButton
+    private var cancelAction: (() -> Void)?
     
     private var hideTimer: Timer?
     private var presentationToken = UUID()
@@ -110,6 +114,14 @@ class HUDPanel: NSPanel {
         pathBadge.translatesAutoresizingMaskIntoConstraints = false
         pathBadge.isHidden = true
         
+        cancelButton = NSButton()
+        cancelButton.title = Translations.get("cancel")
+        cancelButton.bezelStyle = .rounded
+        cancelButton.controlSize = .small
+        cancelButton.font = .systemFont(ofSize: 11, weight: .medium)
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+        cancelButton.isHidden = true
+        
         visualEffect = InteractiveHUDView()
         visualEffect.material = .hudWindow
         visualEffect.state = .active
@@ -124,6 +136,9 @@ class HUDPanel: NSPanel {
                    backing: .buffered,
                    defer: false)
         
+        cancelButton.target = self
+        cancelButton.action = #selector(cancelButtonClicked)
+        
         self.level = .statusBar
         self.backgroundColor = .clear
         self.isOpaque = false
@@ -131,7 +146,7 @@ class HUDPanel: NSPanel {
         self.hidesOnDeactivate = false
         self.contentView = visualEffect
         
-        let stackView = NSStackView(views: [iconView, textLabel, progressBar, subtitleLabel, detailLabel, pathBadge])
+        let stackView = NSStackView(views: [iconView, textLabel, progressBar, subtitleLabel, detailLabel, cancelButton, pathBadge])
         stackView.orientation = .vertical
         stackView.alignment = .centerX
         stackView.spacing = 7
@@ -231,7 +246,7 @@ class HUDPanel: NSPanel {
     
     // MARK: - Specialized Download Progression & Completion
     
-    func showDownloadProgress(title: String, status: String, details: String = "", progress: Double = 0.0) {
+    func showDownloadProgress(title: String, status: String, details: String = "", progress: Double = 0.0, onCancel: (() -> Void)? = nil) {
         resetInteraction()
         
         let dlImage = NSImage(systemSymbolName: "arrow.down.circle.fill", accessibilityDescription: nil)
@@ -256,6 +271,15 @@ class HUDPanel: NSPanel {
         if progressBar.isIndeterminate { progressBar.startAnimation(nil) }
         progressBar.isHidden = false
         
+        if let onCancel = onCancel {
+            self.cancelAction = onCancel
+            self.cancelButton.title = Translations.get("cancel")
+            self.cancelButton.isHidden = false
+        } else {
+            self.cancelAction = nil
+            self.cancelButton.isHidden = true
+        }
+        
         present(duration: nil)
     }
     
@@ -270,9 +294,11 @@ class HUDPanel: NSPanel {
         }
     }
     
-    func showDownloadCompletion(title: String, subtitle: String, destinationURL: URL, duration: TimeInterval = 4.0) {
+    func showDownloadCompletion(title: String, subtitle: String, sha: String? = nil, destinationURL: URL, duration: TimeInterval = 4.0) {
+        resetInteraction()
         progressBar.isHidden = true
-        detailLabel.isHidden = true
+        cancelButton.isHidden = true
+        cancelAction = nil
         
         let symbolName = "checkmark.circle.fill"
         if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) {
@@ -287,6 +313,17 @@ class HUDPanel: NSPanel {
         subtitleLabel.font = .systemFont(ofSize: 12, weight: .regular)
         subtitleLabel.isHidden = subtitle.isEmpty
         
+        if let sha = sha, !sha.isEmpty {
+            let formattedSHA = sha.hasPrefix("SHA-256:") ? sha : "SHA-256: \(sha)"
+            detailLabel.stringValue = formattedSHA
+            detailLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            detailLabel.textColor = NSColor.white.withAlphaComponent(0.7)
+            detailLabel.toolTip = formattedSHA
+            detailLabel.isHidden = false
+        } else {
+            detailLabel.isHidden = true
+        }
+        
         // Format path and setup click-to-reveal
         let folderURL = destinationURL.deletingLastPathComponent()
         let pathStr = HUDPanel.friendlyPath(for: folderURL)
@@ -299,6 +336,30 @@ class HUDPanel: NSPanel {
             NSWorkspace.shared.activateFileViewerSelecting([fileToReveal])
             self?.hide()
         }
+        
+        present(duration: duration)
+    }
+    
+    func showCancellation(title: String, subtitle: String = "", duration: TimeInterval = 2.5) {
+        resetInteraction()
+        progressBar.isHidden = true
+        cancelButton.isHidden = true
+        cancelAction = nil
+        pathBadge.isHidden = true
+        detailLabel.isHidden = true
+        
+        let symbolName = "xmark.circle.fill"
+        if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) {
+            let config = NSImage.SymbolConfiguration(pointSize: 36, weight: .regular)
+            iconView.image = image.withSymbolConfiguration(config)
+            iconView.contentTintColor = .systemOrange
+            iconView.isHidden = false
+        }
+        
+        textLabel.stringValue = title
+        subtitleLabel.stringValue = subtitle
+        subtitleLabel.font = .systemFont(ofSize: 12, weight: .regular)
+        subtitleLabel.isHidden = subtitle.isEmpty
         
         present(duration: duration)
     }
@@ -318,9 +379,17 @@ class HUDPanel: NSPanel {
     
     private func resetInteraction() {
         clickAction = nil
+        cancelAction = nil
+        cancelButton.isHidden = true
         visualEffect.onClick = nil
         visualEffect.discardCursorRects()
         visualEffect.resetCursorRects()
+    }
+    
+    @objc private func cancelButtonClicked() {
+        let action = cancelAction
+        resetInteraction()
+        action?()
     }
     
     private func setClickAction(_ action: @escaping () -> Void) {

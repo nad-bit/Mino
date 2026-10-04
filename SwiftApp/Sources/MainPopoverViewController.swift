@@ -29,6 +29,33 @@ class MainPopoverViewController: NSViewController {
     internal var currentlyHighlightedRowIndex: Int?
     private var lastMousePosition: NSPoint = .zero
     
+    // Pre-calculated search index for instant filtering in large repository libraries (900+ repos)
+    private struct SearchIndexEntry {
+        let repo: RepoConfig
+        let lowerName: String
+        let lowerLastName: String
+        let lowerTags: [String]
+    }
+    private var searchIndex: [SearchIndexEntry] = []
+    private var searchIndexReposRef: [RepoConfig]?
+    
+    private func getSearchIndex(for repos: [RepoConfig]) -> [SearchIndexEntry] {
+        if let cached = searchIndexReposRef, cached == repos {
+            return searchIndex
+        }
+        let index = repos.map { repo in
+            SearchIndexEntry(
+                repo: repo,
+                lowerName: repo.name.lowercased(),
+                lowerLastName: repo.name.split(separator: "/").last?.lowercased() ?? "",
+                lowerTags: repo.tags?.map { $0.lowercased() } ?? []
+            )
+        }
+        searchIndex = index
+        searchIndexReposRef = repos
+        return index
+    }
+    
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
         super.init(nibName: nil, bundle: nil)
@@ -162,11 +189,13 @@ class MainPopoverViewController: NSViewController {
     }
     
     func updateAllAgeLabels() {
-        for i in 0..<tableRepos.count {
-            if let date = tableRepos[i].originalDate {
+        // High scale optimization (900+ repos): Only update currently visible rows (O(visible) instead of O(total))
+        tableView.enumerateAvailableRowViews { rowView, row in
+            guard row >= 0 && row < tableRepos.count else { return }
+            if let date = tableRepos[row].originalDate {
                 let ageInfo = Utils.getReleaseAge(dateString: date)
-                tableRepos[i].ageLabel = tableRepos[i].isLoading ? nil : ageInfo.label
-                tableRepos[i].ageSeconds = ageInfo.seconds
+                tableRepos[row].ageLabel = tableRepos[row].isLoading ? nil : ageInfo.label
+                tableRepos[row].ageSeconds = ageInfo.seconds
             }
         }
     }
@@ -283,16 +312,19 @@ class MainPopoverViewController: NSViewController {
         }
         
         let lowerQuery = appDelegate.currentSearchQuery.lowercased()
-        let filteredRepos = config.repos.filter { repo in
-            if lowerQuery.isEmpty { return true }
-            let name = repo.name.lowercased()
-            let tags = repo.tags?.map { $0.lowercased() } ?? []
-            return name.contains(lowerQuery) || tags.contains(where: { $0.contains(lowerQuery) })
+        let index = getSearchIndex(for: config.repos)
+        let filteredEntries: [SearchIndexEntry]
+        if lowerQuery.isEmpty {
+            filteredEntries = index
+        } else {
+            filteredEntries = index.filter { entry in
+                entry.lowerName.contains(lowerQuery) || entry.lowerTags.contains(where: { $0.contains(lowerQuery) })
+            }
         }
         
         let isSearching = !lowerQuery.isEmpty
         if isSearching {
-            footerView?.updateRepoCount(filteredCount: filteredRepos.count, totalCount: config.repos.count)
+            footerView?.updateRepoCount(filteredCount: filteredEntries.count, totalCount: config.repos.count)
         } else {
             footerView?.updateRepoCount()
         }
@@ -305,8 +337,8 @@ class MainPopoverViewController: NSViewController {
             let hasError: Bool
         }
         
-        let sortableItems: [SortableRepo] = filteredRepos.map { repo in
-            let info = appDelegate.repoCache[repo.name]
+        let sortableItems: [SortableRepo] = filteredEntries.map { entry in
+            let info = appDelegate.repoCache[entry.repo.name]
             let dateKey: Double
             if let dateStr = info?.date {
                 // We use parseDate directly which is slightly faster than getReleaseAge
@@ -316,8 +348,8 @@ class MainPopoverViewController: NSViewController {
             }
             
             return SortableRepo(
-                repo: repo,
-                nameKey: repo.name.split(separator: "/").last?.lowercased() ?? "",
+                repo: entry.repo,
+                nameKey: entry.lowerLastName,
                 dateKey: dateKey,
                 hasError: info?.error != nil
             )

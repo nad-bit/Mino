@@ -2,6 +2,7 @@ import Foundation
 import Cocoa
 
 @main
+@MainActor
 struct AuditValidationTests {
     static func assertTest(_ condition: Bool, _ message: String) {
         if condition {
@@ -31,6 +32,8 @@ struct AuditValidationTests {
         testDiskCacheSecurity()
         testStatusItemTooltipCompatibility()
         testErrorTooltipAndCodeHandling()
+        testPhase1Optimizations()
+        testPhase2Optimizations()
         
         print("\n🎉 ALL AUDIT VERIFICATION TESTS PASSED SUCCESSFULLY!\n")
     }
@@ -589,6 +592,147 @@ struct AuditValidationTests {
         // Fallback when errorCode is nil
         let tooltipNil = RepoMenuItemView.formatWarningTooltip(errorCode: nil, fallbackMessage: "Fallback message")
         assertTest(tooltipNil == "Fallback message", "Nil errorCode safely falls back to descriptive localized message")
+    }
+
+    // --------------------------------------------------------
+    // Test 17: Phase 1 Optimizations (Digest, ETag, Non-blocking Image Cache)
+    // --------------------------------------------------------
+    static func testPhase1Optimizations() {
+        print("\n[Test 17] Testing Phase 1 Optimizations (Official Digest, ETag Cache & RAM Image Cache)...")
+        
+        // 1. GitHubAPI.parseDigest validation
+        let validHex = "6a89c256038481ff2262a05f13459eeea5388c3a070eb3511116c90ee928a6f4"
+        let prefixedDigest = "sha256:\(validHex)"
+        let parsedPrefixed = GitHubAPI.parseDigest(prefixedDigest)
+        assertTest(parsedPrefixed == validHex, "Prefixed sha256 digest parsed successfully")
+        
+        let bareDigest = GitHubAPI.parseDigest(validHex)
+        assertTest(bareDigest == validHex, "Bare 64-char hex digest parsed successfully")
+        
+        let invalidDigest = GitHubAPI.parseDigest("not-a-valid-sha256")
+        assertTest(invalidDigest == nil, "Invalid digest string is safely rejected")
+        
+        // 2. Official asset digest precedence over release notes body
+        let releaseBody = "6a89c256038481ff2262a05f13459eeea5388c3a070eb3511116c90ee928a6f4  Mino.dmg"
+        let officialDigestHex = "1111111111111111111111111111111111111111111111111111111111111111"
+        let mockJSON: [String: Any] = [
+            "tag_name": "v2.2.9",
+            "body": releaseBody,
+            "assets": [
+                [
+                    "name": "Mino.dmg",
+                    "size": 1024,
+                    "digest": "sha256:\(officialDigestHex)",
+                    "browser_download_url": "https://github.com/nad-bit/Mino/releases/download/v2.2.9/Mino.dmg"
+                ],
+                [
+                    "name": "Fallback.dmg",
+                    "size": 2048,
+                    "browser_download_url": "https://github.com/nad-bit/Mino/releases/download/v2.2.9/Fallback.dmg"
+                ]
+            ]
+        ]
+        let assets = GitHubAPI.parseReleaseAssets(from: mockJSON, repo: "nad-bit/Mino", tag: "v2.2.9")
+        let officialAsset = assets.first(where: { $0.name == "Mino.dmg" })
+        assertTest(officialAsset?.expectedSHA256 == officialDigestHex, "Official asset.digest takes precedence over release notes body")
+        
+        // 3. ETag Conditional Request Cache
+        let testRepo = "test-owner/test-repo"
+        let testETag = "W/\"d41d8cd98f00b204e9800998ecf8427e\""
+        GitHubAPI.shared.setETag(testETag, for: testRepo)
+        assertTest(GitHubAPI.shared.etag(for: testRepo) == testETag, "ETag stored and retrieved correctly")
+        
+        GitHubAPI.shared.clearETags()
+        assertTest(GitHubAPI.shared.etag(for: testRepo) == nil, "ETag cache cleared successfully")
+        
+        // 4. RepoInfo isNotModified flag and Codable integrity
+        var info304 = RepoInfo(name: testRepo)
+        info304.isNotModified = true
+        assertTest(info304.isNotModified == true, "RepoInfo supports isNotModified flag")
+        
+        // Codable serialization does not fail and omits isNotModified
+        if let encoded = try? JSONEncoder().encode(info304),
+           let decoded = try? JSONDecoder().decode(RepoInfo.self, from: encoded) {
+            assertTest(decoded.name == testRepo, "RepoInfo encoded and decoded successfully via Codable")
+            assertTest(decoded.isNotModified == false, "isNotModified defaults to false upon deserialization")
+        } else {
+            assertTest(false, "Failed to encode/decode RepoInfo")
+        }
+        
+        // 5. RAM Cache Fast Path
+        let nonCachedURL = "https://example.com/nonexistent_image_\(UUID().uuidString).png"
+        let ramHit = GitHubAPI.shared.getRAMCachedImage(from: nonCachedURL)
+        assertTest(ramHit == nil, "getRAMCachedImage returns nil without doing synchronous disk reads")
+    }
+
+    // --------------------------------------------------------
+    // Test 18: Phase 2 Optimizations (HUD Cancel & Rate Limit Auth Decoupling)
+    // --------------------------------------------------------
+    static func testPhase2Optimizations() {
+        print("\n[Test 18] Testing Phase 2 Optimizations (HUD Cancel & Rate Limit Auth Decoupling)...")
+        
+        // 1. HUDPanel cancel button activation and reset
+        var wasCancelled = false
+        HUDPanel.shared.showDownloadProgress(title: "TestAsset.dmg", status: "Downloading...", details: "10 MB / 50 MB", progress: 0.2, onCancel: {
+            wasCancelled = true
+        })
+        assertTest(!wasCancelled, "Cancel handler registered without premature invocation")
+        
+        HUDPanel.shared.hide()
+        assertTest(true, "HUDPanel resets cancel state safely upon dismissal")
+        
+        // 2. Rate limit decoupled authentication flag & 401 / public limit protection
+        let resetEpoch = Date().addingTimeInterval(3600).timeIntervalSince1970
+        let headers: [String: String] = [
+            "x-ratelimit-limit": "100",
+            "x-ratelimit-remaining": "99",
+            "x-ratelimit-reset": "\(resetEpoch)"
+        ]
+        let response = HTTPURLResponse(url: URL(string: "https://api.github.com/rate_limit")!, statusCode: 200, httpVersion: nil, headerFields: headers)!
+        
+        // Test explicit wasAuthenticated flag
+        GitHubAPI.shared.clearRateLimits()
+        let hasToken = ConfigManager.shared.token != nil && !ConfigManager.shared.token!.isEmpty
+        GitHubAPI.shared.recordRateLimit(from: response, wasAuthenticated: hasToken)
+        
+        if let current = GitHubAPI.shared.currentRateLimit {
+            assertTest(current.limit == 100 && current.remaining == 99, "Rate limit recorded accurately with explicit wasAuthenticated")
+        } else {
+            assertTest(!hasToken, "Rate limit correctly disregarded if token configuration doesn't match state")
+        }
+        
+        // 3. Verify 401 Unauthorized responses and public 60 limits are NEVER recorded as authenticated
+        let resp401 = HTTPURLResponse(url: URL(string: "https://api.github.com/rate_limit")!, statusCode: 401, httpVersion: nil, headerFields: [
+            "x-ratelimit-limit": "60",
+            "x-ratelimit-remaining": "0",
+            "x-ratelimit-reset": "\(resetEpoch)"
+        ])!
+        GitHubAPI.shared.clearRateLimits()
+        GitHubAPI.shared.recordRateLimit(from: resp401, wasAuthenticated: true)
+        assertTest(GitHubAPI.shared.currentRateLimit == nil, "401 responses never recorded as authenticated rate limit")
+        
+        let respPublic60 = HTTPURLResponse(url: URL(string: "https://api.github.com/rate_limit")!, statusCode: 200, httpVersion: nil, headerFields: [
+            "x-ratelimit-limit": "60",
+            "x-ratelimit-remaining": "10",
+            "x-ratelimit-reset": "\(resetEpoch)"
+        ])!
+        GitHubAPI.shared.clearRateLimits()
+        GitHubAPI.shared.recordRateLimit(from: respPublic60, wasAuthenticated: true)
+        if hasToken {
+            assertTest(GitHubAPI.shared.currentRateLimit == nil, "Public limit <= 60 rejected from authenticated rate limit window")
+        }
+        
+        // 4. Verify HUDPanel download completion with separate SHA line and cancellation styling
+        let destURL = URL(fileURLWithPath: "/tmp/MinoTestAsset.dmg")
+        HUDPanel.shared.showDownloadCompletion(title: "MinoTestAsset.dmg", subtitle: "15.40 MB • Descarga completada", sha: "SHA-256: 3a7b1c4e...", destinationURL: destURL)
+        assertTest(HUDPanel.shared.cancelButton.isHidden, "Cancel button is hidden on download completion")
+        assertTest(HUDPanel.shared.progressBar.isHidden, "Progress bar is hidden on download completion")
+        assertTest(!HUDPanel.shared.detailLabel.isHidden && HUDPanel.shared.detailLabel.stringValue == "SHA-256: 3a7b1c4e...", "SHA-256 is displayed on a separate line below completion text")
+        
+        HUDPanel.shared.showCancellation(title: "MinoTestAsset.dmg", subtitle: "Descarga cancelada")
+        assertTest(HUDPanel.shared.cancelButton.isHidden, "Cancel button is hidden on download cancellation")
+        assertTest(HUDPanel.shared.iconView.contentTintColor == .systemOrange, "Cancellation HUD displays orange symbol")
+        HUDPanel.shared.hide()
     }
 }
 

@@ -245,6 +245,20 @@ class RefreshCoordinator {
                     continue
                 }
                 
+                // If 304 Not Modified: Existing cached release is still latest.
+                // Clear any transient error on existing cache, keep version/date/body/assets intact.
+                if info.isNotModified {
+                    if var existingInfo = delegate.repoCache[repo], existingInfo.version != nil {
+                        existingInfo.error = nil
+                        existingInfo.errorCode = nil
+                        delegate.repoCache[repo] = existingInfo
+                    } else {
+                        GitHubAPI.shared.setETag(nil, for: repo)
+                        GitHubAPI.shared.setETag(nil, for: "\(repo):commits")
+                    }
+                    continue
+                }
+                
                 if let currentVersion = info.version {
                     if let oldVersion = lastNotifiedVersions[repo] {
                         if currentVersion != oldVersion {
@@ -310,6 +324,7 @@ class RefreshCoordinator {
     
     /// Silently fetches topics and description for legacy repositories
     /// to enable zero-configuration hashtag searching and About display in Notes.
+    /// Scaled for large collections (e.g. 900+ repos) using a worker pool and pacing.
     func startTagBackfillSequence() {
         Task { [weak self] in
             guard let self = self, let delegate = self.delegate else { return }
@@ -321,32 +336,57 @@ class RefreshCoordinator {
             guard !reposToUpdate.isEmpty else { return }
             
             var didUpdateAny = false
-            for repoName in reposToUpdate {
-                if delegate.repoCoordinator.wasRecentlyRefreshed(repo: repoName) {
-                    continue
-                }
-                let result = await GitHubAPI.shared.fetchRepoTags(repo: repoName)
-                
-                await MainActor.run {
-                    if let currentIndex = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
-                        ConfigManager.shared.config.repos[currentIndex].tags = result.tags ?? []
-                        if let desc = result.description {
-                            ConfigManager.shared.config.repos[currentIndex].repoDescription = desc
-                        }
-                        didUpdateAny = true
+            let maxConcurrent = 4
+            var repoIterator = reposToUpdate.makeIterator()
+            
+            await withTaskGroup(of: (String, (tags: [String]?, description: String?)).self) { group in
+                for _ in 0..<maxConcurrent {
+                    guard let nextRepo = repoIterator.next() else { break }
+                    if delegate.repoCoordinator.wasRecentlyRefreshed(repo: nextRepo) { continue }
+                    group.addTask {
+                        let res = await GitHubAPI.shared.fetchRepoTags(repo: nextRepo)
+                        return (nextRepo, res)
                     }
                 }
                 
-                // Throttle to 1 request/second to avoid triggering GitHub API secondary rate limits
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                var processedCount = 0
+                for await (repoName, result) in group {
+                    await MainActor.run {
+                        if let currentIndex = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) {
+                            ConfigManager.shared.config.repos[currentIndex].tags = result.tags ?? []
+                            if let desc = result.description {
+                                ConfigManager.shared.config.repos[currentIndex].repoDescription = desc
+                            }
+                            didUpdateAny = true
+                        }
+                    }
+                    processedCount += 1
+                    if processedCount % 50 == 0 {
+                        await MainActor.run {
+                            ConfigManager.shared.saveConfig()
+                            delegate.updatePopularTagsCache()
+                        }
+                    }
+                    
+                    // Throttle between task dispatches (~250ms) to stay within safe API rate guidelines
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    
+                    if let nextRepo = repoIterator.next() {
+                        if delegate.repoCoordinator.wasRecentlyRefreshed(repo: nextRepo) { continue }
+                        group.addTask {
+                            let res = await GitHubAPI.shared.fetchRepoTags(repo: nextRepo)
+                            return (nextRepo, res)
+                        }
+                    }
+                }
             }
             
-            // Once all 200+ repos are processed, we save and update the cache exactly once for stability.
+            // Once all repos are processed, save and update the cache for menu display
             if didUpdateAny {
                 await MainActor.run {
                     ConfigManager.shared.saveConfig()
                     delegate.updatePopularTagsCache()
-                    delegate.rebuildMenu(preserveScroll: true) // Re-render tag cloud if it's currently relevant
+                    delegate.rebuildMenu(preserveScroll: true)
                 }
             }
         }

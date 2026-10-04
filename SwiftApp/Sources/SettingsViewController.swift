@@ -705,13 +705,13 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         
         // 1. Immediately apply the lowest/most constrained count observed for the current auth scope
         if let current = GitHubAPI.shared.currentRateLimit {
-            applyRateLimitToUI(current)
+            if !hasToken || (current.hasToken && current.limit > 60) {
+                applyRateLimitToUI(current)
+            } else {
+                showInitialRateLimitTip(hasToken: hasToken)
+            }
         } else {
-            let title = Translations.get("rateLimitTitle")
-            let status = Translations.get(hasToken ? "rateLimitStatusAuth" : "rateLimitStatusPublic")
-            let initialTip = "\(title)\n\(status)"
-            self.tokenBadge.toolTip = initialTip
-            self.tokenStatusLabel.toolTip = initialTip
+            showInitialRateLimitTip(hasToken: hasToken)
         }
         
         // Check cooldown and in-flight status unless forced
@@ -722,8 +722,9 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
             }
         }
         
-        // 2. Fetch fresh headers from GitHub in background
-        let endpoint = hasToken ? "\(Constants.githubAPIBaseURL)/user" : "\(Constants.githubAPIBaseURL)/rate_limit"
+        // 2. Fetch fresh headers from GitHub in background using /rate_limit endpoint
+        // (works without scopes, supports Bearer auth, doesn't consume rate limit quota)
+        let endpoint = "\(Constants.githubAPIBaseURL)/rate_limit"
         guard let url = URL(string: endpoint) else { return }
         
         var request = URLRequest(url: url)
@@ -744,18 +745,36 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
             }
             do {
                 let (_, response) = try await GitHubAPI.shared.session.data(for: request)
-                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return }
+                guard let httpResponse = response as? HTTPURLResponse else { return }
                 
                 await MainActor.run {
-                    GitHubAPI.shared.recordRateLimit(from: httpResponse)
-                    if let best = GitHubAPI.shared.currentRateLimit {
-                        self.applyRateLimitToUI(best)
+                    if httpResponse.statusCode == 200 {
+                        GitHubAPI.shared.recordRateLimit(from: httpResponse, wasAuthenticated: hasToken)
+                        if let best = GitHubAPI.shared.currentRateLimit {
+                            self.applyRateLimitToUI(best)
+                        }
+                    } else if httpResponse.statusCode == 401 && hasToken {
+                        // Token rejected by GitHub
+                        let title = Translations.get("rateLimitTitle")
+                        let unauth = Translations.get("rateLimitStatusPublic")
+                        let tip = "\(title)\n\(unauth)\n\n\(Translations.get("tokenValidationEmpty"))"
+                        self.tokenBadge.toolTip = tip
+                        self.tokenStatusLabel.toolTip = tip
                     }
                 }
             } catch {
                 print("Error al consultar el rate limit de GitHub: \(error)")
             }
         }
+    }
+    
+    private func showInitialRateLimitTip(hasToken: Bool) {
+        let title = Translations.get("rateLimitTitle")
+        let status = Translations.get(hasToken ? "rateLimitStatusAuth" : "rateLimitStatusPublic")
+        let tip = hasToken ? "" : Translations.get("rateLimitTip")
+        let initialTip = "\(title)\n\(status)\(tip)"
+        self.tokenBadge.toolTip = initialTip
+        self.tokenStatusLabel.toolTip = initialTip
     }
     
     private func applyRateLimitToUI(_ info: RateLimitInfo) {
@@ -768,11 +787,16 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         let minutesRemaining = max(0, Int(resetDate.timeIntervalSinceNow / 60))
         let currentRemaining = info.currentRemaining
         
+        let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasToken = token != nil && !token!.isEmpty
+        
+        // Guard against displaying "Conectado" if limit is <= 60
+        let isAuth = info.hasToken && (info.limit > 60 || !hasToken)
         let title = Translations.get("rateLimitTitle")
-        let status = Translations.get(info.hasToken ? "rateLimitStatusAuth" : "rateLimitStatusPublic")
+        let status = Translations.get(isAuth ? "rateLimitStatusAuth" : "rateLimitStatusPublic")
         let remainingText = Translations.get("rateLimitRemaining").format(with: ["remaining": "\(currentRemaining)", "limit": "\(info.limit)"])
         let resetText = Translations.get("rateLimitReset").format(with: ["minutes": "\(minutesRemaining)", "time": timeString])
-        let tip = info.hasToken ? "" : Translations.get("rateLimitTip")
+        let tip = isAuth ? "" : Translations.get("rateLimitTip")
         
         let tooltipText = """
         \(title)

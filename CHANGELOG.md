@@ -5,6 +5,28 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-10-04 "Ocelot"
+
+### Performance & Scalability
+- **HTTP Conditional Requests with ETag (`304 Not Modified`)**: Integrated GitHub ETag cache headers (`If-None-Match`) into release and commit polling. Unmodified repositories respond with lightweight HTTP 304, consuming 0 primary rate limit units and bypassing JSON parsing, memory allocations, and model replacement for near-instant refreshes.
+- **Dedicated Persistent Download Session**: Replaced per-asset `URLSession` creation and teardown with a long-lived, dedicated `downloadSession` equipped with `SafeDownloadRedirectDelegate` for credential protection.
+- **Non-Blocking RAM Image Cache (0 ms UI)**: Eliminated synchronous disk reads on the main thread during release notes rendering via `getRAMCachedImage`. Images not in memory are decoded asynchronously in background detached tasks and swapped in on the main actor without UI stutter.
+- **Concurrent Tag Backfill Engine**: Parallelized `startTagBackfillSequence` across 4 concurrent workers with 250ms rate-limiting throttle, slashing tag discovery time for massive libraries (900+ repositories) from 15+ minutes down to seconds.
+- **Precomputed Search Index (`SearchIndex`)**: Implemented an in-memory normalized cache for repository names and tags in `MainPopoverViewController`, eliminating thousands of redundant lowercase string transformations and array allocations per keystroke.
+- **Optimized Age Label Updates**: `updateAllAgeLabels` now targets exclusively visible rows via `tableView.enumerateAvailableRowViews`, preventing unnecessary view passes across virtualized tables.
+
+### Security & Integrity
+- **Official GitHub Asset `digest` Integration**: `GitHubAPI.parseReleaseAssets` now extracts and prioritizes GitHub's official SHA-256 asset `digest` field over release body markdown parsing, providing authoritative cryptographic verification with zero regex overhead.
+- **Hardened Rate Limit API Diagnostics**: Migrated connection status and quota checks in Settings to the dedicated `/rate_limit` endpoint, eliminating scope friction (supports empty scopes / Device Code OAuth) without consuming rate limit quotas. 401 Unauthorized responses and public fallbacks are strictly barred from contaminating authenticated status views.
+
+### Added & Improved
+- **Interactive HUD Download Progress with Cancellation**: Added a responsive "Cancelar" button to `HUDPanel` during active asset downloads with immediate task cancellation and temporary file cleanup.
+- **Refined Download Completion & Cancellation HUD**:
+  - Download completion now displays a clean `Xxx MB • Descarga completada` banner with the computed `SHA-256` digest placed on its own monospaced line below, with full hash tooltip on hover.
+  - Dedicated `showCancellation` HUD alert styled with `xmark.circle.fill` in system orange.
+  - Full localization for `downloadCancelled` across all 11 supported languages.
+- **Automated Audit Verification Suite (18 Test Suites)**: Expanded test coverage in `AuditValidationTests.swift` to 18 automated suites, verifying ETag behavior, RAM cache lookup, digest parsing, HUD cancellation, and rate limit isolation.
+
 ## [2.2.8] - 2026-10-04
 
 ### Security

@@ -42,11 +42,38 @@ class GitHubAPI {
     private var windowRateLimits: [Date: RateLimitInfo] = [:]
     private var latestObservedRateLimit: RateLimitInfo?
     
+    // MARK: - Conditional Requests (ETag) Cache
+    private let etagLock = NSLock()
+    private var etagsByRepo: [String: String] = [:]
+    
+    func etag(for key: String) -> String? {
+        etagLock.lock()
+        defer { etagLock.unlock() }
+        return etagsByRepo[key]
+    }
+    
+    func setETag(_ etag: String?, for key: String) {
+        etagLock.lock()
+        defer { etagLock.unlock() }
+        if let etag = etag {
+            etagsByRepo[key] = etag
+        } else {
+            etagsByRepo.removeValue(forKey: key)
+        }
+    }
+    
+    func clearETags() {
+        etagLock.lock()
+        defer { etagLock.unlock() }
+        etagsByRepo.removeAll()
+    }
+    
     func clearRateLimits() {
         rateLimitLock.lock()
         defer { rateLimitLock.unlock() }
         windowRateLimits.removeAll()
         latestObservedRateLimit = nil
+        clearETags()
     }
     
     var currentRateLimit: RateLimitInfo? {
@@ -71,7 +98,10 @@ class GitHubAPI {
         return nil
     }
     
-    func recordRateLimit(from response: HTTPURLResponse) {
+    func recordRateLimit(from response: HTTPURLResponse, wasAuthenticated: Bool? = nil) {
+        // Discard 401 Unauthorized responses so rejected tokens never poison rate limit views
+        if response.statusCode == 401 { return }
+        
         guard let limitStr = response.value(forHTTPHeaderField: "x-ratelimit-limit"), let limit = Int(limitStr),
               let remainingStr = response.value(forHTTPHeaderField: "x-ratelimit-remaining"), let remaining = Int(remainingStr),
               let resetStr = response.value(forHTTPHeaderField: "x-ratelimit-reset"), let resetEpoch = Double(resetStr) else {
@@ -79,8 +109,10 @@ class GitHubAPI {
         }
         let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasTokenConfigured = token != nil && !token!.isEmpty
-        // Responses with limit > 60 were authenticated by GitHub (typically 5,000 or 15,000).
-        let isAuthResponse = limit > 60
+        
+        // Genuine GitHub authenticated REST rate limits are strictly > 60 (standard 5,000 or 15,000).
+        // Responses with limit <= 60 represent the unauthenticated public IP pool.
+        let isAuthResponse = (limit > 60) && (wasAuthenticated ?? true)
         
         // If the response authentication status doesn't match current configuration,
         // ignore it so public requests don't corrupt authenticated views or vice versa.
@@ -163,6 +195,12 @@ class GitHubAPI {
         let ext = (cleanExt.isEmpty || cleanExt.count > 4) ? "png" : cleanExt
         let safeName = "\(hash).\(ext)"
         return dir.appendingPathComponent(safeName)
+    }
+    
+    /// Checks ONLY the in-memory RAM cache (instant, zero I/O, safe for MainActor).
+    func getRAMCachedImage(from urlString: String) -> NSImage? {
+        let key = urlString as NSString
+        return ramImageCache.object(forKey: key)
     }
     
     /// Synchronously checks RAM and Disk cache for an image.
@@ -402,9 +440,12 @@ class GitHubAPI {
     
     /// Fetches an image asynchronously leveraging a 2-tier cache (RAM NSCache + Disk Cache).
     func fetchImage(from urlString: String) async -> NSImage? {
-        if let localURL = await fetchLocalImageURL(from: urlString),
-           let data = try? Data(contentsOf: localURL) {
-            return GitHubAPI.safeDecodeImage(from: data)
+        let key = urlString as NSString
+        if let cached = ramImageCache.object(forKey: key) {
+            return cached
+        }
+        if let _ = await fetchLocalImageURL(from: urlString) {
+            return ramImageCache.object(forKey: key)
         }
         return nil
     }
@@ -442,16 +483,21 @@ class GitHubAPI {
         return try await session.data(from: url)
     }
     
-    func fetchRepoInfo(repo: String, hasExistingRelease: Bool = false) async -> RepoInfo {
+    func fetchRepoInfo(repo: String, hasExistingRelease: Bool = false, checkETag: Bool = true) async -> RepoInfo {
         var requestHeaders: [String: String] = [:]
         
         if let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
             requestHeaders["Authorization"] = "Bearer \(token)"
         }
         
+        // ETag conditional request is ONLY valid if caller has existing cached release data to merge with.
+        // If hasExistingRelease is false (e.g. newly added repository or unpopulated cache),
+        // we MUST fetch the full payload (checkETag = false) so version, assets, and body are populated.
+        let shouldCheckETag = checkETag && hasExistingRelease
+        
         do {
             // Try Releases first
-            let releaseData = try await fetchRelease(repo: repo, headers: requestHeaders)
+            let releaseData = try await fetchRelease(repo: repo, headers: requestHeaders, checkETag: shouldCheckETag)
             return releaseData
         } catch let releaseError as NSError {
             // If a 404 occurs and we already had a valid release version cached,
@@ -472,7 +518,7 @@ class GitHubAPI {
             
             do {
                 // Try Commits fallback
-                let commitData = try await fetchCommits(repo: repo, headers: requestHeaders)
+                let commitData = try await fetchCommits(repo: repo, headers: requestHeaders, checkETag: shouldCheckETag)
                 return commitData
             } catch let commitError as NSError {
                 // If both fail, return the descriptive localized error message and original code
@@ -483,7 +529,7 @@ class GitHubAPI {
         }
     }
     
-    private func fetchRelease(repo: String, headers: [String: String]) async throws -> RepoInfo {
+    private func fetchRelease(repo: String, headers: [String: String], checkETag: Bool = true) async throws -> RepoInfo {
         guard let url = URL(string: "\(Constants.githubAPIBaseURL)/repos/\(repo)/releases/latest") else {
             throw URLError(.badURL)
         }
@@ -491,13 +537,30 @@ class GitHubAPI {
         var request = URLRequest(url: url)
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
         
+        if checkETag, let etag = etag(for: repo) {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
+        
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
-        recordRateLimit(from: httpResponse)
+        let wasAuth = headers["Authorization"] != nil
+        recordRateLimit(from: httpResponse, wasAuthenticated: wasAuth)
+        
+        if httpResponse.statusCode == 304 {
+            if !checkETag {
+                // If 304 was unexpectedly returned without checkETag, clear ETag and retry cleanly
+                setETag(nil, for: repo)
+                return try await fetchRelease(repo: repo, headers: headers, checkETag: false)
+            }
+            var notModifiedInfo = RepoInfo(name: repo)
+            notModifiedInfo.isNotModified = true
+            return notModifiedInfo
+        }
         
         if httpResponse.statusCode == 404 {
+            setETag(nil, for: repo)
             throw NSError(domain: "GitHubAPI", code: 404, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRepoNotFound")])
         } else if httpResponse.statusCode == 403 {
             throw parse403Error(response: httpResponse, data: data)
@@ -506,6 +569,10 @@ class GitHubAPI {
         } else if httpResponse.statusCode != 200 {
             let msg = Translations.get("apiHttpError").format(with: ["code": "\(httpResponse.statusCode)"])
             throw NSError(domain: "GitHubAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+        
+        if let etag = httpResponse.value(forHTTPHeaderField: "ETag") {
+            setETag(etag, for: repo)
         }
         
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -521,6 +588,23 @@ class GitHubAPI {
         }
     }
     
+    /// Validates and extracts a canonical 64-character SHA-256 hex digest from a GitHub asset digest string.
+    /// Supports GitHub digest formats (e.g. "sha256:<hex>" or bare 64-char hex string).
+    static func parseDigest(_ rawDigest: String?) -> String? {
+        guard let raw = rawDigest?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        var candidate = raw
+        if candidate.lowercased().hasPrefix("sha256:") {
+            candidate = String(candidate.dropFirst("sha256:".count))
+        } else if candidate.lowercased().hasPrefix("sha-256:") {
+            candidate = String(candidate.dropFirst("sha-256:".count))
+        }
+        candidate = candidate.lowercased()
+        if candidate.count == 64 && candidate.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil {
+            return candidate
+        }
+        return nil
+    }
+    
     static func parseReleaseAssets(from json: [String: Any], repo: String, tag: String?, releaseBody: String? = nil) -> [ReleaseAsset] {
         var result: [ReleaseAsset] = []
         let bodyText = releaseBody ?? json["body"] as? String ?? ""
@@ -532,7 +616,12 @@ class GitHubAPI {
                 guard let name = assetDict["name"] as? String,
                       let downloadURL = assetDict["browser_download_url"] as? String else { continue }
                 let size = assetDict["size"] as? Int64
-                let expectedSHA = checksums[name.lowercased()]
+                
+                // Priority 1: GitHub official asset digest (e.g. "sha256:4f3b...")
+                let officialSHA = GitHubAPI.parseDigest(assetDict["digest"] as? String)
+                // Priority 2: Release notes body checksum fallback
+                let expectedSHA = officialSHA ?? checksums[name.lowercased()]
+                
                 result.append(ReleaseAsset(name: name, size: size, downloadURL: downloadURL, isSourceArchive: false, expectedSHA256: expectedSHA))
             }
         }
@@ -548,7 +637,7 @@ class GitHubAPI {
         return result
     }
     
-    private func fetchCommits(repo: String, headers: [String: String]) async throws -> RepoInfo {
+    private func fetchCommits(repo: String, headers: [String: String], checkETag: Bool = true) async throws -> RepoInfo {
         guard let url = URL(string: "\(Constants.githubAPIBaseURL)/repos/\(repo)/commits?per_page=1") else {
             throw URLError(.badURL)
         }
@@ -556,13 +645,26 @@ class GitHubAPI {
         var request = URLRequest(url: url)
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
         
+        let commitsETagKey = "\(repo)#commits"
+        if checkETag, let etag = etag(for: commitsETagKey) {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
+        
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
-        recordRateLimit(from: httpResponse)
+        let wasAuth = headers["Authorization"] != nil
+        recordRateLimit(from: httpResponse, wasAuthenticated: wasAuth)
+        
+        if httpResponse.statusCode == 304 {
+            var notModifiedInfo = RepoInfo(name: repo)
+            notModifiedInfo.isNotModified = true
+            return notModifiedInfo
+        }
         
         if httpResponse.statusCode == 404 {
+            setETag(nil, for: commitsETagKey)
             throw NSError(domain: "GitHubAPI", code: 404, userInfo: [NSLocalizedDescriptionKey: Translations.get("apiRepoNotFound")])
         } else if httpResponse.statusCode == 403 {
             throw parse403Error(response: httpResponse, data: data)
@@ -571,6 +673,10 @@ class GitHubAPI {
         } else if httpResponse.statusCode != 200 {
             let msg = Translations.get("apiHttpError").format(with: ["code": "\(httpResponse.statusCode)"])
             throw NSError(domain: "GitHubAPI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: msg])
+        }
+        
+        if let etag = httpResponse.value(forHTTPHeaderField: "ETag") {
+            setETag(etag, for: commitsETagKey)
         }
         
         let json = try JSONSerialization.jsonObject(with: data) as? [[String: Any]]
@@ -667,7 +773,8 @@ class GitHubAPI {
                 
                 if let (data, response) = try? await session.data(for: request),
                    let httpResponse = response as? HTTPURLResponse {
-                    recordRateLimit(from: httpResponse)
+                    let wasAuth = headers["Authorization"] != nil
+                    recordRateLimit(from: httpResponse, wasAuthenticated: wasAuth)
                     
                     // Surface descriptive errors to the user
                     if httpResponse.statusCode == 403 {
@@ -700,7 +807,8 @@ class GitHubAPI {
             
             if let (data, response) = try? await session.data(for: request),
                let httpResponse = response as? HTTPURLResponse {
-                recordRateLimit(from: httpResponse)
+                let wasAuth = headers["Authorization"] != nil
+                recordRateLimit(from: httpResponse, wasAuthenticated: wasAuth)
                 
                 if httpResponse.statusCode == 403 {
                     return parse403Error(response: httpResponse, data: data).localizedDescription
@@ -727,8 +835,10 @@ class GitHubAPI {
         var headers: [String: String] = [
             "Accept": "application/vnd.github.v3+json"
         ]
+        var wasAuth = false
         if let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
             headers["Authorization"] = "Bearer \(token)"
+            wasAuth = true
         }
         
         if let tag = version {
@@ -739,7 +849,7 @@ class GitHubAPI {
                 
                 if let (data, response) = try? await session.data(for: request),
                    let httpResponse = response as? HTTPURLResponse {
-                    recordRateLimit(from: httpResponse)
+                    recordRateLimit(from: httpResponse, wasAuthenticated: wasAuth)
                     
                     if httpResponse.statusCode == 403 {
                         return (parse403Error(response: httpResponse, data: data).localizedDescription, nil)
@@ -781,6 +891,26 @@ class GitHubAPI {
         }
     }
     
+    // MARK: - Dedicated Download Session
+    private let downloadSessionLock = NSLock()
+    private var _downloadSession: URLSession?
+    private let downloadDelegate = SafeDownloadRedirectDelegate()
+    
+    private var downloadSession: URLSession {
+        downloadSessionLock.lock()
+        defer { downloadSessionLock.unlock() }
+        if let session = _downloadSession {
+            return session
+        }
+        let dlConfig = URLSessionConfiguration.default
+        dlConfig.timeoutIntervalForRequest = 300
+        dlConfig.timeoutIntervalForResource = 3600
+        dlConfig.httpAdditionalHeaders = ["User-Agent": Constants.userAgent]
+        let newSession = URLSession(configuration: dlConfig, delegate: downloadDelegate, delegateQueue: nil)
+        _downloadSession = newSession
+        return newSession
+    }
+    
     /// Downloads a release asset to destinationURL reporting progress callbacks (bytesReceived, totalBytes),
     /// while calculating its SHA-256 digest in real-time streaming mode and verifying integrity against expectedSHA256 if supplied.
     @discardableResult
@@ -798,16 +928,7 @@ class GitHubAPI {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        // Dedicated session with generous timeouts for large file downloads
-        let dlConfig = URLSessionConfiguration.default
-        dlConfig.timeoutIntervalForRequest = 300
-        dlConfig.timeoutIntervalForResource = 3600
-        dlConfig.httpAdditionalHeaders = ["User-Agent": Constants.userAgent]
-        let dlDelegate = SafeDownloadRedirectDelegate()
-        let dlSession = URLSession(configuration: dlConfig, delegate: dlDelegate, delegateQueue: nil)
-        defer { dlSession.finishTasksAndInvalidate() }
-        
-        let (bytes, response) = try await dlSession.bytes(for: request, delegate: dlDelegate)
+        let (bytes, response) = try await downloadSession.bytes(for: request, delegate: downloadDelegate)
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 500
             throw NSError(domain: "DownloadError", code: code, userInfo: [NSLocalizedDescriptionKey: "HTTP \(code)"])
@@ -880,9 +1001,10 @@ class GitHubAPI {
     func validateToken(_ token: String) async -> Bool {
         guard !token.isEmpty else { return true }
         
-        guard let url = URL(string: "\(Constants.githubAPIBaseURL)/user") else { return false }
+        guard let url = URL(string: "\(Constants.githubAPIBaseURL)/rate_limit") else { return false }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
         
         do {
             let (_, response) = try await session.data(for: request)
@@ -910,11 +1032,15 @@ class GitHubAPI {
         
         do {
             let (data, response) = try await session.data(for: request)
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
-                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                let topics = json?["topics"] as? [String]
-                let description = json?["description"] as? String
-                return (topics, description)
+            if let httpResponse = response as? HTTPURLResponse {
+                let wasAuth = request.value(forHTTPHeaderField: "Authorization") != nil
+                recordRateLimit(from: httpResponse, wasAuthenticated: wasAuth)
+                if httpResponse.statusCode == 200 {
+                    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                    let topics = json?["topics"] as? [String]
+                    let description = json?["description"] as? String
+                    return (topics, description)
+                }
             }
         } catch {
             print("Failed to fetch topics for \(repo): \(error)")

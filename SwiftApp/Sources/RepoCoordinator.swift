@@ -41,6 +41,9 @@ class RepoCoordinator {
         notifiedVersions.removeValue(forKey: repoName)
         UserDefaults.standard.set(notifiedVersions, forKey: "LastNotifiedVersions")
         
+        GitHubAPI.shared.setETag(nil, for: repoName)
+        GitHubAPI.shared.setETag(nil, for: "\(repoName):commits")
+        
         if let vc = delegate.releaseNotesPopover?.contentViewController as? ReleaseNotesViewController, vc.currentRepoName == repoName {
             delegate.releaseNotesPopover?.close()
         }
@@ -367,7 +370,9 @@ class RepoCoordinator {
             return false
         }
         
-        let info = await GitHubAPI.shared.fetchRepoInfo(repo: repoName)
+        GitHubAPI.shared.setETag(nil, for: repoName)
+        GitHubAPI.shared.setETag(nil, for: "\(repoName):commits")
+        let info = await GitHubAPI.shared.fetchRepoInfo(repo: repoName, hasExistingRelease: false, checkETag: false)
         if let errorMsg = info.error {
             await MainActor.run {
                 HUDPanel.shared.showCompletion(title: Translations.get("error"), subtitle: errorMsg, isSuccess: false)
@@ -492,7 +497,11 @@ class RepoCoordinator {
         delegate.animateStatusIcon(with: .rotate)
         
         // Fetch all info concurrently (version, tags/description, and potential Cask)
-        async let infoTask = GitHubAPI.shared.fetchRepoInfo(repo: repoName, hasExistingRelease: false)
+        let cachedVersion = delegate.repoCache[repoName]?.version
+        let looksLikeSHA = cachedVersion?.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
+        let hasExistingRelease = cachedVersion != nil && !looksLikeSHA
+        
+        async let infoTask = GitHubAPI.shared.fetchRepoInfo(repo: repoName, hasExistingRelease: hasExistingRelease, checkETag: hasExistingRelease)
         async let tagsTask = GitHubAPI.shared.fetchRepoTags(repo: repoName)
         async let caskTask: String? = {
             if HomebrewManager.shared.brewPath != nil {
@@ -525,7 +534,15 @@ class RepoCoordinator {
         ConfigManager.shared.saveConfig()
         
         // Update cache & timestamp anchor to prevent full refresh overwriting
-        delegate.repoCache[repoName] = info
+        if info.isNotModified {
+            if var existing = delegate.repoCache[repoName] {
+                existing.error = nil
+                existing.errorCode = nil
+                delegate.repoCache[repoName] = existing
+            }
+        } else {
+            delegate.repoCache[repoName] = info
+        }
         recentlyRefreshedRepos[repoName] = Date()
         
         // Re-render UI with fresh data
@@ -534,8 +551,9 @@ class RepoCoordinator {
         
         // If Release Notes popover is currently open for this repo, reload it live
         if let vc = delegate.releaseNotesPopover?.contentViewController as? ReleaseNotesViewController,
-           vc.currentRepoName == repoName {
-            vc.loadNotes(for: info)
+           vc.currentRepoName == repoName,
+           let displayInfo = delegate.repoCache[repoName] {
+            vc.loadNotes(for: displayInfo)
         }
         
         delegate.animateStatusIcon(with: .bounce)
