@@ -49,6 +49,7 @@ class RepoCoordinator {
         }
         
         ConfigManager.shared.saveConfig()
+        ConfigManager.shared.saveCache(repoCache: delegate.repoCache, etags: GitHubAPI.shared.allETags())
         delegate.updatePopularTagsCache()
     }
     
@@ -97,6 +98,7 @@ class RepoCoordinator {
         
         delegate.updatePopularTagsCache()
         delegate.rebuildMenu(preserveScroll: true)
+        ConfigManager.shared.saveCache(repoCache: delegate.repoCache, etags: GitHubAPI.shared.allETags())
         delegate.animateStatusIcon(with: .rotate)
     }
     
@@ -124,14 +126,16 @@ class RepoCoordinator {
         guard let delegate = delegate else { return }
         
         if let popover = delegate.releaseNotesPopover,
-           popover.isShown,
-           let vc = popover.contentViewController as? ReleaseNotesViewController,
-           vc.currentRepoName == repoName {
+           popover.isShown {
+            let vc = popover.contentViewController as? ReleaseNotesViewController
+            if vc?.currentRepoName == repoName && view != delegate.statusItem?.button {
+                popover.close()
+                // Purge WebKit's internal URL cache that accumulates when parsing
+                // HTML release notes via NSAttributedString(data:options:documentType:.html)
+                URLCache.shared.removeAllCachedResponses()
+                return
+            }
             popover.close()
-            // Purge WebKit's internal URL cache that accumulates when parsing
-            // HTML release notes via NSAttributedString(data:options:documentType:.html)
-            URLCache.shared.removeAllCachedResponses()
-            return
         }
         
         let info = delegate.repoCache[repoName] ?? RepoInfo(name: repoName, error: nil)
@@ -154,8 +158,10 @@ class RepoCoordinator {
         // Show notes popover
         vc.loadNotes(for: info)
         popover.contentSize = vc.preferredContentSize
-        popover.show(relativeTo: view.bounds, of: view, preferredEdge: .minX)
+        let edge: NSRectEdge = (view == delegate.statusItem?.button) ? .minY : .minX
+        popover.show(relativeTo: view.bounds, of: view, preferredEdge: edge)
         popover.contentViewController?.view.window?.acceptsMouseMovedEvents = true
+        popover.contentViewController?.view.window?.makeKey()
         
         // Fetch the release body & assets asynchronously ONLY if not already cached in info
         if info.body == nil {
@@ -168,6 +174,7 @@ class RepoCoordinator {
                     updatedInfo.assets = details.assets
                     delegate.repoCache[repoName] = updatedInfo
                     vc.loadNotes(for: updatedInfo)
+                    ConfigManager.shared.saveCache(repoCache: delegate.repoCache, etags: GitHubAPI.shared.allETags())
                 }
             }
         }
@@ -500,8 +507,9 @@ class RepoCoordinator {
         let cachedVersion = delegate.repoCache[repoName]?.version
         let looksLikeSHA = cachedVersion?.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
         let hasExistingRelease = cachedVersion != nil && !looksLikeSHA
+        let hasExistingCommit = cachedVersion != nil && looksLikeSHA
         
-        async let infoTask = GitHubAPI.shared.fetchRepoInfo(repo: repoName, hasExistingRelease: hasExistingRelease, checkETag: hasExistingRelease)
+        async let infoTask = GitHubAPI.shared.fetchRepoInfo(repo: repoName, hasExistingRelease: hasExistingRelease, hasExistingCommit: hasExistingCommit, checkETag: hasExistingRelease || hasExistingCommit)
         async let tagsTask = GitHubAPI.shared.fetchRepoTags(repo: repoName)
         async let caskTask: String? = {
             if HomebrewManager.shared.brewPath != nil {
@@ -548,6 +556,7 @@ class RepoCoordinator {
         // Re-render UI with fresh data
         delegate.updatePopularTagsCache()
         delegate.rebuildMenu(preserveScroll: true)
+        ConfigManager.shared.saveCache(repoCache: delegate.repoCache, etags: GitHubAPI.shared.allETags())
         
         // If Release Notes popover is currently open for this repo, reload it live
         if let vc = delegate.releaseNotesPopover?.contentViewController as? ReleaseNotesViewController,

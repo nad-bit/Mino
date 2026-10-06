@@ -62,10 +62,23 @@ class GitHubAPI {
         }
     }
     
+    func allETags() -> [String: String] {
+        etagLock.lock()
+        defer { etagLock.unlock() }
+        return etagsByRepo
+    }
+    
+    func loadETags(_ etags: [String: String]) {
+        etagLock.lock()
+        defer { etagLock.unlock() }
+        etagsByRepo = etags
+    }
+    
     func clearETags() {
         etagLock.lock()
         defer { etagLock.unlock() }
         etagsByRepo.removeAll()
+        ConfigManager.shared.clearDiskCache()
     }
     
     func clearRateLimits() {
@@ -220,7 +233,8 @@ class GitHubAPI {
         return nil
     }
     
-    /// Synchronously returns local disk cache file URL if cached, nil otherwise.
+    /// Synchronously returns local disk cache file URL if cached on disk, nil otherwise.
+    /// Fast file existence check (metadata only) without reading or decoding image bytes.
     func getCachedLocalImageURL(from urlString: String) -> URL? {
         guard let fileURL = diskCacheURL(for: urlString),
               FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
@@ -483,21 +497,22 @@ class GitHubAPI {
         return try await session.data(from: url)
     }
     
-    func fetchRepoInfo(repo: String, hasExistingRelease: Bool = false, checkETag: Bool = true) async -> RepoInfo {
+    func fetchRepoInfo(repo: String, hasExistingRelease: Bool = false, hasExistingCommit: Bool = false, checkETag: Bool = true) async -> RepoInfo {
         var requestHeaders: [String: String] = [:]
         
         if let token = ConfigManager.shared.token?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
             requestHeaders["Authorization"] = "Bearer \(token)"
         }
         
-        // ETag conditional request is ONLY valid if caller has existing cached release data to merge with.
-        // If hasExistingRelease is false (e.g. newly added repository or unpopulated cache),
+        // ETag conditional request is ONLY valid if caller has existing cached release/commit data to merge with.
+        // If neither exists (e.g. newly added repository or unpopulated cache),
         // we MUST fetch the full payload (checkETag = false) so version, assets, and body are populated.
-        let shouldCheckETag = checkETag && hasExistingRelease
+        let shouldCheckReleaseETag = checkETag && hasExistingRelease
+        let shouldCheckCommitETag = checkETag && hasExistingCommit
         
         do {
             // Try Releases first
-            let releaseData = try await fetchRelease(repo: repo, headers: requestHeaders, checkETag: shouldCheckETag)
+            let releaseData = try await fetchRelease(repo: repo, headers: requestHeaders, checkETag: shouldCheckReleaseETag)
             return releaseData
         } catch let releaseError as NSError {
             // If a 404 occurs and we already had a valid release version cached,
@@ -517,8 +532,8 @@ class GitHubAPI {
             }
             
             do {
-                // Try Commits fallback
-                let commitData = try await fetchCommits(repo: repo, headers: requestHeaders, checkETag: shouldCheckETag)
+                // Try Commits fallback with conditional ETag check if we have existing commit data
+                let commitData = try await fetchCommits(repo: repo, headers: requestHeaders, checkETag: shouldCheckCommitETag)
                 return commitData
             } catch let commitError as NSError {
                 // If both fail, return the descriptive localized error message and original code
@@ -658,6 +673,10 @@ class GitHubAPI {
         recordRateLimit(from: httpResponse, wasAuthenticated: wasAuth)
         
         if httpResponse.statusCode == 304 {
+            if !checkETag {
+                setETag(nil, for: commitsETagKey)
+                return try await fetchCommits(repo: repo, headers: headers, checkETag: false)
+            }
             var notModifiedInfo = RepoInfo(name: repo)
             notModifiedInfo.isNotModified = true
             return notModifiedInfo

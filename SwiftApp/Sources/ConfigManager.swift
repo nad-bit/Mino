@@ -1,12 +1,19 @@
 import Foundation
 import Security
 
+struct PersistentDiskCache: Codable {
+    var repoCache: [String: RepoInfo]
+    var etags: [String: String]
+    var savedAt: Date
+}
+
 class ConfigManager {
     static let shared = ConfigManager()
     
     private let configDir: URL
     private let configFile: URL
     private let backupConfigFile: URL
+    private let cacheFile: URL
     
     private let lock = NSRecursiveLock()
     private var _config: AppConfig
@@ -46,9 +53,78 @@ class ConfigManager {
         configDir = homeDir.appendingPathComponent(".config/Mino")
         configFile = configDir.appendingPathComponent("repos.json")
         backupConfigFile = configDir.appendingPathComponent("repos.json.bak")
+        cacheFile = configDir.appendingPathComponent("cache.json")
         
         self._config = AppConfig()
         self.loadConfig()
+    }
+    
+    // MARK: - Persistent Disk Cache (ETags & Release Metadata)
+    
+    func loadCache() -> (repoCache: [String: RepoInfo], etags: [String: String]) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        guard FileManager.default.fileExists(atPath: cacheFile.path) else {
+            return ([:], [:])
+        }
+        
+        do {
+            let data = try Data(contentsOf: cacheFile)
+            let cache = try JSONDecoder().decode(PersistentDiskCache.self, from: data)
+            let trackedSet = Set(self._config.repos.map { $0.name.lowercased() })
+            
+            var validRepoCache: [String: RepoInfo] = [:]
+            for (key, info) in cache.repoCache {
+                if trackedSet.contains(key.lowercased()) {
+                    validRepoCache[key] = info
+                }
+            }
+            
+            var validETags: [String: String] = [:]
+            for (key, etag) in cache.etags {
+                let baseKey = key.replacingOccurrences(of: ":commits", with: "")
+                                 .replacingOccurrences(of: "#commits", with: "")
+                if trackedSet.contains(baseKey.lowercased()) {
+                    validETags[key] = etag
+                }
+            }
+            
+            return (validRepoCache, validETags)
+        } catch {
+            print("⚠️ [ConfigManager] Failed to load disk cache: \(error)")
+            return ([:], [:])
+        }
+    }
+    
+    func saveCache(repoCache: [String: RepoInfo], etags: [String: String]) {
+        let cache = PersistentDiskCache(repoCache: repoCache, etags: etags, savedAt: Date())
+        let targetURL = self.cacheFile
+        
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                let data = try JSONEncoder().encode(cache)
+                try data.write(to: targetURL, options: .atomic)
+            } catch {
+                print("⚠️ [ConfigManager] Failed to asynchronously save disk cache: \(error)")
+            }
+        }
+    }
+    
+    func saveCacheSync(repoCache: [String: RepoInfo], etags: [String: String]) {
+        let cache = PersistentDiskCache(repoCache: repoCache, etags: etags, savedAt: Date())
+        do {
+            let data = try JSONEncoder().encode(cache)
+            try data.write(to: self.cacheFile, options: .atomic)
+        } catch {
+            print("⚠️ [ConfigManager] Failed to synchronously save disk cache: \(error)")
+        }
+    }
+    
+    func clearDiskCache() {
+        lock.lock()
+        defer { lock.unlock() }
+        try? FileManager.default.removeItem(at: cacheFile)
     }
     
     func loadConfig() {

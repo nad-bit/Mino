@@ -13,7 +13,7 @@ struct AuditValidationTests {
         }
     }
     
-    static func main() {
+    static func main() async {
         print("\n🧪 Running Mino Audit Verification Tests (Direct Production Code)...")
         
         testGitHubHostAllowlist()
@@ -34,6 +34,9 @@ struct AuditValidationTests {
         testErrorTooltipAndCodeHandling()
         testPhase1Optimizations()
         testPhase2Optimizations()
+        await testPhase3AuditFixes()
+        testURLExpansionsAndBeerHandle()
+        testPersistentDiskCache()
         
         print("\n🎉 ALL AUDIT VERIFICATION TESTS PASSED SUCCESSFULLY!\n")
     }
@@ -733,6 +736,212 @@ struct AuditValidationTests {
         assertTest(HUDPanel.shared.cancelButton.isHidden, "Cancel button is hidden on download cancellation")
         assertTest(HUDPanel.shared.iconView.contentTintColor == .systemOrange, "Cancellation HUD displays orange symbol")
         HUDPanel.shared.hide()
+    }
+    
+    // --------------------------------------------------------
+    // Test 19: Phase 3 Audit Fixes (Commit ETag & Global Rate Limiter)
+    // --------------------------------------------------------
+    static func testPhase3AuditFixes() async {
+        print("\n[Test 19] Testing Phase 3 Audit Fixes (Commit ETag & Global Rate Limiter)...")
+        
+        // 1. Test Commit ETag cache isolation and retrieval
+        let commitRepo = "nad-bit/commit-tracked-repo"
+        let commitsETagKey = "\(commitRepo):commits"
+        let sampleCommitETag = "W/\"commit-abc1234\""
+        let sampleReleaseETag = "W/\"release-v1.0.0\""
+        
+        GitHubAPI.shared.setETag(sampleCommitETag, for: commitsETagKey)
+        GitHubAPI.shared.setETag(sampleReleaseETag, for: commitRepo)
+        
+        assertTest(GitHubAPI.shared.etag(for: commitsETagKey) == sampleCommitETag, "Commit ETag stored and retrieved for \(commitsETagKey)")
+        assertTest(GitHubAPI.shared.etag(for: commitRepo) == sampleReleaseETag, "Release ETag stored and retrieved for \(commitRepo)")
+        assertTest(GitHubAPI.shared.etag(for: commitsETagKey) != GitHubAPI.shared.etag(for: commitRepo), "Strict isolation between release ETag and commit ETag namespaces")
+        
+        GitHubAPI.shared.setETag(nil, for: commitsETagKey)
+        assertTest(GitHubAPI.shared.etag(for: commitsETagKey) == nil, "Commit ETag cleared cleanly")
+        assertTest(GitHubAPI.shared.etag(for: commitRepo) == sampleReleaseETag, "Release ETag preserved when commit ETag is cleared")
+        GitHubAPI.shared.setETag(nil, for: commitRepo)
+        
+        // 2. Test Commit SHA detection pattern
+        let commitSHA = "7b2d5f1"
+        let releaseTag = "v2.3.0"
+        let shortTag = "1.0.0"
+        let invalidSHA = "xyz1234"
+        
+        let isSHA: (String) -> Bool = { version in
+            version.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
+        }
+        
+        assertTest(isSHA(commitSHA), "'7b2d5f1' correctly identified as commit SHA")
+        assertTest(!isSHA(releaseTag), "'v2.3.0' not classified as commit SHA")
+        assertTest(!isSHA(shortTag), "'1.0.0' not classified as commit SHA")
+        assertTest(!isSHA(invalidSHA), "'xyz1234' with non-hex characters rejected as commit SHA")
+        
+        // 3. Test GlobalRateLimiter global pacing across concurrent tasks
+        let limiter = GlobalRateLimiter(minInterval: 0.04) // 40ms interval
+        let start = Date()
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<3 {
+                group.addTask {
+                    await limiter.acquire()
+                }
+            }
+        }
+        let elapsed = Date().timeIntervalSince(start)
+        // 3 tasks with 40ms interval must take at least ~70ms (0ms, 40ms, 80ms slots)
+        assertTest(elapsed >= 0.06, "GlobalRateLimiter enforced sequential slot pacing across concurrent tasks (elapsed: \(String(format: "%.3f", elapsed))s >= 0.06s)")
+        
+        // 4. Test Smart Matching for Release Assets inside Notes
+        let sampleAssets = [
+            ReleaseAsset(name: "rclone-ui-arm64.dmg", size: 15_000_000, downloadURL: "https://github.com/rclone-ui/rclone-ui/releases/download/v1.0.0/rclone-ui-arm64.dmg", isSourceArchive: false, expectedSHA256: "aabbcc112233"),
+            ReleaseAsset(name: "rclone-ui-x86_64.dmg", size: 16_000_000, downloadURL: "https://github.com/rclone-ui/rclone-ui/releases/download/v1.0.0/rclone-ui-x86_64.dmg", isSourceArchive: false)
+        ]
+        
+        let exactURL = URL(string: "https://github.com/rclone-ui/rclone-ui/releases/download/v1.0.0/rclone-ui-arm64.dmg")!
+        let matchedExact = ReleaseNotesViewController.findMatchingReleaseAsset(for: exactURL, in: sampleAssets)
+        assertTest(matchedExact?.name == "rclone-ui-arm64.dmg", "Smart Matching: Exact asset download URL matched successfully")
+        
+        let queryURL = URL(string: "https://github.com/rclone-ui/rclone-ui/releases/download/v1.0.0/rclone-ui-arm64.dmg?raw=true")!
+        let matchedQuery = ReleaseNotesViewController.findMatchingReleaseAsset(for: queryURL, in: sampleAssets)
+        assertTest(matchedQuery?.name == "rclone-ui-arm64.dmg", "Smart Matching: URL with query parameter matched successfully")
+        
+        let untrustedHostURL = URL(string: "https://evil-site.com/rclone-ui/rclone-ui/releases/download/v1.0.0/rclone-ui-arm64.dmg")!
+        let matchedUntrusted = ReleaseNotesViewController.findMatchingReleaseAsset(for: untrustedHostURL, in: sampleAssets)
+        assertTest(matchedUntrusted == nil, "Smart Matching: Untrusted domain link is REJECTED and falls back to browser")
+        
+        let otherRepoURL = URL(string: "https://github.com/other-user/other-repo/releases/download/v1.0.0/rclone-ui-arm64.dmg")!
+        let matchedOtherRepo = ReleaseNotesViewController.findMatchingReleaseAsset(for: otherRepoURL, in: sampleAssets)
+        assertTest(matchedOtherRepo == nil, "Smart Matching: Unrelated repo asset link is REJECTED and falls back to browser")
+        
+        let issuesURL = URL(string: "https://github.com/rclone-ui/rclone-ui/issues/42")!
+        let matchedIssue = ReleaseNotesViewController.findMatchingReleaseAsset(for: issuesURL, in: sampleAssets)
+        assertTest(matchedIssue == nil, "Smart Matching: General GitHub issue link is ignored and falls back to browser")
+        
+        // 5. Test real-world rclone-ui repository transfer / org rename matching:
+        // Asset has downloadURL under rclone/rclone-ui, but release notes link points to rclone-ui/rclone-ui
+        let transferredAssets = [
+            ReleaseAsset(name: "Rclone.UI_aarch64.dmg", size: 25_000_000, downloadURL: "https://github.com/rclone/rclone-ui/releases/download/v3.7.5/Rclone.UI_aarch64.dmg", isSourceArchive: false)
+        ]
+        let transferredMarkdownURL = URL(string: "https://github.com/rclone-ui/rclone-ui/releases/download/v3.7.5/Rclone.UI_aarch64.dmg")!
+        let matchedTransferred = ReleaseNotesViewController.findMatchingReleaseAsset(for: transferredMarkdownURL, in: transferredAssets, currentRepoName: "rclone-ui/rclone-ui")
+        assertTest(matchedTransferred?.name == "Rclone.UI_aarch64.dmg", "Smart Matching: Transferred/renamed repository asset URL (rclone-ui -> rclone) matched successfully")
+    }
+    
+    // --------------------------------------------------------
+    // Test 20: mino:// URL Scheme Expansions & Beer Handle Toggle
+    // --------------------------------------------------------
+    static func testURLExpansionsAndBeerHandle() {
+        print("\n[Test 20] Testing mino:// URL Scheme Expansions & Beer Handle Persistence...")
+        
+        // 1. AppConfig default & persistence of beerHandleEnabled
+        var config = AppConfig()
+        assertTest(config.beerHandleEnabled == true, "AppConfig: beerHandleEnabled defaults to true")
+        
+        config.beerHandleEnabled = false
+        if let encoded = try? JSONEncoder().encode(config),
+           let decoded = try? JSONDecoder().decode(AppConfig.self, from: encoded) {
+            assertTest(decoded.beerHandleEnabled == false, "AppConfig: beer_handle_enabled encoded and decoded properly as false")
+        } else {
+            assertTest(false, "AppConfig: Failed to encode/decode beerHandleEnabled")
+        }
+        
+        // 2. Dynamic Constants.beerHandleEnabled
+        ConfigManager.shared.config.beerHandleEnabled = true
+        assertTest(Constants.beerHandleEnabled == true, "Constants.beerHandleEnabled reads true dynamically")
+        ConfigManager.shared.config.beerHandleEnabled = false
+        assertTest(Constants.beerHandleEnabled == false, "Constants.beerHandleEnabled reads false dynamically")
+        ConfigManager.shared.config.beerHandleEnabled = true // Restore
+        
+        // 3. Test AppDelegate.findMatchingRepo
+        let testRepos = [
+            RepoConfig(name: "rclone-ui/rclone-ui", source: "manual"),
+            RepoConfig(name: "objective-see/LuLu", source: "brew", cask: "lulu"),
+            RepoConfig(name: "nad-bit/Mino", source: "brew", cask: "nad-bit/tap/mino", isFavorite: true)
+        ]
+        
+        // Exact name match
+        let exactMatch = AppDelegate.findMatchingRepo(for: "rclone-ui/rclone-ui", in: testRepos)
+        assertTest(exactMatch?.name == "rclone-ui/rclone-ui", "findMatchingRepo: exact match on repo name")
+        
+        // Case-insensitive exact name
+        let caseMatch = AppDelegate.findMatchingRepo(for: "RCLONE-UI/RCLONE-UI", in: testRepos)
+        assertTest(caseMatch?.name == "rclone-ui/rclone-ui", "findMatchingRepo: case-insensitive repo name match")
+        
+        // GitHub URL input
+        let urlMatch = AppDelegate.findMatchingRepo(for: "https://github.com/rclone-ui/rclone-ui", in: testRepos)
+        assertTest(urlMatch == nil, "findMatchingRepo: raw URL requires normalization before findMatchingRepo")
+        let normalizedURLTarget = "https://github.com/rclone-ui/rclone-ui"
+            .replacingOccurrences(of: "https://github.com/", with: "")
+        assertTest(AppDelegate.findMatchingRepo(for: normalizedURLTarget, in: testRepos)?.name == "rclone-ui/rclone-ui",
+                   "findMatchingRepo: normalized GitHub URL matches")
+        
+        // Short repo name
+        let shortRepoMatch = AppDelegate.findMatchingRepo(for: "rclone-ui", in: testRepos)
+        assertTest(shortRepoMatch?.name == "rclone-ui/rclone-ui", "findMatchingRepo: short repo name matches")
+        
+        // Exact cask match
+        let exactCaskMatch = AppDelegate.findMatchingRepo(for: "lulu", in: testRepos)
+        assertTest(exactCaskMatch?.name == "objective-see/LuLu", "findMatchingRepo: exact cask match")
+        
+        // Short cask match (from tap)
+        let shortCaskMatch = AppDelegate.findMatchingRepo(for: "mino", in: testRepos)
+        assertTest(shortCaskMatch?.name == "nad-bit/Mino", "findMatchingRepo: short cask name matches tap cask")
+        
+        // Full tap cask match
+        let fullTapCaskMatch = AppDelegate.findMatchingRepo(for: "nad-bit/tap/mino", in: testRepos)
+        assertTest(fullTapCaskMatch?.name == "nad-bit/Mino", "findMatchingRepo: full tap cask matches")
+        
+        // Untracked / non-existent target
+        let nonExistentMatch = AppDelegate.findMatchingRepo(for: "unknown-repo/unknown", in: testRepos)
+        assertTest(nonExistentMatch == nil, "findMatchingRepo: unknown target returns nil safely")
+        
+        // Empty target
+        let emptyMatch = AppDelegate.findMatchingRepo(for: "   ", in: testRepos)
+        assertTest(emptyMatch == nil, "findMatchingRepo: empty target returns nil safely")
+        
+        // 4. Test Slashed vs Normal Beer Mug Icon Generation
+        let normalMug = AppDelegate.createMugImage(slashed: false)
+        assertTest(normalMug != nil, "createMugImage(slashed: false): Base mug icon loaded successfully")
+        let slashedMug = AppDelegate.createMugImage(slashed: true)
+        assertTest(slashedMug != nil, "createMugImage(slashed: true): Slashed mug icon rendered with vector knockout")
+        assertTest(slashedMug?.size.width == 48 && slashedMug?.size.height == 48,
+                   "createMugImage(slashed: true): Correct 48x48 icon dimensions for HUDPanel")
+    }
+    
+    // --------------------------------------------------------
+    // Test 21: Persistent Disk Cache (Metadata, ETags & Rate Limit Shield)
+    // --------------------------------------------------------
+    static func testPersistentDiskCache() {
+        print("\n[Test 21] Testing Persistent Disk Cache (Metadata, ETags & Rate Limit Protection)...")
+        
+        let sampleRepoName = "nad-bit/Mino"
+        let sampleInfo = RepoInfo(name: sampleRepoName, version: "v2.3.1", body: "Release notes body", assets: [
+            ReleaseAsset(name: "Mino.zip", size: 1024, downloadURL: "https://github.com/nad-bit/Mino/releases/download/v2.3.1/Mino.zip", isSourceArchive: false)
+        ])
+        let sampleETags = [
+            sampleRepoName: "\"etag-release-12345\"",
+            "\(sampleRepoName):commits": "\"etag-commits-67890\""
+        ]
+        
+        // 1. Save cache synchronously
+        ConfigManager.shared.saveCacheSync(repoCache: [sampleRepoName: sampleInfo], etags: sampleETags)
+        
+        // 2. Load cache back from disk
+        let loaded = ConfigManager.shared.loadCache()
+        assertTest(loaded.repoCache[sampleRepoName]?.version == "v2.3.1", "PersistentCache: Successfully restored repo version from disk")
+        assertTest(loaded.repoCache[sampleRepoName]?.assets?.count == 1, "PersistentCache: Successfully restored assets from disk")
+        assertTest(loaded.etags[sampleRepoName] == "\"etag-release-12345\"", "PersistentCache: Successfully restored release ETag from disk")
+        assertTest(loaded.etags["\(sampleRepoName):commits"] == "\"etag-commits-67890\"", "PersistentCache: Successfully restored commits ETag from disk")
+        
+        // 3. Test GitHubAPI loadETags and allETags
+        GitHubAPI.shared.loadETags(loaded.etags)
+        assertTest(GitHubAPI.shared.etag(for: sampleRepoName) == "\"etag-release-12345\"", "GitHubAPI: etag(for:) returns loaded release ETag")
+        assertTest(GitHubAPI.shared.allETags().count >= 2, "GitHubAPI: allETags() exports currently loaded ETags")
+        
+        // 4. Test cache cleanup
+        ConfigManager.shared.clearDiskCache()
+        let cleared = ConfigManager.shared.loadCache()
+        assertTest(cleared.repoCache.isEmpty && cleared.etags.isEmpty, "PersistentCache: clearDiskCache removes cache file cleanly")
     }
 }
 

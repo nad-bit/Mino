@@ -206,9 +206,10 @@ class RefreshCoordinator {
                     let cachedVersion = delegate.repoCache[repo]?.version
                     let looksLikeSHA = cachedVersion?.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
                     let hasExistingRelease = cachedVersion != nil && !looksLikeSHA
+                    let hasExistingCommit = cachedVersion != nil && looksLikeSHA
                     
                     group.addTask {
-                        let info = await GitHubAPI.shared.fetchRepoInfo(repo: repo, hasExistingRelease: hasExistingRelease)
+                        let info = await GitHubAPI.shared.fetchRepoInfo(repo: repo, hasExistingRelease: hasExistingRelease, hasExistingCommit: hasExistingCommit)
                         return (repo, info)
                     }
                 }
@@ -225,9 +226,10 @@ class RefreshCoordinator {
                         let cachedVersion = delegate.repoCache[nextRepo]?.version
                         let looksLikeSHA = cachedVersion?.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
                         let hasExistingRelease = cachedVersion != nil && !looksLikeSHA
+                        let hasExistingCommit = cachedVersion != nil && looksLikeSHA
                         
                         group.addTask {
-                            let info = await GitHubAPI.shared.fetchRepoInfo(repo: nextRepo, hasExistingRelease: hasExistingRelease)
+                            let info = await GitHubAPI.shared.fetchRepoInfo(repo: nextRepo, hasExistingRelease: hasExistingRelease, hasExistingCommit: hasExistingCommit)
                             return (nextRepo, info)
                         }
                     }
@@ -315,6 +317,11 @@ class RefreshCoordinator {
             delegate.refreshQuickAddState()
             delegate.rebuildMenu(preserveScroll: true)
             
+            ConfigManager.shared.saveCache(
+                repoCache: delegate.repoCache,
+                etags: GitHubAPI.shared.allETags()
+            )
+            
             delegate.footerView?.updateTimeText(self.getRefreshTitle(), isRefreshing: false)
             delegate.footerView?.updateRepoCount()
         }
@@ -338,12 +345,15 @@ class RefreshCoordinator {
             var didUpdateAny = false
             let maxConcurrent = 4
             var repoIterator = reposToUpdate.makeIterator()
+            // Global rate limiter enforcing max 4 requests/sec (min 250ms spacing globally across all workers)
+            let rateLimiter = GlobalRateLimiter(minInterval: 0.25)
             
             await withTaskGroup(of: (String, (tags: [String]?, description: String?)).self) { group in
                 for _ in 0..<maxConcurrent {
                     guard let nextRepo = repoIterator.next() else { break }
                     if delegate.repoCoordinator.wasRecentlyRefreshed(repo: nextRepo) { continue }
                     group.addTask {
+                        await rateLimiter.acquire()
                         let res = await GitHubAPI.shared.fetchRepoTags(repo: nextRepo)
                         return (nextRepo, res)
                     }
@@ -368,12 +378,10 @@ class RefreshCoordinator {
                         }
                     }
                     
-                    // Throttle between task dispatches (~250ms) to stay within safe API rate guidelines
-                    try? await Task.sleep(nanoseconds: 250_000_000)
-                    
                     if let nextRepo = repoIterator.next() {
                         if delegate.repoCoordinator.wasRecentlyRefreshed(repo: nextRepo) { continue }
                         group.addTask {
+                            await rateLimiter.acquire()
                             let res = await GitHubAPI.shared.fetchRepoTags(repo: nextRepo)
                             return (nextRepo, res)
                         }

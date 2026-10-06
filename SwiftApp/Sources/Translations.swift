@@ -108,6 +108,10 @@ enum Translations {
             "apiUnauthorized": "Invalid or expired token",
             "apiNetworkError": "Network error",
             "apiUnknownError": "Unknown API error",
+            "beerHandleTitle": "Beer Mug Handle",
+            "beerHandleEnabled": "Handle enabled",
+            "beerHandleDisabled": "Handle disabled",
+            "notesNotFound": "Repository or cask not found",
 
         ],
         "es": [
@@ -214,6 +218,10 @@ enum Translations {
             "cleaningBrew": "Limpiando...",
             "brewCleaned": "Limpiado",
             "meow": "Miau",
+            "beerHandleTitle": "Asa de la jarra",
+            "beerHandleEnabled": "Asa activada",
+            "beerHandleDisabled": "Asa desactivada",
+            "notesNotFound": "Repositorio o cask no encontrado",
 
         ],
         "fr": [
@@ -322,6 +330,10 @@ enum Translations {
             "clearBrewCache": "Exécuter brew cleanup",
             "cleaningBrew": "Nettoyage...",
             "brewCleaned": "Nettoyé",
+            "beerHandleTitle": "Anse de chope",
+            "beerHandleEnabled": "Anse activée",
+            "beerHandleDisabled": "Anse désactivée",
+            "notesNotFound": "Dépôt ou cask introuvable",
 
         ],
         "de": [
@@ -430,6 +442,10 @@ enum Translations {
             "clearBrewCache": "brew cleanup ausführen",
             "cleaningBrew": "Wird bereinigt...",
             "brewCleaned": "Bereinigt",
+            "beerHandleTitle": "Bierkrug-Henkel",
+            "beerHandleEnabled": "Henkel aktiviert",
+            "beerHandleDisabled": "Henkel deaktiviert",
+            "notesNotFound": "Repository oder Cask nicht gefunden",
 
         ],
         "it": [
@@ -538,6 +554,10 @@ enum Translations {
             "clearBrewCache": "Esegui brew cleanup",
             "cleaningBrew": "Pulizia in corso...",
             "brewCleaned": "Pulito",
+            "beerHandleTitle": "Manico del boccale",
+            "beerHandleEnabled": "Manico attivato",
+            "beerHandleDisabled": "Manico disattivato",
+            "notesNotFound": "Repository o cask non trovato",
 
         ],
         "pt": [
@@ -647,6 +667,10 @@ enum Translations {
             "clearBrewCache": "Executar brew cleanup",
             "cleaningBrew": "Limpando...",
             "brewCleaned": "Limpo",
+            "beerHandleTitle": "Alça da caneca",
+            "beerHandleEnabled": "Alça ativada",
+            "beerHandleDisabled": "Alça desativada",
+            "notesNotFound": "Repositório ou cask não encontrado",
 
         ],
          "zh": [
@@ -755,6 +779,10 @@ enum Translations {
             "clearBrewCache": "运行 brew cleanup",
             "cleaningBrew": "正在清理...",
             "brewCleaned": "已清理",
+            "beerHandleTitle": "啤酒杯手柄",
+            "beerHandleEnabled": "手柄已启用",
+            "beerHandleDisabled": "手柄已禁用",
+            "notesNotFound": "未找到仓库或 Cask",
 
         ],
         "hi": [
@@ -863,6 +891,10 @@ enum Translations {
             "clearBrewCache": "brew cleanup चलाएं",
             "cleaningBrew": "सफाई हो रही है...",
             "brewCleaned": "साफ़ किया गया",
+            "beerHandleTitle": "बीयर मग हैंडल",
+            "beerHandleEnabled": "हैंडल सक्षम किया गया",
+            "beerHandleDisabled": "हैंडल अक्षम किया गया",
+            "notesNotFound": "भंडार या कास्क नहीं मिला",
 
         ],
         "ar": [
@@ -971,6 +1003,10 @@ enum Translations {
             "clearBrewCache": "تشغيل brew cleanup",
             "cleaningBrew": "جارٍ التنظيف...",
             "brewCleaned": "تم التنظيف",
+            "beerHandleTitle": "مقبض الكوب",
+            "beerHandleEnabled": "تم تفعيل المقبض",
+            "beerHandleDisabled": "تم تعطيل المقبض",
+            "notesNotFound": "لم يتم العثور على المستودع أو cask",
 
         ],
         "ru": [
@@ -1079,6 +1115,10 @@ enum Translations {
             "clearBrewCache": "Запустить brew cleanup",
             "cleaningBrew": "Очистка...",
             "brewCleaned": "Очищено",
+            "beerHandleTitle": "Ручка кружки",
+            "beerHandleEnabled": "Ручка включена",
+            "beerHandleDisabled": "Ручка отключена",
+            "notesNotFound": "Репозиторий или cask не найден",
 
         ],
         "ja": [
@@ -1187,6 +1227,10 @@ enum Translations {
             "clearBrewCache": "brew cleanup を実行",
             "cleaningBrew": "クリーンアップ中...",
             "brewCleaned": "クリーンアップ完了",
+            "beerHandleTitle": "ビールジョッキの取っ手",
+            "beerHandleEnabled": "取っ手を有効化",
+            "beerHandleDisabled": "取っ手を無効化",
+            "notesNotFound": "リポジトリまたは cask が見つかりません",
 
         ],
     ]

@@ -141,6 +141,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         refreshCoordinator = RefreshCoordinator(delegate: self)
         repoCoordinator = RepoCoordinator(delegate: self)
         
+        // Restore persistent disk cache (metadata + ETags) so 900+ repositories
+        // populate instantly on launch and subsequent conditional checks use 304 (0 rate limit cost)
+        let diskCache = ConfigManager.shared.loadCache()
+        self.repoCache = diskCache.repoCache
+        GitHubAPI.shared.loadETags(diskCache.etags)
+        
         // Defer heavy UI building and initial refresh to ensure status icon shows instantly
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -150,8 +156,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             
             // Allow the initial runloop pass to settle so icon animation doesn't freeze
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.triggerFullRefresh(nil)
-                self?.refreshCoordinator.startTagBackfillSequence()
+                guard let self = self else { return }
+                
+                // Smart launch refresh: Only trigger full network refresh if cache is empty
+                // or if the configured interval has elapsed since the last recorded refresh.
+                let refreshMinutes = ConfigManager.shared.config.refreshMinutes
+                let nextRefreshDate = self.refreshCoordinator.lastRefreshTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
+                let isDue = (self.refreshCoordinator.lastRefreshTime == Date.distantPast) || (nextRefreshDate.timeIntervalSinceNow <= 0)
+                
+                if self.repoCache.isEmpty || isDue {
+                    self.triggerFullRefresh(nil)
+                } else {
+                    self.footerView?.updateTimeText(self.getRefreshTitle(), isRefreshing: false)
+                }
+                
+                self.refreshCoordinator.startTagBackfillSequence()
             }
         }
         
@@ -196,39 +215,216 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         )
     }
     
+    static func createMugImage(slashed: Bool) -> NSImage? {
+        guard let base = NSImage(systemSymbolName: "mug.fill", accessibilityDescription: nil) else { return nil }
+        guard slashed else { return base }
+        
+        let size = NSSize(width: 48, height: 48)
+        let img = NSImage(size: size, flipped: false) { rect in
+            base.draw(in: rect.insetBy(dx: 4, dy: 4))
+            
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return true }
+            
+            let p1 = CGPoint(x: rect.minX + 6, y: rect.maxY - 6)
+            let p2 = CGPoint(x: rect.maxX - 6, y: rect.minY + 6)
+            
+            // Knockout gap around slash
+            ctx.saveGState()
+            ctx.setBlendMode(.clear)
+            ctx.setLineCap(.round)
+            ctx.setLineWidth(5.5)
+            ctx.strokeLineSegments(between: [p1, p2])
+            ctx.restoreGState()
+            
+            // Slash stroke
+            ctx.saveGState()
+            ctx.setLineCap(.round)
+            ctx.setLineWidth(2.5)
+            NSColor.white.setStroke()
+            ctx.strokeLineSegments(between: [p1, p2])
+            ctx.restoreGState()
+            
+            return true
+        }
+        img.isTemplate = false
+        return img
+    }
+    
+    func applyBeerHandleState(_ newState: Bool) {
+        DispatchQueue.main.async {
+            ConfigManager.shared.config.beerHandleEnabled = newState
+            ConfigManager.shared.saveConfig()
+            
+            if newState {
+                self.updateBeerHandleVisibility()
+            } else {
+                self.beerHandle?.hideAnimated()
+            }
+            
+            let statusText = newState ? Translations.get("beerHandleEnabled") : Translations.get("beerHandleDisabled")
+            let mugImage = AppDelegate.createMugImage(slashed: !newState)
+            HUDPanel.shared.show(title: Translations.get("beerHandleTitle"), subtitle: statusText, image: mugImage)
+        }
+    }
+    
+    static func findMatchingRepo(for target: String, in repos: [RepoConfig]) -> RepoConfig? {
+        let trimmed = target.trimmingCharacters(in: CharacterSet(charactersIn: "/").union(.whitespacesAndNewlines))
+        guard !trimmed.isEmpty else { return nil }
+        
+        // 1. Exact match on repo.name (e.g. "rclone-ui/rclone-ui" or "nad-bit/Mino")
+        if let match = repos.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            return match
+        }
+        
+        // 2. Exact match on repo.cask (e.g. "nad-bit/tap/mino" or "lulu")
+        if let match = repos.first(where: { $0.cask?.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            return match
+        }
+        
+        // 3. Short repo name match (e.g. "rclone-ui" matching "rclone-ui/rclone-ui")
+        if let match = repos.first(where: {
+            $0.name.split(separator: "/").last?.caseInsensitiveCompare(trimmed) == .orderedSame
+        }) {
+            return match
+        }
+        
+        // 4. Short cask name match (e.g. "mino" matching "nad-bit/tap/mino")
+        if let match = repos.first(where: {
+            $0.cask?.split(separator: "/").last?.caseInsensitiveCompare(trimmed) == .orderedSame
+        }) {
+            return match
+        }
+        
+        return nil
+    }
+    
+    func findMatchingRepo(for target: String) -> RepoConfig? {
+        return AppDelegate.findMatchingRepo(for: target, in: ConfigManager.shared.config.repos)
+    }
+    
     @objc private func handleURLEvent(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
         guard let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
               let url = URL(string: urlString) else { return }
         
         guard url.scheme?.lowercased() == "mino" else { return }
         
-        // Handle formats: mino://add/<target> or mino://<target>
-        var rawTarget = ""
-        if url.host?.lowercased() == "add" {
-            rawTarget = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        } else if let host = url.host, !host.isEmpty {
-            rawTarget = host + url.path
-        } else {
-            rawTarget = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        }
+        let host = url.host?.lowercased() ?? ""
         
-        // Clean up URL prefix if someone passes https://github.com/... or github.com/...
-        rawTarget = rawTarget.replacingOccurrences(of: "https://github.com/", with: "", options: .caseInsensitive)
-        rawTarget = rawTarget.replacingOccurrences(of: "http://github.com/", with: "", options: .caseInsensitive)
-        rawTarget = rawTarget.replacingOccurrences(of: "github.com/", with: "", options: .caseInsensitive)
-        rawTarget = rawTarget.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        guard !rawTarget.isEmpty, rawTarget.count <= 256 else { return }
-        
-        // Strict canonical validation via Utils.isValidMinoTarget
-        guard Utils.isValidMinoTarget(rawTarget) else {
-            print("⚠️ [AppDelegate] Ignored malformed target from mino:// URL: \(rawTarget)")
+        // 1. Handle ASA (Beer Mug Handle): mino://handle or mino://handle/[on|off|toggle]
+        if host == "handle" {
+            let action = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+            let validHandleActions: Set<String> = ["", "toggle", "on", "off", "enable", "disable", "true", "false", "1", "0"]
+            guard validHandleActions.contains(action) else {
+                print("⚠️ [AppDelegate] Unrecognized handle action: \(action)")
+                return
+            }
+            
+            let current = ConfigManager.shared.config.beerHandleEnabled ?? true
+            let newState: Bool
+            if action == "on" || action == "true" || action == "1" || action == "enable" {
+                newState = true
+            } else if action == "off" || action == "false" || action == "0" || action == "disable" {
+                newState = false
+            } else {
+                newState = !current
+            }
+            applyBeerHandleState(newState)
             return
         }
         
-        Task {
-            _ = await self.repoCoordinator.addRepoSmart(repoName: rawTarget)
+        // 2. Set parameter: mino://set?beer_handle=true|false|toggle
+        if host == "set" {
+            if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let items = components.queryItems {
+                if let item = items.first(where: { $0.name == "beer_handle" || $0.name == "beer_handle_enabled" }),
+                   let val = item.value?.lowercased() {
+                    let current = ConfigManager.shared.config.beerHandleEnabled ?? true
+                    let newState: Bool
+                    if val == "on" || val == "true" || val == "1" || val == "enable" {
+                        newState = true
+                    } else if val == "off" || val == "false" || val == "0" || val == "disable" {
+                        newState = false
+                    } else if val == "toggle" {
+                        newState = !current
+                    } else {
+                        return
+                    }
+                    applyBeerHandleState(newState)
+                    return
+                }
+            }
         }
+        
+        // 3. Open Notes Popover: mino://notes/<target> or mino://notes?target=<target>
+        if host == "notes" {
+            var target = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if target.isEmpty,
+               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let items = components.queryItems {
+                target = items.first(where: { $0.name == "target" || $0.name == "repo" || $0.name == "cask" })?.value ?? ""
+            }
+            
+            // Clean up target (strip https://github.com/ etc.)
+            target = target.replacingOccurrences(of: "https://github.com/", with: "", options: .caseInsensitive)
+            target = target.replacingOccurrences(of: "http://github.com/", with: "", options: .caseInsensitive)
+            target = target.replacingOccurrences(of: "github.com/", with: "", options: .caseInsensitive)
+            target = target.trimmingCharacters(in: CharacterSet(charactersIn: "/").union(.whitespacesAndNewlines))
+            
+            guard !target.isEmpty else { return }
+            
+            if let matchedRepo = findMatchingRepo(for: target) {
+                DispatchQueue.main.async {
+                    NSApp.activate(ignoringOtherApps: true)
+                    if self.mainPopover?.isShown == true {
+                        self.mainPopover?.close()
+                    }
+                    self.hideInformationalWindows(except: self.releaseNotesPopover)
+                    if let button = self.statusItem?.button {
+                        self.repoCoordinator.handleShowNotes(for: matchedRepo.name, relativeTo: button)
+                    }
+                }
+            } else {
+                DispatchQueue.main.async {
+                    HUDPanel.shared.showCompletion(
+                        title: Translations.get("notesNotFound"),
+                        subtitle: target,
+                        isSuccess: false
+                    )
+                }
+            }
+            return
+        }
+        
+        // 4. Add repository: mino://add/<target>
+        if host == "add" {
+            var rawTarget = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if rawTarget.isEmpty,
+               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let items = components.queryItems {
+                rawTarget = items.first(where: { $0.name == "target" || $0.name == "repo" || $0.name == "cask" })?.value ?? ""
+            }
+            
+            // Clean up URL prefix if someone passes https://github.com/... or github.com/...
+            rawTarget = rawTarget.replacingOccurrences(of: "https://github.com/", with: "", options: .caseInsensitive)
+            rawTarget = rawTarget.replacingOccurrences(of: "http://github.com/", with: "", options: .caseInsensitive)
+            rawTarget = rawTarget.replacingOccurrences(of: "github.com/", with: "", options: .caseInsensitive)
+            rawTarget = rawTarget.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            guard !rawTarget.isEmpty, rawTarget.count <= 256 else { return }
+            
+            // Strict canonical validation via Utils.isValidMinoTarget
+            guard Utils.isValidMinoTarget(rawTarget) else {
+                print("⚠️ [AppDelegate] Ignored malformed target from mino://add/ URL: \(rawTarget)")
+                return
+            }
+            
+            Task {
+                _ = await self.repoCoordinator.addRepoSmart(repoName: rawTarget)
+            }
+            return
+        }
+        
+        print("⚠️ [AppDelegate] Ignored unrecognized or unsupported mino:// command: \(host)")
     }
     
     @objc private func configDidUpdate() {
@@ -251,6 +447,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         refreshCoordinator.countdownTimer?.invalidate()
         refreshCoordinator.exactRefreshTimer?.invalidate()
         GlobalHotkeyManager.shared.unregister()
+        ConfigManager.shared.saveCacheSync(repoCache: self.repoCache, etags: GitHubAPI.shared.allETags())
     }
     
     @objc func togglePopover(_ sender: Any?) {

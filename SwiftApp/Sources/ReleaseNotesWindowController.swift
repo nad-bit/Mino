@@ -163,6 +163,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
     private var assetsContainerView: NSStackView!
     private var assetsScrollView: NSScrollView!
     private(set) var currentRepoName: String?
+    private(set) var currentAssets: [ReleaseAsset]?
     private var repoReleasesURL: URL?
     private var activeDownloadTask: Task<Void, Never>?
     
@@ -409,6 +410,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
     
     func loadNotes(for info: RepoInfo) {
         self.currentRepoName = info.name
+        self.currentAssets = info.assets
         
         // Reset navigation segment to 0 ("Notas")
         modeSegmentedControl.selectedSegment = 0
@@ -555,7 +557,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             }
         }
         
-        // Render initial body (renders text immediately without blocking on disk reads)
+        // Render initial body (renders text immediately without blocking on image file reads or decodes)
         renderNotesBody(bodyText: rawBody, info: info, preloadedImages: initialPreloaded)
         
         // Asynchronously resolve disk cache hits and download any missing images in background
@@ -563,10 +565,31 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             let repoName = info.name
             Task { [weak self] in
                 var preloaded = initialPreloaded
-                for entry in uncachedEntries {
-                    if let image = await GitHubAPI.shared.fetchImage(from: entry.full) {
-                        preloaded[entry.raw] = image
-                        preloaded[entry.full] = image
+                
+                // Concurrently fetch missing images using a bounded TaskGroup (up to 4 concurrent downloads)
+                let maxConcurrentDownloads = min(4, uncachedEntries.count)
+                var entryIterator = uncachedEntries.makeIterator()
+                
+                await withTaskGroup(of: (String, String, Bool).self) { group in
+                    for _ in 0..<maxConcurrentDownloads {
+                        guard let entry = entryIterator.next() else { break }
+                        group.addTask {
+                            let img = await GitHubAPI.shared.fetchImage(from: entry.full)
+                            return (entry.raw, entry.full, img != nil)
+                        }
+                    }
+                    
+                    for await (raw, full, success) in group {
+                        if success, let image = GitHubAPI.shared.getRAMCachedImage(from: full) {
+                            preloaded[raw] = image
+                            preloaded[full] = image
+                        }
+                        if let nextEntry = entryIterator.next() {
+                            group.addTask {
+                                let img = await GitHubAPI.shared.fetchImage(from: nextEntry.full)
+                                return (nextEntry.raw, nextEntry.full, img != nil)
+                            }
+                        }
                     }
                 }
                 
@@ -1060,6 +1083,72 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         }
     }
     
+    // MARK: - Smart Matching Release Assets
+    
+    func findMatchingReleaseAsset(for url: URL) -> ReleaseAsset? {
+        return ReleaseNotesViewController.findMatchingReleaseAsset(for: url, in: currentAssets, currentRepoName: currentRepoName)
+    }
+    
+    private static func extractRepoName(from url: URL) -> String? {
+        let components = url.pathComponents
+        if let releasesIdx = components.firstIndex(where: { $0.caseInsensitiveCompare("releases") == .orderedSame }), releasesIdx > 1 {
+            return components[releasesIdx - 1].lowercased()
+        }
+        return nil
+    }
+    
+    static func findMatchingReleaseAsset(for url: URL, in assets: [ReleaseAsset]?, currentRepoName: String? = nil) -> ReleaseAsset? {
+        guard let assets = assets, !assets.isEmpty else { return nil }
+        
+        let targetNorm = (url.standardized.absoluteString.removingPercentEncoding ?? url.standardized.absoluteString).lowercased()
+        let targetPath = (url.standardized.path.removingPercentEncoding ?? url.standardized.path).lowercased()
+        let targetFileName = (url.lastPathComponent.removingPercentEncoding ?? url.lastPathComponent).lowercased()
+        
+        let host = url.host?.lowercased()
+        let isTrustedHost = GitHubAPI.isTrustedGitHubHost(host)
+        
+        // Extract repo short name (e.g. "rclone-ui" from "rclone-ui/rclone-ui" or "rclone/rclone-ui")
+        let repoShortName = currentRepoName?.components(separatedBy: "/").last?.lowercased()
+        
+        for asset in assets {
+            guard let assetURL = URL(string: asset.downloadURL)?.standardized else { continue }
+            let assetNorm = (assetURL.absoluteString.removingPercentEncoding ?? assetURL.absoluteString).lowercased()
+            let assetPath = (assetURL.path.removingPercentEncoding ?? assetURL.path).lowercased()
+            let assetFileName = asset.name.lowercased()
+            
+            // 1. Exact URL match (case-insensitive, percent-decoded)
+            if assetNorm == targetNorm {
+                return asset
+            }
+            
+            // 2. Exact Path match on trusted GitHub host
+            if isTrustedHost, let assetHost = assetURL.host?.lowercased(), GitHubAPI.isTrustedGitHubHost(assetHost) {
+                if assetPath == targetPath {
+                    return asset
+                }
+            }
+            
+            // 3. GitHub release download match:
+            // Handles repo transfers/renames (e.g. rclone-ui -> rclone) and /releases/latest/download/ endpoints.
+            if isTrustedHost {
+                let isReleaseDownload = targetPath.contains("/releases/download/") || targetPath.contains("/releases/latest/download/")
+                if isReleaseDownload && targetFileName == assetFileName {
+                    let targetRepo = extractRepoName(from: url)
+                    let assetRepo = extractRepoName(from: assetURL)
+                    let currentRepo = repoShortName
+                    
+                    if let targetRepo = targetRepo {
+                        if targetRepo == assetRepo || (currentRepo != nil && targetRepo == currentRepo) {
+                            return asset
+                        }
+                    }
+                }
+            }
+        }
+        
+        return nil
+    }
+    
     // MARK: - NSTextViewDelegate
     
     func textView(_ view: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
@@ -1075,6 +1164,13 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             guard scheme == "https" || scheme == "http" || scheme == "mailto" else {
                 print("⚠️ [ReleaseNotes] Blocked opening link with untrusted scheme: \(scheme)")
                 return false
+            }
+            
+            // Smart Matching: If this link points to an official release asset of this repository,
+            // trigger the native verified download engine WITHOUT closing the popover!
+            if let matchedAsset = findMatchingReleaseAsset(for: url) {
+                downloadAssetClicked(matchedAsset)
+                return true
             }
             
             if let popover = (NSApp.delegate as? AppDelegate)?.releaseNotesPopover {

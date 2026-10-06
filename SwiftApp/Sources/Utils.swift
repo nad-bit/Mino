@@ -699,3 +699,30 @@ extension NSWindow {
         })
     }
 }
+
+/// Thread-safe rate limiter actor that guarantees a minimum interval between operations across all concurrent workers.
+actor GlobalRateLimiter {
+    private let minInterval: TimeInterval
+    private var nextAvailableDate: Date = .distantPast
+    
+    init(minInterval: TimeInterval) {
+        self.minInterval = minInterval
+    }
+    
+    init(requestsPerSecond: Double) {
+        self.minInterval = requestsPerSecond > 0 ? (1.0 / requestsPerSecond) : 0
+    }
+    
+    /// Suspends execution until the global slot is available, guaranteeing spacing across all callers.
+    func acquire() async {
+        guard minInterval > 0 else { return }
+        let now = Date()
+        let scheduledTime = max(now, nextAvailableDate)
+        nextAvailableDate = scheduledTime.addingTimeInterval(minInterval)
+        
+        let waitTime = scheduledTime.timeIntervalSince(now)
+        if waitTime > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+        }
+    }
+}

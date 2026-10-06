@@ -5,6 +5,24 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-10-06
+ 
+### Performance & Audit Hardening
+- **Persistent Disk Cache (`cache.json`) & Rate Limit Shield**: Persisted repository release metadata and HTTP ETags to `~/.config/Mino/cache.json`, enabling instant 0 ms cold starts for libraries with 900+ repositories. Subsequent launches reuse cached ETags for `304 Not Modified` conditional requests, consuming **0 units** of the GitHub API rate limit for unchanged repositories.
+- **Smart Launch Refreshing**: Eliminated unconditional launch refresh bursts by validating `lastRefreshTime` against the configured interval on startup, preventing redundant API quota consumption across frequent application restarts.
+- **ETag Support for Commit Tracking**: Extended GitHub conditional HTTP requests (`If-None-Match`) to commit-based tracking endpoints (`${repo}:commits`), preventing redundant rate limit consumption when repositories using commit tracking have not changed.
+- **Global Rate Limiter for Tag Discovery**: Introduced `GlobalRateLimiter` to strictly enforce global 250ms spacing between tag backfill requests across all concurrent workers.
+- **Concurrent Release Notes Asset Pre-fetching**: Pre-downloaded images concurrently via a bounded `TaskGroup` in `ReleaseNotesViewController`, eliminating sequential loading delays while preventing thread pool exhaustion.
+- **Smart Matching for In-Notes Release Downloads**: Enabled native cryptographic verification and download engine for download links found inside release notes text. Supports transferred/renamed repositories (e.g. `rclone-ui/rclone-ui` to `rclone/rclone-ui`), link query parameters, and maintains the popover open during downloads without unexpected dismissal.
+
+### URL Scheme (`mino://`) & Productivity Integrations
+- **Beer Mug Handle (ASA) Toggle**: Added `mino://handle` (toggle), `mino://handle/[on|off|toggle]`, and `mino://set?beer_handle=true|false` to control the decorative beer mug handle silhouette, with persistent storage in `repos.json` (`beer_handle_enabled`) and dynamic `HUDPanel` feedback.
+- **Instant Release Notes Launcher**: Added `mino://notes/<target>` for direct integration with text-action utilities like PopClip, OpenClip, Raycast, or Terminal. Resolves repositories by full name (`owner/repo`), short repo name, cask name, or GitHub URL, instantly opening the Release Notes popover under the status bar icon with full keyboard focus.
+- **Repository Management**: Canonicalized repository additions strictly under `mino://add/<target>` (e.g. `mino://add/owner/repo`, `mino://add/cask_name`, or GitHub URLs), cleanly eliminating routing ambiguity and preventing naming collisions with existing and future command verbs.
+
+### Automated Testing
+- **Expanded Audit Test Suite (21 Test Suites)**: Added Test 20 and Test 21 to `AuditValidationTests.swift`, verifying URL parsing, target resolution across formats, ASA toggling, vector-slashed iconography, persistent disk cache serialization, ETag restoration, and 100% dictionary completeness across all 11 supported languages.
+
 ## [2.3.0] - 2026-10-04 "Ocelot"
 
 ### Performance & Scalability

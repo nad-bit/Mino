@@ -29,6 +29,9 @@
 - **🎯 Multi-Hunt Window**: The floating "Add Repositories..." window acts as a persistent tracking hub. Keep it open while you browse Safari, and simply hit `CMD+C` on sequential GitHub URLs. Mino automatically sniffs your clipboard and queues them up for rapid batch-ingestion without ever losing focus.
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
 - **🔐 Hardened Security & Resilience**: GitHub OAuth tokens stored in macOS Keychain with minimal scopes (`""`), strict domain allowlist validation, atomic configuration persistence, and link protocol isolation
+- **💾 Persistent Disk Cache & 0 ms Cold Starts**: Instant launch even with 900+ repositories. Full release metadata and HTTP ETags are persisted to disk (`~/.config/Mino/cache.json`), rendering the entire menu and release notes immediately without cold-start network bursts
+- **🛡 Smart Launch & HTTP 304 Rate Limit Shield**: Unconditional startup refreshes are eliminated. Unchanged repositories respond with `304 Not Modified` via conditional `ETag` headers, consuming **0 units** of your GitHub API quota
+- **⚡️ Deep Linking (`mino://`)**: Native URL scheme integration for adding repos/casks (`mino://add/...`), launching notes directly from PopClip/Raycast (`mino://notes/...`), and toggling decorative UI accents (`mino://handle`)
 - **★ Favorites**: Right-click any repository (or hit `CMD + S`) to mark it as a favorite. A gold ★ appears inline — toggles instantly without closing the menu.
 - **🌍 Localized**: English, Spanish, French, German, Italian, Portuguese, Mandarin Chinese, Hindi, Arabic, Russian, and Japanese with automatic system detection
 - **🔄 Auto-Start**: Launch at login via native macOS LaunchAgent
@@ -86,10 +89,22 @@ Click the `(+)` button in the menu to open the floating Window.
 - The window remains open and the text field clears. Cycle through your browser tabs, copying and adding rapidly.
 
 **Automation & URL Scheme (`mino://`):**
-Integrate Mino with macOS Shortcuts, PopClip, Alfred, Raycast, or custom scripts:
-- `mino://add/owner/repo` (e.g. `mino://add/nad-bit/mino`)
-- `mino://add/cask_name` (e.g. `mino://add/firefox`)
-- `mino://add/https://github.com/owner/repo`
+Integrate Mino with macOS Shortcuts, PopClip, Alfred, Raycast, or custom terminal scripts:
+
+- **Add Repositories or Casks (`mino://add/<target>`)**:
+  - `mino://add/owner/repo` (e.g. `mino://add/nad-bit/mino`)
+  - `mino://add/cask_name` (e.g. `mino://add/firefox`)
+  - `mino://add/https://github.com/owner/repo`
+
+- **Instant Release Notes Launcher (`mino://notes/<target>`)**:
+  - `mino://notes/owner/repo` (e.g. `mino://notes/nad-bit/mino`)
+  - `mino://notes/cask_name` (e.g. `mino://notes/firefox`)
+  - Opens the Release Notes popover directly under the status bar icon with full keyboard focus. Perfect for one-click PopClip or Raycast actions when selecting text anywhere in macOS.
+
+- **Beer Mug Handle Silhouette Toggle (`mino://handle`)**:
+  - `mino://handle` (toggles on/off)
+  - `mino://handle/on`, `mino://handle/off`, or `mino://handle/toggle`
+  - Persists preference in `repos.json` and displays dynamic HUD feedback with vector-slashed iconography.
 
 **Standard Manual Input:**
 - Enter `owner/repo` format (e.g., `microsoft/vscode`).
@@ -154,16 +169,17 @@ Mino adheres to strict defense-in-depth principles across authentication, networ
 - **Rate Limit Isolation & Quota Conservation**: Rate limit tracking strictly segregates unauthenticated IP-based quotas (60 req/hr) from authenticated user quotas (5,000 req/hr), purging stale state on token transitions and throttling UI hover updates with a 3-second cooldown to avoid wasteful quota consumption.
 - **Streaming Cryptographic Hashes**: Incorporates `Utils.computeSHA256` via Apple's `CryptoKit` with 64KB chunked streaming to verify file integrity with $O(1)$ memory consumption.
 - **Resource Protection & Memory Guards**: Remote release images are capped at 10 MB in memory, and the local disk cache (`~/Library/Caches/com.nad.mino/ReleaseImages`) is managed with automated background LRU pruning (150 MB quota / 30-day TTL).
-- **Automated Verification Suite (15 Tests)**: All security controls, host allowlists, URL regexes, decompression bomb guards, HTML sanitizers, multi-language localization integrity, cryptographic asset checksum validation, disk cache hashing, and macOS status bar compatibility routines are verified via automated tests in `SwiftApp/Tests/AuditValidationTests.swift` compiled directly against production sources (`./build.sh --test`).
+- **Automated Verification Suite (21 Tests)**: All security controls, host allowlists, URL regexes, decompression bomb guards, HTML sanitizers, multi-language localization integrity, cryptographic asset checksum validation, disk cache hashing, persistent cache serialization, ETag restoration, and macOS status bar compatibility routines are verified via automated tests in `SwiftApp/Tests/AuditValidationTests.swift` compiled directly against production sources (`./build.sh --test`).
 
-## Configuration
+## Configuration & Cache
 
-Configuration is stored in:
+User configuration and persistent caches are stored in:
 ```
-~/.config/Mino/repos.json
+~/.config/Mino/repos.json   # Tracked repositories and user settings
+~/.config/Mino/cache.json   # Persistent release metadata and HTTP ETags
 ```
 
-> **Note**: Tokens are NOT stored in this file — they're in Keychain.
+> **Note**: Sensitive tokens are NOT stored in these files — they are protected in the macOS Keychain.
 
 ## Keyboard Shortcuts
 

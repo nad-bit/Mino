@@ -41,7 +41,9 @@ enum Constants {
     static let defaultAnimationDuration: TimeInterval = 0.15
     
     // Beer Handle (ASA) Constants
-    static let beerHandleEnabled: Bool = true          // Master toggle for the handle
+    static var beerHandleEnabled: Bool {
+        ConfigManager.shared.config.beerHandleEnabled ?? true
+    }
     static let beerHandleDesign: BeerHandleDesign = .curved  // .curved (D shape) or .rectangular
     static let beerHandleAnimation: BeerHandleAnimation = .slide // .fade or .slide
     static let beerHandleWidth: CGFloat = menuWidth / 4 // Extends 1/4 of menu width to the right
