@@ -24,15 +24,18 @@ enum Constants {
     
     // UI Constants
     static let newReleaseThresholdDays: Int = 7 // Fallback default, overridden by config
-    static let menuHeaderFooterHeight: CGFloat = 54.0
-    static let menuWidth: CGFloat = 512.0
+    static var menuScale: CGFloat { CGFloat(ConfigManager.shared.config.menuScale ?? 1.0) }
+    static let menuScaleMin: Double = 1.0
+    static let menuScaleMax: Double = 1.9
+    static var menuHeaderFooterHeight: CGFloat { 54.0 * menuScale }
+    static var menuWidth: CGFloat { 512.0 * menuScale }
     // Backward compatibility aliases
     static var menuMinWidth: CGFloat { menuWidth }
     static var menuDefaultWidth: CGFloat { menuWidth }
     static var menuMaxWidth: CGFloat { menuWidth }
-    static let menuMaxHeight: CGFloat = 688.0
-    static let notesWindowWidth: CGFloat = 640.0
-    static let notesWindowHeight: CGFloat = 580.0
+    static var menuMaxHeight: CGFloat { 688.0 * menuScale }
+    static var notesWindowWidth: CGFloat { 640.0 * menuScale }
+    static var notesWindowHeight: CGFloat { 580.0 * menuScale }
     static let tagCloudMaxTags: Int = 27
     static let menuBaseFontSize: CGFloat = 16.0
     static let menuFontSizeMin: CGFloat = 11.0
@@ -46,12 +49,12 @@ enum Constants {
     }
     static let beerHandleDesign: BeerHandleDesign = .curved  // .curved (D shape) or .rectangular
     static let beerHandleAnimation: BeerHandleAnimation = .slide // .fade or .slide
-    static let beerHandleWidth: CGFloat = menuWidth / 4 // Extends 1/4 of menu width to the right
-    static let beerHandleThickness: CGFloat = menuHeaderFooterHeight // Tube thickness = header/footer height
-    static let beerHandleMinHeight: CGFloat = menuMaxHeight - (2*menuHeaderFooterHeight) // Hide if menu shorter than its max height (2 * header+footer)
+    static var beerHandleWidth: CGFloat { menuWidth / 4 } // Extends 1/4 of menu width to the right
+    static var beerHandleThickness: CGFloat { menuHeaderFooterHeight } // Tube thickness = header/footer height
+    static var beerHandleMinHeight: CGFloat { menuMaxHeight - (2 * menuHeaderFooterHeight) } // Hide if menu shorter than its max height (2 * header+footer)
     static let beerHandleGapFromMenu: CGFloat = 1.0   // Horizontal gap between popover edge and handle
-    static let beerHandleVerticalInset: CGFloat = menuHeaderFooterHeight // Inset from top/bottom of the scroll area (menuHeaderFooterHeight = 54.0)
-    static let beerHandleCornerRadius: CGFloat = 14.0  // Corner radius for rectangular design
+    static var beerHandleVerticalInset: CGFloat { menuHeaderFooterHeight } // Inset from top/bottom of the scroll area (menuHeaderFooterHeight = 54.0)
+    static var beerHandleCornerRadius: CGFloat { 14.0 * menuScale }  // Corner radius for rectangular design
     static let beerHandleAnimationDuration: TimeInterval = 0.25
     static let beerHandleShowDebounce: TimeInterval = 0.3 // Debounce delay before showing the handle
     

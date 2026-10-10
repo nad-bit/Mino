@@ -36,6 +36,7 @@ class RefreshCoordinator {
     var countdownTimer: Timer?
     var exactRefreshTimer: Timer?
     var isRefreshing = false
+    private(set) var inFlightAnchorDate: Date?
     private var wakeObserver: Any?
     
     init(delegate: AppDelegate) {
@@ -75,9 +76,10 @@ class RefreshCoordinator {
         exactRefreshTimer?.invalidate()
         exactRefreshTimer = nil
         
-        guard lastRefreshTime != Date.distantPast else { return }
+        let baseDate = inFlightAnchorDate ?? lastRefreshTime
+        guard baseDate != Date.distantPast else { return }
         let refreshMinutes = ConfigManager.shared.config.refreshMinutes
-        let nextDate = lastRefreshTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
+        let nextDate = baseDate.addingTimeInterval(TimeInterval(refreshMinutes * 60))
         let delay = nextDate.timeIntervalSinceNow
         
         if delay <= 0 {
@@ -160,8 +162,11 @@ class RefreshCoordinator {
         if isRefreshing { return }
         isRefreshing = true
         
-        // Anchor to the current minute (strictly capped at current time, never in the future)
-        self.lastRefreshTime = RefreshCoordinator.truncateToMinute(Date())
+        // Anchor to the current minute (strictly capped at current time, never in the future).
+        // Kept in-flight during network operations to prevent timer drift and ensure subsequent
+        // refreshes align precisely to the first second (:00) of the target minute.
+        let anchorDate = RefreshCoordinator.truncateToMinute(Date())
+        self.inFlightAnchorDate = anchorDate
         scheduleExactTimer()
         
         delegate.footerView?.updateTimeText(Translations.get("refreshing"), isRefreshing: true)
@@ -304,6 +309,12 @@ class RefreshCoordinator {
                 try? await Task.sleep(nanoseconds: UInt64((1.0 - elapsed) * 1_000_000_000))
             }
             
+            // Persist the anchor date from the start of this refresh cycle.
+            // This anchors future runs to the exact first second (:00) of the configured minute
+            // without drifting, and ensures that UserDefaults is only updated after
+            // the refresh has completed successfully.
+            self.lastRefreshTime = anchorDate
+            self.inFlightAnchorDate = nil
             self.isRefreshing = false
             delegate.headerView?.setRefreshing(false)
             delegate.setStatusIconRefreshing(false)

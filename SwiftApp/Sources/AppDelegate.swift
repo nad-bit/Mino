@@ -146,6 +146,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         let diskCache = ConfigManager.shared.loadCache()
         self.repoCache = diskCache.repoCache
         GitHubAPI.shared.loadETags(diskCache.etags)
+        if UserDefaults.standard.object(forKey: "LastRefreshDate") == nil, let savedAt = diskCache.savedAt {
+            self.refreshCoordinator.lastRefreshTime = savedAt
+        }
         
         // Defer heavy UI building and initial refresh to ensure status icon shows instantly
         DispatchQueue.main.async { [weak self] in
@@ -213,6 +216,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             forEventClass: AEEventClass(kInternetEventClass),
             andEventID: AEEventID(kAEGetURL)
         )
+        
+        // Dynamic Screen Parameter & Resolution Tracking
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenParametersDidChange),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+        validateAndClampMenuScaleForCurrentScreen()
     }
     
     static func createMugImage(slashed: Bool) -> NSImage? {
@@ -264,6 +276,64 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             let statusText = newState ? Translations.get("beerHandleEnabled") : Translations.get("beerHandleDisabled")
             let mugImage = AppDelegate.createMugImage(slashed: !newState)
             HUDPanel.shared.show(title: Translations.get("beerHandleTitle"), subtitle: statusText, image: mugImage)
+        }
+    }
+    
+    func maxAllowedScaleForScreen(_ screen: NSScreen? = nil) -> Double {
+        let activeScreen = screen ?? (statusItem?.button?.window?.screen) ?? NSScreen.main ?? NSScreen.screens.first
+        let screenVisibleHeight = activeScreen?.visibleFrame.height ?? 850.0
+        // Maximum safe popover height leaving comfortable margin for menu bar & dock
+        let maxSafeHeight = screenVisibleHeight * 0.88
+        let baseTotalHeight = 688.0 + (2.0 * 54.0) // 796.0 pt base total height
+        let screenMaxScale = max(Constants.menuScaleMin, min(Constants.menuScaleMax, maxSafeHeight / baseTotalHeight))
+        return floor(screenMaxScale * 20.0) / 20.0
+    }
+    
+    func validateAndClampMenuScaleForCurrentScreen() {
+        let activeScreen = (statusItem?.button?.window?.screen) ?? NSScreen.main ?? NSScreen.screens.first
+        let maxScale = maxAllowedScaleForScreen(activeScreen)
+        let currentScale = ConfigManager.shared.config.menuScale ?? 1.0
+        if currentScale > maxScale {
+            applyMenuScale(maxScale, showHUD: false)
+        }
+    }
+    
+    @objc private func screenParametersDidChange() {
+        validateAndClampMenuScaleForCurrentScreen()
+    }
+    
+    func applyMenuScale(_ newScale: Double, showHUD: Bool = true) {
+        // Calculate max scale based on visible screen height to strictly preserve uniform menu proportions
+        let screen = (mainPopoverVC?.view.window?.screen) ?? (statusItem?.button?.window?.screen) ?? NSScreen.main ?? NSScreen.screens.first
+        let maxAllowedScale = maxAllowedScaleForScreen(screen)
+        
+        let rounded = round(newScale * 20.0) / 20.0 // 5% steps (0.05)
+        let clamped = max(Constants.menuScaleMin, min(maxAllowedScale, rounded))
+        
+        ConfigManager.shared.config.menuScale = clamped
+        ConfigManager.shared.saveConfig()
+        
+        DispatchQueue.main.async {
+            // 1. Update Main Popover
+            self.mainPopoverVC?.updateLayoutForScaleChange()
+            if let targetSize = self.mainPopoverVC?.preferredContentSize {
+                self.mainPopover?.contentSize = targetSize
+            }
+            
+            // 2. Update Release Notes if open
+            if let notesVC = self.releaseNotesPopover?.contentViewController as? ReleaseNotesViewController {
+                notesVC.updateLayoutForScaleChange()
+                self.releaseNotesPopover?.contentSize = notesVC.preferredContentSize
+            }
+            
+            // 3. Show HUDPanel feedback with percentage (e.g. "120%")
+            if showHUD {
+                let percent = Int(round(clamped * 100))
+                let isAtMax = (rounded > maxAllowedScale && clamped == maxAllowedScale)
+                let subtitle = isAtMax ? "\(percent)% (Max)" : "\(percent)%"
+                let scaleIcon = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: "Scale")
+                HUDPanel.shared.show(title: Translations.get("menuScaleTitle"), subtitle: subtitle, image: scaleIcon)
+            }
         }
     }
     
@@ -352,6 +422,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
                     applyBeerHandleState(newState)
                     return
                 }
+                if let item = items.first(where: { $0.name == "scale" || $0.name == "menu_scale" }),
+                   let valStr = item.value?.lowercased() {
+                    if valStr == "reset" || valStr == "default" {
+                        applyMenuScale(1.0)
+                        return
+                    }
+                    if let val = Double(valStr) {
+                        let scale = val >= 10.0 ? val / 100.0 : val
+                        applyMenuScale(scale)
+                        return
+                    }
+                }
+            }
+        }
+        
+        // 3. Scale command: mino://scale/<value|reset>
+        if host == "scale" {
+            let valStr = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+            if valStr == "reset" || valStr == "default" {
+                applyMenuScale(1.0)
+                return
+            }
+            if let val = Double(valStr) {
+                let scale = val >= 10.0 ? val / 100.0 : val
+                applyMenuScale(scale)
+                return
             }
         }
         
@@ -435,11 +531,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             let newMinutes = ConfigManager.shared.config.refreshMinutes
             let nextRefresh = self.refreshCoordinator.lastRefreshTime.addingTimeInterval(TimeInterval(newMinutes * 60))
             if nextRefresh.timeIntervalSinceNow <= 0 && !self.refreshCoordinator.isRefreshing {
-                self.refreshCoordinator.lastRefreshTime = Date()
+                self.triggerFullRefresh(nil)
+            } else {
+                self.refreshCoordinator.scheduleExactTimer()
+                self.footerView?.updateTimeText(self.getRefreshTitle(), isRefreshing: self.isRefreshing)
             }
-            
-            self.refreshCoordinator.scheduleExactTimer()
-            self.footerView?.updateTimeText(self.getRefreshTitle(), isRefreshing: self.isRefreshing)
         }
     }
     
@@ -470,7 +566,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             aboutPopover?.close()
             addRepoPopover?.close()
         } else {
-            if let button = statusItem.button {
+            if let button = statusItem?.button {
+                validateAndClampMenuScaleForCurrentScreen()
                 refreshQuickAddState()
                 rebuildMenu() // Ensure latest data
                 mainPopover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -893,7 +990,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         let scrollHeight = mainPopoverVC.currentScrollAreaHeight
         let effectiveHeight = scrollHeight - (Constants.beerHandleVerticalInset * 2)
         
-        guard effectiveHeight >= Constants.beerHandleMinHeight else {
+        // Add 2.0 pt tolerance to guard against AutoLayout Float quantization precision discrepancy
+        guard effectiveHeight >= (Constants.beerHandleMinHeight - 2.0) else {
             // Immediately hide without any debounce delay if menu height reduced below minimum
             beerHandle?.hide()
             return
@@ -950,7 +1048,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         let scrollHeight = mainPopoverVC.currentScrollAreaHeight
         let effectiveHeight = scrollHeight - (Constants.beerHandleVerticalInset * 2)
         
-        guard effectiveHeight >= Constants.beerHandleMinHeight else {
+        // Add 2.0 pt tolerance to guard against AutoLayout Float quantization precision discrepancy
+        guard effectiveHeight >= (Constants.beerHandleMinHeight - 2.0) else {
             beerHandle?.hideAnimated()
             return
         }
@@ -1088,6 +1187,44 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
         if modifiers == .command {
             switch event.charactersIgnoringModifiers?.lowercased() {
+            case "0":
+                applyMenuScale(1.0)
+                return true
+            case "1":
+                applyMenuScale(1.05)
+                return true
+            case "2":
+                applyMenuScale(1.10)
+                return true
+            case "3":
+                applyMenuScale(1.15)
+                return true
+            case "4":
+                applyMenuScale(1.20)
+                return true
+            case "5":
+                applyMenuScale(1.25)
+                return true
+            case "6":
+                applyMenuScale(1.30)
+                return true
+            case "7":
+                applyMenuScale(1.35)
+                return true
+            case "8":
+                applyMenuScale(1.40)
+                return true
+            case "9":
+                applyMenuScale(1.45)
+                return true
+            case "+", "=":
+                let current = ConfigManager.shared.config.menuScale ?? 1.0
+                applyMenuScale(round((current + 0.05) * 20.0) / 20.0)
+                return true
+            case "-":
+                let current = ConfigManager.shared.config.menuScale ?? 1.0
+                applyMenuScale(round((current - 0.05) * 20.0) / 20.0)
+                return true
             case "s": // CMD+S -> Toggle favorite
                 mainPopoverVC.triggerActionOnHighlighted(.favorite)
                 return true
@@ -1114,6 +1251,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
                 return true
             case "i": // CMD+I → Info / Release Notes
                 mainPopoverVC.triggerActionOnHighlighted(.notes)
+                return true
+            case "h": // CMD+H → Toggle beer mug handle (ASA)
+                let current = ConfigManager.shared.config.beerHandleEnabled ?? true
+                applyBeerHandleState(!current)
                 return true
             case "c": // CMD+C → Copy GitHub URL
                 mainPopoverVC.triggerActionOnHighlighted(.copy)

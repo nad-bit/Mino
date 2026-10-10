@@ -82,8 +82,8 @@ class FooterMenuItemView: NSView {
     }
     
     func updateFontSize() {
-        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
-        let btnSize = baseFontSize + 10
+        let baseFontSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
+        let btnSize = baseFontSize + (10 * Constants.menuScale)
         
         let config = NSImage.SymbolConfiguration(pointSize: baseFontSize - 2, weight: .semibold)
         refreshBtn.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")?.withSymbolConfiguration(config)
@@ -97,29 +97,44 @@ class FooterMenuItemView: NSView {
         repoCountLabel.font = .systemFont(ofSize: baseFontSize - 2)
     }
     
-    /// Refreshes the repo count label from the current config and updates the last refresh tooltip.
-    func updateRepoCount(filteredCount: Int? = nil, totalCount: Int? = nil) {
+    private var lastRefreshTitle: String = ""
+    
+    /// Refreshes the repo count label from the current config and updates the Cask count tooltip.
+    func updateRepoCount(filteredCount: Int? = nil, totalCount: Int? = nil, filteredCaskCount: Int? = nil) {
+        let allRepos = ConfigManager.shared.config.repos
+        let totalCasks = allRepos.filter { $0.source == "brew" }.count
+        
         if let filtered = filteredCount, let total = totalCount {
             let template = Translations.get("repoCount")
             repoCountLabel.stringValue = template.format(with: ["count": "\(filtered)/\(total)"])
+            
+            let filteredCasks = filteredCaskCount ?? filtered
+            let caskTemplate = Translations.get("caskCount")
+            repoCountLabel.toolTip = caskTemplate.format(with: ["count": "\(filteredCasks)/\(totalCasks)"])
         } else {
-            let count = ConfigManager.shared.config.repos.count
+            let count = allRepos.count
             if count == 1 {
                 repoCountLabel.stringValue = Translations.get("repoCountSingular")
             } else {
                 repoCountLabel.stringValue = Translations.get("repoCount").format(with: ["count": "\(count)"])
             }
+            
+            if totalCasks == 1 {
+                repoCountLabel.toolTip = Translations.get("caskCountSingular")
+            } else {
+                repoCountLabel.toolTip = Translations.get("caskCount").format(with: ["count": "\(totalCasks)"])
+            }
         }
-        updateLastRefreshTooltip()
+        self.toolTip = nil
+        updateRefreshTooltip()
     }
     
-    /// Updates the tooltip of the repo count label with the last refresh date & time.
-    func updateLastRefreshTooltip(lastRefreshDate: Date? = nil) {
+    /// Updates the tooltip of the refresh button combining refresh countdown/title and last update timestamp.
+    func updateRefreshTooltip(lastRefreshDate: Date? = nil) {
         let date = lastRefreshDate ?? appDelegate.refreshCoordinator.lastRefreshTime
+        let lastUpdateText: String
         if date == Date.distantPast {
-            let tip = Translations.get("lastUpdateNever")
-            repoCountLabel.toolTip = tip
-            self.toolTip = tip
+            lastUpdateText = Translations.get("lastUpdateNever")
         } else {
             let timeStr: String
             if Calendar.current.isDateInToday(date) {
@@ -127,10 +142,15 @@ class FooterMenuItemView: NSView {
             } else {
                 timeStr = DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
             }
-            let tip = Translations.get("lastUpdate").format(with: ["time": timeStr])
-            repoCountLabel.toolTip = tip
-            self.toolTip = tip
+            lastUpdateText = Translations.get("lastUpdate").format(with: ["time": timeStr])
         }
+        
+        let title = lastRefreshTitle.isEmpty ? Translations.get("refreshNow") : lastRefreshTitle
+        refreshBtn.toolTip = "\(title)\n\(lastUpdateText)"
+    }
+    
+    func updateLastRefreshTooltip(lastRefreshDate: Date? = nil) {
+        updateRefreshTooltip(lastRefreshDate: lastRefreshDate)
     }
     
     @objc private func refreshClicked() {
@@ -140,12 +160,10 @@ class FooterMenuItemView: NSView {
     }
     
     func updateTimeText(_ text: String, isRefreshing: Bool) {
-        if refreshBtn.toolTip != text {
-            refreshBtn.toolTip = text
-        }
+        lastRefreshTitle = text
         refreshBtn.baseColor = isRefreshing ? .tertiaryLabelColor : .secondaryLabelColor
         refreshBtn.needsDisplay = true
-        updateLastRefreshTooltip()
+        updateRefreshTooltip()
     }
     
     @objc private func quitClicked() {

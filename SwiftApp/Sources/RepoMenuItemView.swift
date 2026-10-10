@@ -171,11 +171,11 @@ class RepoMenuItemView: NSView {
         self.caskName = displayData.caskName
         self.appDelegate = appDelegate
         self.layoutMode = layout
-        self.baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        self.baseFontSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
         self.displayData = displayData
         self.originalDate = displayData.originalDate
         
-        let rowHeight: CGFloat = (layout == "cards") ? baseFontSize + 27 : baseFontSize + 9
+        let rowHeight: CGFloat = (layout == "cards") ? baseFontSize + (27 * Constants.menuScale) : baseFontSize + (9 * Constants.menuScale)
         
         super.init(frame: NSRect(x: 0, y: 0, width: 400, height: rowHeight))
         self.autoresizingMask = [.width]
@@ -362,8 +362,8 @@ class RepoMenuItemView: NSView {
         
         // Ensure buttons don't exceed row height
         btn.translatesAutoresizingMaskIntoConstraints = false
-        let btnHeight = (layoutMode == "cards") ? baseFontSize + 18 : baseFontSize + 4
-        btn.widthAnchor.constraint(equalToConstant: btnHeight + 4).isActive = true
+        let btnHeight = (layoutMode == "cards") ? baseFontSize + (18 * Constants.menuScale) : baseFontSize + (4 * Constants.menuScale)
+        btn.widthAnchor.constraint(equalToConstant: btnHeight + (4 * Constants.menuScale)).isActive = true
         btn.heightAnchor.constraint(equalToConstant: btnHeight).isActive = true
     }
     
@@ -427,7 +427,8 @@ class RepoMenuItemView: NSView {
         versionLabel.setContentHuggingPriority(.required, for: .horizontal)
         
         versionMaxWidthConstraint?.isActive = false
-        let tagVerConstraint = versionLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 140)
+        let maxTagVerW = 140.0 * Constants.menuScale
+        let tagVerConstraint = versionLabel.widthAnchor.constraint(lessThanOrEqualToConstant: maxTagVerW)
         tagVerConstraint.isActive = true
         versionMaxWidthConstraint = tagVerConstraint
         
@@ -480,7 +481,8 @@ class RepoMenuItemView: NSView {
         versionLabel.setContentHuggingPriority(.required, for: .horizontal)
         
         versionMaxWidthConstraint?.isActive = false
-        let cardVerConstraint = versionLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 160)
+        let maxCardVerW = 160.0 * Constants.menuScale
+        let cardVerConstraint = versionLabel.widthAnchor.constraint(lessThanOrEqualToConstant: maxCardVerW)
         cardVerConstraint.isActive = true
         versionMaxWidthConstraint = cardVerConstraint
         
@@ -702,7 +704,8 @@ class RepoMenuItemView: NSView {
             vConstraint.isActive = true
             versionMaxWidthConstraint = vConstraint
         } else {
-            let vConstraint = versionLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 120)
+            let maxColVerW = 120.0 * Constants.menuScale
+            let vConstraint = versionLabel.widthAnchor.constraint(lessThanOrEqualToConstant: maxColVerW)
             vConstraint.isActive = true
             versionMaxWidthConstraint = vConstraint
         }

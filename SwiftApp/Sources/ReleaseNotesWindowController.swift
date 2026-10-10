@@ -166,6 +166,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
     private(set) var currentAssets: [ReleaseAsset]?
     private var repoReleasesURL: URL?
     private var activeDownloadTask: Task<Void, Never>?
+    private var viewWidthConstraint: NSLayoutConstraint?
     
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -212,12 +213,14 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         mainStack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(mainStack)
         
+        let widthConstraint = view.widthAnchor.constraint(equalToConstant: Constants.notesWindowWidth)
+        self.viewWidthConstraint = widthConstraint
         NSLayoutConstraint.activate([
             mainStack.topAnchor.constraint(equalTo: view.topAnchor),
             mainStack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             mainStack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             mainStack.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            view.widthAnchor.constraint(equalToConstant: Constants.notesWindowWidth)
+            widthConstraint
         ])
         
         // --- 1. Header Card (Title + Description inside box) ---
@@ -236,12 +239,12 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         titleLabel.widthAnchor.constraint(equalTo: headerStack.widthAnchor).isActive = true
         
         descriptionLabel = NSTextField(labelWithString: "")
-        descriptionLabel.font = .systemFont(ofSize: 12.5, weight: .regular)
+        descriptionLabel.font = .systemFont(ofSize: 12.5 * Constants.menuScale, weight: .regular)
         descriptionLabel.textColor = .secondaryLabelColor
         descriptionLabel.alignment = .center
         descriptionLabel.lineBreakMode = .byWordWrapping
         descriptionLabel.maximumNumberOfLines = 0
-        descriptionLabel.preferredMaxLayoutWidth = Constants.notesWindowWidth - 76
+        descriptionLabel.preferredMaxLayoutWidth = Constants.notesWindowWidth - (76 * Constants.menuScale)
         descriptionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         descriptionLabel.translatesAutoresizingMaskIntoConstraints = false
         descriptionLabel.isHidden = true
@@ -395,13 +398,13 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
     }
     
     private func updateSegmentedControlFontSize() {
-        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
-        let offset = baseFontSize - 13.0
-        let segFontSize = max(11.0, min(18.0, 13.0 + (offset * 0.4)))
+        let baseFontSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
+        let offset = baseFontSize - (13.0 * Constants.menuScale)
+        let segFontSize = max(11.0 * Constants.menuScale, min(24.0 * Constants.menuScale, (13.0 * Constants.menuScale) + (offset * 0.4)))
         modeSegmentedControl.font = NSFont.systemFont(ofSize: segFontSize, weight: .medium)
-        if baseFontSize <= 12 {
+        if baseFontSize <= 12 * Constants.menuScale {
             modeSegmentedControl.controlSize = .small
-        } else if baseFontSize >= 19 {
+        } else if baseFontSize >= 19 * Constants.menuScale {
             modeSegmentedControl.controlSize = .large
         } else {
             modeSegmentedControl.controlSize = .regular
@@ -428,9 +431,9 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         
         let caskName = ConfigManager.shared.config.repos.first(where: { $0.name == info.name && $0.source == "brew" })?.cask
         
-        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
-        let offset = baseFontSize - 13.0
-        let titleFontSize = 24 + (offset * 0.5)
+        let baseFontSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
+        let offset = baseFontSize - (13.0 * Constants.menuScale)
+        let titleFontSize = (24 * Constants.menuScale) + (offset * 0.5)
         updateSegmentedControlFontSize()
         
         // --- TITLE ---
@@ -463,7 +466,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
            let desc = configRepo.repoDescription,
            !desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             descriptionLabel.stringValue = desc
-            descriptionLabel.font = .systemFont(ofSize: 13 + (offset * 0.5), weight: .regular)
+            descriptionLabel.font = .systemFont(ofSize: (13 * Constants.menuScale) + (offset * 0.5), weight: .regular)
             descriptionLabel.isHidden = false
         } else {
             descriptionLabel.stringValue = ""
@@ -620,8 +623,8 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         processedText = Utils.convertMarkdownToHTML(processedText, repo: info.name)
         let hasHTML = true
         
-        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
-        let offset = baseFontSize - 13.0
+        let baseFontSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
+        let offset = baseFontSize - (13.0 * Constants.menuScale)
         
         // 3. Extract image URLs from <img> tags IN ORDER (matching attachment index)
         var orderedImgURLs: [String] = []
@@ -712,10 +715,10 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                 htmlAttrStr.enumerateAttribute(.font, in: NSRange(location: 0, length: htmlAttrStr.length), options: .longestEffectiveRangeNotRequired) { value, range, stop in
                     if let font = value as? NSFont {
                         let isBold = font.fontDescriptor.symbolicTraits.contains(.bold)
-                        let newFont = NSFont.systemFont(ofSize: 14 + offset, weight: isBold ? .bold : .regular)
+                        let newFont = NSFont.systemFont(ofSize: (14 * Constants.menuScale) + offset, weight: isBold ? .bold : .regular)
                         htmlAttrStr.addAttribute(.font, value: newFont, range: range)
                     } else {
-                        htmlAttrStr.addAttribute(.font, value: NSFont.systemFont(ofSize: 14 + offset, weight: .regular), range: range)
+                        htmlAttrStr.addAttribute(.font, value: NSFont.systemFont(ofSize: (14 * Constants.menuScale) + offset, weight: .regular), range: range)
                     }
                 }
                 
@@ -849,8 +852,8 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             return
         }
         
-        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
-        let offset = baseFontSize - 13.0
+        let baseFontSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
+        let offset = baseFontSize - (13.0 * Constants.menuScale)
         
         for asset in assets {
             let row = ClickableAssetRow(frame: .zero)
@@ -891,13 +894,13 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                 iconView.contentTintColor = .controlAccentColor
             }
             iconView.translatesAutoresizingMaskIntoConstraints = false
-            iconView.widthAnchor.constraint(equalToConstant: 20).isActive = true
-            iconView.heightAnchor.constraint(equalToConstant: 20).isActive = true
+            iconView.widthAnchor.constraint(equalToConstant: 20 * Constants.menuScale).isActive = true
+            iconView.heightAnchor.constraint(equalToConstant: 20 * Constants.menuScale).isActive = true
             rowStack.addArrangedSubview(iconView)
             
             // Filename
             let nameLabel = NSTextField(labelWithString: asset.name)
-            nameLabel.font = .systemFont(ofSize: 13 + (offset * 0.5), weight: .medium)
+            nameLabel.font = .systemFont(ofSize: (13 * Constants.menuScale) + (offset * 0.5), weight: .medium)
             nameLabel.lineBreakMode = .byTruncatingMiddle
             nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             rowStack.addArrangedSubview(nameLabel)
@@ -919,7 +922,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                 sizeText = ""
             }
             let sizeLabel = NSTextField(labelWithString: sizeText)
-            sizeLabel.font = .systemFont(ofSize: 12 + (offset * 0.5), weight: .regular)
+            sizeLabel.font = .systemFont(ofSize: (12 * Constants.menuScale) + (offset * 0.5), weight: .regular)
             sizeLabel.textColor = .secondaryLabelColor
             sizeLabel.setContentHuggingPriority(.required, for: .horizontal)
             rowStack.addArrangedSubview(sizeLabel)
@@ -931,8 +934,8 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                 dlIcon.contentTintColor = .secondaryLabelColor
             }
             dlIcon.translatesAutoresizingMaskIntoConstraints = false
-            dlIcon.widthAnchor.constraint(equalToConstant: 16).isActive = true
-            dlIcon.heightAnchor.constraint(equalToConstant: 16).isActive = true
+            dlIcon.widthAnchor.constraint(equalToConstant: 16 * Constants.menuScale).isActive = true
+            dlIcon.heightAnchor.constraint(equalToConstant: 16 * Constants.menuScale).isActive = true
             dlIcon.setContentHuggingPriority(.required, for: .horizontal)
             rowStack.addArrangedSubview(dlIcon)
             
@@ -1187,6 +1190,15 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             popover.close()
         }
     }
+    
+    func updateLayoutForScaleChange() {
+        viewWidthConstraint?.constant = Constants.notesWindowWidth
+        preferredContentSize = NSSize(width: Constants.notesWindowWidth, height: Constants.notesWindowHeight)
+        updateSegmentedControlFontSize()
+        if let currentRepo = currentRepoName, let info = (NSApp.delegate as? AppDelegate)?.repoCache[currentRepo] {
+            loadNotes(for: info)
+        }
+    }
 }
 
 /// Custom NSTextView subclass providing asymmetrical left/right insets to achieve
@@ -1217,18 +1229,18 @@ class WrappingTagsView: NSView {
     
     func set(tags: [String]) {
         subviews.forEach { $0.removeFromSuperview() }
-        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
-        let offset = baseFontSize - 13.0
+        let baseFontSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
+        let offset = baseFontSize - (13.0 * Constants.menuScale)
         for tag in tags {
             let pillNode = ClickableTagPill(labelWithString: "  #\(tag)  ")
-            pillNode.font = .systemFont(ofSize: 11 + offset, weight: .medium)
+            pillNode.font = .systemFont(ofSize: (11 * Constants.menuScale) + offset, weight: .medium)
             pillNode.drawsBackground = true
             pillNode.isBordered = false
             pillNode.alignment = .center
             pillNode.sizeToFit()
             
             var f = pillNode.frame
-            f.size.height = max(f.height, 20)
+            f.size.height = max(f.height, 20 * Constants.menuScale)
             pillNode.frame = f
             
             let click = NSClickGestureRecognizer(target: self, action: #selector(tagClicked(_:)))

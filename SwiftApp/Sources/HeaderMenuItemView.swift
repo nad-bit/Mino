@@ -20,7 +20,7 @@ class HeaderMenuItemView: NSView {
     private let appDelegate: AppDelegate
     
     private var baseFontSize: CGFloat {
-        return ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        return (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
     }
     
     internal var lastHighlightState = false
@@ -31,6 +31,7 @@ class HeaderMenuItemView: NSView {
     private var quickAddTrailingToAddBtn: NSLayoutConstraint?
     private var quickAddHitAreaTrailingToSearch: NSLayoutConstraint?
     private var quickAddHitAreaTrailingToAddBtn: NSLayoutConstraint?
+    private var searchFieldHeightConstraint: NSLayoutConstraint?
     
     /// Target width set by AppDelegate after calculating menu size
     private var widthConstraint: NSLayoutConstraint?
@@ -206,11 +207,16 @@ class HeaderMenuItemView: NSView {
         
         // Define width constraint (initially inactive until targetWidth is set)
         widthConstraint = widthAnchor.constraint(equalToConstant: Constants.menuWidth)
+        
+        let sfHeight = max(22.0, (Constants.menuHeaderFooterHeight * 0.48))
+        let sfHeightConst = searchField.heightAnchor.constraint(equalToConstant: sfHeight)
+        self.searchFieldHeightConstraint = sfHeightConst
+        sfHeightConst.isActive = true
     }
     
     func updateFontSize() {
-        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
-        let btnSize = baseFontSize + 10
+        let baseFontSize = self.baseFontSize
+        let btnSize = baseFontSize + (10 * Constants.menuScale)
         
         let settingsConfig = NSImage.SymbolConfiguration(pointSize: baseFontSize - 2, weight: .semibold)
         settingsBtn.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: Translations.get("preferences"))?.withSymbolConfiguration(settingsConfig)
@@ -222,7 +228,19 @@ class HeaderMenuItemView: NSView {
         addBtn.constraints.first(where: { $0.firstAttribute == .width })?.constant = btnSize
         addBtn.constraints.first(where: { $0.firstAttribute == .height })?.constant = btnSize
         
+        let sfHeight = max(22.0, (Constants.menuHeaderFooterHeight * 0.48))
+        searchFieldHeightConstraint?.constant = sfHeight
         searchField.font = .systemFont(ofSize: baseFontSize - 2)
+        
+        if let searchCell = searchField.cell as? NSSearchFieldCell {
+            let iconSize = max(11.0, baseFontSize - 3)
+            let searchConfig = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
+            searchCell.searchButtonCell?.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?.withSymbolConfiguration(searchConfig)
+            
+            let cancelConfig = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
+            searchCell.cancelButtonCell?.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: nil)?.withSymbolConfiguration(cancelConfig)
+        }
+        
         if baseFontSize >= 18 {
             searchField.controlSize = .large
         } else if baseFontSize >= 14 {

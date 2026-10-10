@@ -5,6 +5,40 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.2] - 2026-10-10
+
+### Scheduling Resilience & Minute Precision
+- **Drift-Free Minute Anchoring**: Anchored automatic and manual refresh cycles strictly to the initial minute (`truncateToMinute`), ensuring subsequent scheduled refreshes always trigger at the first second (`:00`) of the expected minute according to the configured hourly interval (e.g., a refresh at `07:13:42` schedules subsequent runs precisely at `08:13:00`, `09:13:00`, `10:13:00`). Completely eliminates cumulative interval drift caused by network request latency.
+- **Fail-Safe Refresh Timestamp Commitment**: Decoupled `UserDefaults` timestamp commitment from refresh initiation. `LastRefreshDate` is now persisted strictly upon successful completion of repository updates, preventing interrupted or crashed refreshes from falsely registering as complete and skipping configured refresh intervals on relaunch.
+
+### Cache Concurrency & Integrity
+- **Serialized Cache Write Pipeline**: Introduced a dedicated serial queue (`cacheQueue`) and generation tracking (`cacheGeneration`) in `ConfigManager` to serialize disk cache operations. Rapid consecutive saves automatically coalesce, discarding stale in-flight snapshots before disk encoding to minimize redundant I/O.
+- **Cache File Resurrection Prevention**: Synchronized `clearDiskCache()` with the serial write queue and invalidated queued tasks, guaranteeing that background asynchronous writes can never recreate `cache.json` after the cache has been cleared or during session logout.
+- **Persistent Timestamp Synchronization (`savedAt`)**: Exposed `savedAt` in `ConfigManager.loadCache()` and integrated it as an authoritative fallback in `AppDelegate` for environments where `UserDefaults` lacks `LastRefreshDate`, preserving cache freshness tracking across preference resets.
+
+### Keyboard Shortcuts & Productivity
+- **Dynamic Menu & Release Notes Scaling (`CMD + 0..9`, `CMD +`, `CMD -`)**: Added native viewport scaling in fine-grained steps of 5% (1.0x to 1.45x / 100% to 145% of base size), with immediate visual feedback via a transient HUD notification displaying the active scale percentage (e.g. `115%`):
+  - `CMD + 0`: Reset scale to 1.0x (100% / base size).
+  - `CMD + 1` through `CMD + 9`: Directly set scale multipliers in 5% steps from 1.05x (105%) up to 1.45x (145%).
+  - `CMD +` / `CMD =` and `CMD -`: Increment or decrement scale by +5% or -5% with automatic screen-safe bounds clamping.
+  - **Screen-Safe Proportional Locking & Dynamic Resolution Tracking**: Menu dimensions scale uniformly and automatically clamp to the maximum safe scale permitted by the screen's vertical bounds (`88%` of `NSScreen.visibleFrame`). Listens to `didChangeScreenParametersNotification` and re-validates scale upon menu opening, automatically downscaling if the user moves between high and low-resolution monitors (e.g. from 1440p down to 1080p).
+  - **Beer Mug Handle (ASA) Sub-Pixel Quantization Resilience**: Solved floating point discrepancy where AutoLayout's internal 32-bit `Float` constraint storage induced a 12-millionth of a point shortfall on specific scales (110%, 120%, 135%, 145%), causing the handle to temporarily hide. Added a 2.0 pt numerical epsilon tolerance so the ASA displays reliably across all scales.
+  - **Tag Cloud Screen-Safe Ceiling Enforcement**: Dynamically calculated tag cloud row heights in `NoSearchResultsView` based on active font size and scale, capping row generation and clamping view height so that even at maximum font size (21 pt) and scale (145%) the popover never reaches the screen bottom or pushes the header off-screen.
+  - **Repository Name Priority & Version Tooltip**: Maintained absolute horizontal layout priority for repository names over version strings; version width constraints scale proportionally with the menu, truncating gracefully when space is tight while providing the full version in a rich tooltip upon hover.
+  - **Comprehensive UI Element Scaling**: Fully scaled the search field container, magnifying glass, and clear button symbols in the header, alongside release notes descriptions, download asset rows, tags, and empty state tag cloud pills.
+  - **Proportional Beer Mug Handle (ASA) Scaling**: All handle tube thickness, width, corner radii, and vertical insets dynamically scale in exact 1:1 proportion with the menu header and footer.
+  - **Preferences Isolation**: The Preferences panel remains strictly fixed to native macOS HIG dimensions, ensuring that user-configured font sizes (11–21 pt) serve as the pristine base font size.
+  - **URL Scheme Integration (`mino://scale/<val>`, `mino://set?scale=<val>`)**: Supported external scaling commands via URL scheme (e.g., `mino://scale/1.15`, `mino://scale/115`, or `mino://scale/reset`).
+- **Beer Mug Handle Toggle Shortcut (`CMD + H`)**: Added native support for `CMD + H` while the main popover is open to immediately toggle the decorative beer mug handle (ASA) silhouette with dynamic vector HUD feedback, complementing the `mino://handle` URL scheme.
+
+### User Interface & Tooltips
+- **Unified Temporal Refresh Tooltip**: Consolidated all refresh lifecycle information onto the Refresh button tooltip (`FooterMenuItemView`), showing both the upcoming refresh countdown (`Actualizar (xx h xx min)`) and the exact last execution timestamp (`Última actualización: xx:xx`) on separate lines.
+- **Homebrew Cask Breakdown in Repository Counter**: Repurposed the repository counter tooltip to cleanly display the total number of Homebrew Casks (`source: "brew"`) tracked in the library (e.g. `6 Casks`, `1 Cask`, or `2/6 Casks` when filtering search results), fully localized across all 11 supported languages.
+
+### Automated Testing
+- **Test Cache Sandbox & Rate Limit Shielding**: Added automated backup and atomic restoration of `~/.config/Mino/cache.json` and in-memory ETags in the test suite runner (`AuditValidationTests`). Compiling and running tests (`./build.sh`) no longer wipes out the user's persistent release cache, preventing unnecessary cold starts and conserving GitHub API quota across development cycles.
+- **Streamlined High-Value Test Suite (16 Core Test Suites)**: Refactored and pruned `AuditValidationTests.swift`, eliminating redundant mock tests, cosmetic drawing checks, and placebo assertions. Consolidated cryptographic digest and asset integrity checks into a unified pipeline, while strengthening verification of zero-drift minute anchoring (`truncateToMinute`), serialized disk cache queue protections against file resurrection, and shortcut command dispatch.
+
 ## [2.3.1] - 2026-10-06
  
 ### Performance & Audit Hardening

@@ -44,6 +44,7 @@ struct AppConfig: Codable {
     var menuFontSize: CGFloat?
     var downloadPath: String?
     var beerHandleEnabled: Bool?
+    var menuScale: Double?
     
     enum CodingKeys: String, CodingKey {
         case repos
@@ -56,6 +57,7 @@ struct AppConfig: Codable {
         case menuFontSize = "menu_font_size"
         case downloadPath = "download_path"
         case beerHandleEnabled = "beer_handle_enabled"
+        case menuScale = "menu_scale"
     }
     
     // Legacy key for migration from is_compact_mode
@@ -75,6 +77,7 @@ struct AppConfig: Codable {
         menuFontSize = try container.decodeIfPresent(CGFloat.self, forKey: .menuFontSize)
         downloadPath = (try container.decodeIfPresent(String.self, forKey: .downloadPath)) ?? "~/Desktop"
         beerHandleEnabled = try container.decodeIfPresent(Bool.self, forKey: .beerHandleEnabled)
+        menuScale = try container.decodeIfPresent(Double.self, forKey: .menuScale)
         
         // Migration: convert legacy is_compact_mode → menuFontSize
         if menuFontSize == nil {
@@ -124,5 +127,6 @@ RepoConfig(name: "apedley/transmogrify", source: "manual"),
         self.menuFontSize = Constants.menuBaseFontSize
         self.downloadPath = "~/Desktop"
         self.beerHandleEnabled = true
+        self.menuScale = 1.0
     }
 }

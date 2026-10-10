@@ -61,12 +61,16 @@ class ConfigManager {
     
     // MARK: - Persistent Disk Cache (ETags & Release Metadata)
     
-    func loadCache() -> (repoCache: [String: RepoInfo], etags: [String: String]) {
+    private let cacheQueue = DispatchQueue(label: "com.nad.mino.diskCacheQueue", qos: .utility)
+    private var cacheGeneration: Int = 0
+    private let cacheGenLock = NSLock()
+    
+    func loadCache() -> (repoCache: [String: RepoInfo], etags: [String: String], savedAt: Date?) {
         lock.lock()
         defer { lock.unlock() }
         
         guard FileManager.default.fileExists(atPath: cacheFile.path) else {
-            return ([:], [:])
+            return ([:], [:], nil)
         }
         
         do {
@@ -90,10 +94,10 @@ class ConfigManager {
                 }
             }
             
-            return (validRepoCache, validETags)
+            return (validRepoCache, validETags, cache.savedAt)
         } catch {
             print("⚠️ [ConfigManager] Failed to load disk cache: \(error)")
-            return ([:], [:])
+            return ([:], [:], nil)
         }
     }
     
@@ -101,7 +105,20 @@ class ConfigManager {
         let cache = PersistentDiskCache(repoCache: repoCache, etags: etags, savedAt: Date())
         let targetURL = self.cacheFile
         
-        DispatchQueue.global(qos: .utility).async {
+        cacheGenLock.lock()
+        cacheGeneration += 1
+        let currentGen = cacheGeneration
+        cacheGenLock.unlock()
+        
+        cacheQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.cacheGenLock.lock()
+            let latestGen = self.cacheGeneration
+            self.cacheGenLock.unlock()
+            
+            // Coalesce writes: if a newer saveCache or clearDiskCache was scheduled, discard stale write
+            guard currentGen == latestGen else { return }
+            
             do {
                 let data = try JSONEncoder().encode(cache)
                 try data.write(to: targetURL, options: .atomic)
@@ -112,19 +129,53 @@ class ConfigManager {
     }
     
     func saveCacheSync(repoCache: [String: RepoInfo], etags: [String: String]) {
-        let cache = PersistentDiskCache(repoCache: repoCache, etags: etags, savedAt: Date())
-        do {
-            let data = try JSONEncoder().encode(cache)
-            try data.write(to: self.cacheFile, options: .atomic)
-        } catch {
-            print("⚠️ [ConfigManager] Failed to synchronously save disk cache: \(error)")
+        cacheGenLock.lock()
+        cacheGeneration += 1
+        cacheGenLock.unlock()
+        
+        cacheQueue.sync {
+            let cache = PersistentDiskCache(repoCache: repoCache, etags: etags, savedAt: Date())
+            do {
+                let data = try JSONEncoder().encode(cache)
+                try data.write(to: self.cacheFile, options: .atomic)
+            } catch {
+                print("⚠️ [ConfigManager] Failed to synchronously save disk cache: \(error)")
+            }
         }
     }
     
     func clearDiskCache() {
         lock.lock()
         defer { lock.unlock() }
-        try? FileManager.default.removeItem(at: cacheFile)
+        
+        cacheGenLock.lock()
+        cacheGeneration += 1
+        cacheGenLock.unlock()
+        
+        cacheQueue.sync {
+            try? FileManager.default.removeItem(at: self.cacheFile)
+        }
+    }
+    
+    func backupDiskCache() -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard FileManager.default.fileExists(atPath: cacheFile.path) else { return nil }
+        return try? Data(contentsOf: cacheFile)
+    }
+    
+    func restoreDiskCache(from data: Data?) {
+        guard let data = data else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        
+        cacheGenLock.lock()
+        cacheGeneration += 1
+        cacheGenLock.unlock()
+        
+        cacheQueue.sync {
+            try? data.write(to: self.cacheFile, options: .atomic)
+        }
     }
     
     func loadConfig() {

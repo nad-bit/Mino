@@ -42,7 +42,7 @@ class NoSearchResultsView: NSView {
         addSubview(mainStack)
         
         // --- Error Stack Component (Icon + Label) ---
-        let iconSize = NSSize(width: Constants.menuBaseFontSize + 5, height: Constants.menuBaseFontSize + 3)
+        let iconSize = NSSize(width: (Constants.menuBaseFontSize + 5) * Constants.menuScale, height: (Constants.menuBaseFontSize + 3) * Constants.menuScale)
         let image = FelineEyeIcon.createSlashIcon(size: iconSize)
         
         iconView.image = image
@@ -54,8 +54,8 @@ class NoSearchResultsView: NSView {
         textLabel.isEditable = false
         textLabel.isSelectable = false
         textLabel.usesSingleLineMode = true
-        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
-        textLabel.font = .systemFont(ofSize: baseFontSize - 1, weight: .medium)
+        let baseFontSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
+        textLabel.font = .systemFont(ofSize: baseFontSize - (1 * Constants.menuScale), weight: .medium)
         textLabel.textColor = .secondaryLabelColor
         textLabel.alignment = .center
         textLabel.lineBreakMode = .byTruncatingTail
@@ -89,7 +89,7 @@ class NoSearchResultsView: NSView {
             btn.updateDefaultAppearance()
         }
         
-        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        let baseFontSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
         textLabel.font = .systemFont(ofSize: baseFontSize, weight: .medium)
         textLabel.stringValue = isSearching ? Translations.get("noResults") : Translations.get("noRepos")
         iconView.image = NSImage(systemSymbolName: isSearching ? "eye.slash" : "slash.circle", accessibilityDescription: nil)
@@ -106,13 +106,20 @@ class NoSearchResultsView: NSView {
             var currentRowStack = createRowStack()
             var currentRowWidth: CGFloat = 0
             let tagSpacing: CGFloat = 8.0
-            let approxRowHeight: CGFloat = 30.0
-            let maxAllowedTagCloudHeight = Constants.menuMaxHeight - 80.0
+            
+            // Dynamic row height based on font size and scale
+            let sampleBtn = TagButton(title: "Sample")
+            let approxRowHeight: CGFloat = sampleBtn.intrinsicContentSize.height + mainStack.spacing
+            
+            let screen = window?.screen ?? NSScreen.main ?? NSScreen.screens.first
+            let screenVisibleHeight = screen?.visibleFrame.height ?? 850.0
+            let maxSafeMenuHeight = (screenVisibleHeight * 0.88) - (Constants.menuHeaderFooterHeight * 2)
+            let maxAllowedTagCloudHeight = min(Constants.menuMaxHeight - 60.0, maxSafeMenuHeight - 30.0)
             
             for tag in suggestedTags {
                 let btn = getOrCreateButton(title: tag, fontSize: baseFontSize - 1)
                 let titleSize = (tag as NSString).size(withAttributes: [.font: font])
-                let btnWidth = ceil(titleSize.width) + 20.0
+                let btnWidth = ceil(titleSize.width) + (20.0 * Constants.menuScale)
                 
                 // Check if it fits in current row
                 if currentRowWidth + btnWidth > availableWidth && currentRowWidth > 0 {
@@ -173,7 +180,13 @@ class NoSearchResultsView: NSView {
     }
     
     override var intrinsicContentSize: NSSize {
-        return mainStack.fittingSize
+        let screen = window?.screen ?? NSScreen.main ?? NSScreen.screens.first
+        let screenVisibleHeight = screen?.visibleFrame.height ?? 850.0
+        let maxSafeMenuHeight = (screenVisibleHeight * 0.88) - (Constants.menuHeaderFooterHeight * 2)
+        let maxAllowedHeight = min(Constants.menuMaxHeight, maxSafeMenuHeight)
+        
+        let fitting = mainStack.fittingSize
+        return NSSize(width: targetWidth, height: min(fitting.height, maxAllowedHeight))
     }
     
     @objc private func tagClicked(_ sender: NSButton) {
@@ -196,11 +209,11 @@ class TagButton: NSButton {
         super.init(frame: .zero)
         self.title = title 
         self.isBordered = false
-        let baseFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
-        self.font = .systemFont(ofSize: baseFontSize - 1, weight: .medium)
+        let baseFontSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
+        self.font = .systemFont(ofSize: baseFontSize - (1 * Constants.menuScale), weight: .medium)
         
         self.wantsLayer = true
-        self.layer?.cornerRadius = 6
+        self.layer?.cornerRadius = 6 * Constants.menuScale
         self.layer?.masksToBounds = true
         self.layer?.borderWidth = 0.5
         updateDefaultAppearance()
@@ -218,7 +231,7 @@ class TagButton: NSButton {
     
     override var intrinsicContentSize: NSSize {
         let base = super.intrinsicContentSize
-        return NSSize(width: base.width + 14, height: max(base.height + 4, 22))
+        return NSSize(width: base.width + (14 * Constants.menuScale), height: max(base.height + (4 * Constants.menuScale), 22 * Constants.menuScale))
     }
     
     override func updateTrackingAreas() {

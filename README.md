@@ -88,6 +88,10 @@ Click the `(+)` button in the menu to open the floating Window.
 - Go to your browser, copy a URL (`CMD+C`). Watch Mino automatically catch the link. Click the Add button.
 - The window remains open and the text field clears. Cycle through your browser tabs, copying and adding rapidly.
 
+**Standard Manual Input:**
+- Enter `owner/repo` format (e.g., `microsoft/vscode`).
+- Enter a Homebrew **Cask name** (e.g., `lulu` or `stats`) to automatically resolve and track its GitHub repository. No prefixes required.
+
 **Automation & URL Scheme (`mino://`):**
 Integrate Mino with macOS Shortcuts, PopClip, Alfred, Raycast, or custom terminal scripts:
 
@@ -105,10 +109,6 @@ Integrate Mino with macOS Shortcuts, PopClip, Alfred, Raycast, or custom termina
   - `mino://handle` (toggles on/off)
   - `mino://handle/on`, `mino://handle/off`, or `mino://handle/toggle`
   - Persists preference in `repos.json` and displays dynamic HUD feedback with vector-slashed iconography.
-
-**Standard Manual Input:**
-- Enter `owner/repo` format (e.g., `microsoft/vscode`).
-- Enter a Homebrew **Cask name** (e.g., `lulu` or `stats`) to automatically resolve and track its GitHub repository. No prefixes required.
 
 ### Menu Interface
 
@@ -169,7 +169,7 @@ Mino adheres to strict defense-in-depth principles across authentication, networ
 - **Rate Limit Isolation & Quota Conservation**: Rate limit tracking strictly segregates unauthenticated IP-based quotas (60 req/hr) from authenticated user quotas (5,000 req/hr), purging stale state on token transitions and throttling UI hover updates with a 3-second cooldown to avoid wasteful quota consumption.
 - **Streaming Cryptographic Hashes**: Incorporates `Utils.computeSHA256` via Apple's `CryptoKit` with 64KB chunked streaming to verify file integrity with $O(1)$ memory consumption.
 - **Resource Protection & Memory Guards**: Remote release images are capped at 10 MB in memory, and the local disk cache (`~/Library/Caches/com.nad.mino/ReleaseImages`) is managed with automated background LRU pruning (150 MB quota / 30-day TTL).
-- **Automated Verification Suite (21 Tests)**: All security controls, host allowlists, URL regexes, decompression bomb guards, HTML sanitizers, multi-language localization integrity, cryptographic asset checksum validation, disk cache hashing, persistent cache serialization, ETag restoration, and macOS status bar compatibility routines are verified via automated tests in `SwiftApp/Tests/AuditValidationTests.swift` compiled directly against production sources (`./build.sh --test`).
+- **Automated Verification Suite (16 High-Value Tests)**: All security controls, host allowlists, URL regexes, decompression bomb guards, HTML sanitizers, multi-language localization integrity, cryptographic asset checksum validation, persistent cache serialization, ETag restoration, and zero-drift scheduling routines are verified via automated tests in `SwiftApp/Tests/AuditValidationTests.swift` compiled directly against production sources (`./build.sh --test`).
 
 ## Configuration & Cache
 
@@ -202,6 +202,10 @@ Use these shortcuts while the main menu is open:
 | `CMD + C` | Copy GitHub URL of selected repo to clipboard |
 | `CMD + S` | Mark or unmark selected repo as Starred (Favorite) |
 | `CMD + B` | Install or update the focused repo via Homebrew |
+| `CMD + H` | Toggle decorative beer mug handle (ASA) silhouette |
+| `CMD + 0` | Reset menu and notes scale to 1.0x (100% / base size) |
+| `CMD + 1..9` | Scale menu and notes from 1.05x (105%) to 1.45x (145%) in +5% steps |
+| `CMD +` / `CMD -` | Step scale up (+5%) or down (-5%) with screen-safe proportion locking |
 | `CMD + Z` | Undo last repository deletion |
 | `CMD + Q` | Quit Mino |
 | `TAB`     | Switch focus between Search field and Repo list |

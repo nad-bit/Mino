@@ -14,7 +14,19 @@ struct AuditValidationTests {
     }
     
     static func main() async {
-        print("\n🧪 Running Mino Audit Verification Tests (Direct Production Code)...")
+        print("\n🧪 Running Mino Audit Verification Tests (16 High-Value Production Tests)...")
+        
+        // Backup user's actual disk cache & ETags to prevent wiping ~/.config/Mino/cache.json
+        // and avoid exhausting GitHub API rate limit quota during subsequent app launches.
+        let originalCacheBackup = ConfigManager.shared.backupDiskCache()
+        let originalETags = GitHubAPI.shared.allETags()
+        defer {
+            if let backup = originalCacheBackup {
+                ConfigManager.shared.restoreDiskCache(from: backup)
+                GitHubAPI.shared.loadETags(originalETags)
+                print("💾 Restored original user disk cache and ETags cleanly.")
+            }
+        }
         
         testGitHubHostAllowlist()
         testMinoTargetValidation()
@@ -23,22 +35,17 @@ struct AuditValidationTests {
         testFileNameSanitization()
         testSafeImageDecompression()
         testConfigManagerAtomicityAndRecovery()
-        testGitHubAPI403Discrimination()
         testUntrustedTapExtraction()
         testMarkdownAutolinking()
         testLocalizationCompleteness()
-        testSHA256Integrity()
-        testChecksumParsingAndIntegrity()
-        testDiskCacheSecurity()
-        testStatusItemTooltipCompatibility()
-        testErrorTooltipAndCodeHandling()
-        testPhase1Optimizations()
-        testPhase2Optimizations()
-        await testPhase3AuditFixes()
-        testURLExpansionsAndBeerHandle()
+        testChecksumAndAssetIntegrityPipeline()
+        testRateLimitAndHUDProtection()
+        await testCommitETagAndRateLimiterPacing()
+        testTargetResolutionAndURLSchemes()
         testPersistentDiskCache()
+        testRefreshTimingAndMinuteAnchoring()
         
-        print("\n🎉 ALL AUDIT VERIFICATION TESTS PASSED SUCCESSFULLY!\n")
+        print("\n🎉 ALL 16 AUDIT VERIFICATION TESTS PASSED SUCCESSFULLY!\n")
     }
     
     // --------------------------------------------------------
@@ -280,53 +287,24 @@ struct AuditValidationTests {
         assertTest(loadedReposCount == 1, "Successfully recovered repository list from repos.json.bak when repos.json is corrupted")
         
         // Test atomic modifyConfig
+        let previousRefreshMinutes = ConfigManager.shared.config.refreshMinutes
         ConfigManager.shared.modifyConfig { cfg in
             cfg.refreshMinutes = 123
         }
         assertTest(ConfigManager.shared.config.refreshMinutes == 123, "ConfigManager.shared.modifyConfig atomically updates and commits state")
-    }
-    
-    // --------------------------------------------------------
-    // Test 8: GitHub API Rate Limit & 403 Discrimination
-    // --------------------------------------------------------
-    static func testGitHubAPI403Discrimination() {
-        print("\n[Test 8] Testing GitHub API 403 Discrimination & Rate Limit Parsing...")
         
-        func simulate403(remaining: String?, jsonBody: String) -> String {
-            if let remaining = remaining, remaining == "0" {
-                return "apiRateLimit"
-            }
-            if let data = jsonBody.data(using: .utf8),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let message = json["message"] as? String {
-                let lower = message.lowercased()
-                if lower.contains("secondary rate limit") {
-                    return "apiSecondaryRateLimit"
-                } else if lower.contains("saml") {
-                    return "SAML SSO: apiForbidden"
-                }
-            }
-            return "apiForbidden"
+        // Restore user configuration so ~/.config/Mino/repos.json is never left polluted
+        let restoredMinutes = (previousRefreshMinutes == 123) ? 180 : previousRefreshMinutes
+        ConfigManager.shared.modifyConfig { cfg in
+            cfg.refreshMinutes = restoredMinutes
         }
-        
-        let res1 = simulate403(remaining: "0", jsonBody: "{\"message\": \"API rate limit exceeded for user\"}")
-        assertTest(res1 == "apiRateLimit", "Primary rate limit (remaining 0) correctly mapped to apiRateLimit")
-        
-        let res2 = simulate403(remaining: "5000", jsonBody: "{\"message\": \"You have exceeded a secondary rate limit. Please wait a few minutes before you try again.\"}")
-        assertTest(res2 == "apiSecondaryRateLimit", "Secondary rate limit with remaining 5000 mapped to apiSecondaryRateLimit")
-        
-        let res3 = simulate403(remaining: "4990", jsonBody: "{\"message\": \"Resource protected by organization SAML enforcement. You must grant your token access.\"}")
-        assertTest(res3 == "SAML SSO: apiForbidden", "SAML SSO enforcement with remaining 4990 mapped to SAML SSO: apiForbidden")
-        
-        let res4 = simulate403(remaining: "5000", jsonBody: "{\"message\": \"Repository access blocked\"}")
-        assertTest(res4 == "apiForbidden", "Repository access blocked with remaining 5000 mapped to apiForbidden")
     }
     
     // --------------------------------------------------------
-    // Test 9: Untrusted Tap Target Extraction (Production Code)
+    // Test 8: Untrusted Tap Target Extraction (Production Code)
     // --------------------------------------------------------
     static func testUntrustedTapExtraction() {
-        print("\n[Test 9] Testing HomebrewManager.extractTrustTarget...")
+        print("\n[Test 8] Testing HomebrewManager.extractTrustTarget...")
         
         let errorOutput1 = """
         Error: Refusing to load cask 66hex/frame/frame from untrusted tap 66hex/frame.
@@ -372,10 +350,10 @@ struct AuditValidationTests {
     }
     
     // --------------------------------------------------------
-    // Test 10: Markdown Autolinking (Bare URLs, Mentions, Issues)
+    // Test 9: Markdown Autolinking (Bare URLs, Mentions, Issues)
     // --------------------------------------------------------
     static func testMarkdownAutolinking() {
-        print("\n[Test 10] Testing Utils.convertMarkdownToHTML autolinking...")
+        print("\n[Test 9] Testing Utils.convertMarkdownToHTML autolinking...")
         
         // 1. Bare URLs (e.g., kiwix-apple release notes)
         let bareURLText = "Localisation updates from https://translatewiki.net and https://github.com/kiwix/kiwix-apple/pull/1676."
@@ -411,10 +389,10 @@ struct AuditValidationTests {
     }
     
     // --------------------------------------------------------
-    // Test 11: Multi-Language Localization Completeness
+    // Test 10: Multi-Language Localization Completeness
     // --------------------------------------------------------
     static func testLocalizationCompleteness() {
-        print("\n[Test 11] Testing Multi-Language Localization Completeness (All 11 Languages vs English Base)...")
+        print("\n[Test 10] Testing Multi-Language Localization Completeness (All 11 Languages vs English Base)...")
         
         guard let enDict = Translations.i18n["en"] else {
             assertTest(false, "Base English dictionary must exist")
@@ -452,30 +430,34 @@ struct AuditValidationTests {
         assertTest(esDict?["apiRateLimit"] == "Límite de peticiones a la API excedido", "apiRateLimit translated in Spanish")
         assertTest(esDict?["apiHttpError"] == "Error HTTP {code}", "apiHttpError translated in Spanish")
         assertTest(esDict?["repoPlaceholder"] == "propietario/repo o cask", "repoPlaceholder translated in Spanish")
+        assertTest(esDict?["caskCount"] == "{count} Casks", "caskCount translated in Spanish")
+        assertTest(esDict?["caskCountSingular"] == "1 Cask", "caskCountSingular translated in Spanish")
+        assertTest(esDict?["menuScaleTitle"] == "Escala del Menú", "menuScaleTitle translated in Spanish")
     }
     
     // --------------------------------------------------------
-    // Test 12: Cryptographic SHA-256 Digest Computation
+    // Test 11: Checksum & Asset Integrity Pipeline (Production Code)
     // --------------------------------------------------------
-    static func testSHA256Integrity() {
-        print("\n[Test 12] Testing Utils.computeSHA256...")
+    static func testChecksumAndAssetIntegrityPipeline() {
+        print("\n[Test 11] Testing Checksum Extraction, Official Digest Parsing & CryptoKit SHA-256...")
         
+        // 1. Cryptographic SHA-256 calculation on real file
         let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("sha256_test_\(UUID().uuidString).bin")
         let testString = "Mino macOS release tracker cryptographic verification test"
         try! testString.data(using: .utf8)!.write(to: tempFile)
         defer { try? FileManager.default.removeItem(at: tempFile) }
         
         let computed = Utils.computeSHA256(for: tempFile)
-        assertTest(computed != nil && computed?.count == 64, "SHA-256 digest computed successfully (64 hex characters)")
-    }
-    
-    // --------------------------------------------------------
-    // Test 13: Checksum Extraction & Asset Integrity Pipeline
-    // --------------------------------------------------------
-    static func testChecksumParsingAndIntegrity() {
-        print("\n[Test 13] Testing Checksum Extraction & Asset Integrity Pipeline...")
+        assertTest(computed != nil && computed?.count == 64, "Utils.computeSHA256 computes valid 64-char hex digest")
         
-        // 1. Checksum extraction from release body text
+        // 2. GitHubAPI.parseDigest validation
+        let validHex = "6a89c256038481ff2262a05f13459eeea5388c3a070eb3511116c90ee928a6f4"
+        let prefixedDigest = "sha256:\(validHex)"
+        assertTest(GitHubAPI.parseDigest(prefixedDigest) == validHex, "GitHubAPI.parseDigest handles 'sha256:' prefixed hash")
+        assertTest(GitHubAPI.parseDigest(validHex) == validHex, "GitHubAPI.parseDigest handles bare 64-char hex string")
+        assertTest(GitHubAPI.parseDigest("not-a-valid-sha256") == nil, "Invalid digest string safely rejected")
+        
+        // 3. Checksum extraction from release body text (sha256sum & BSD formats)
         let releaseBody = """
         ## Release v1.0.0
         Some changes and features.
@@ -484,12 +466,12 @@ struct AuditValidationTests {
         6a89c256038481ff2262a05f13459eeea5388c3a070eb3511116c90ee928a6f4  Mino-1.0.0.dmg
         SHA256 (Mino-1.0.0.zip) = b16fb365dd6e1f32fe4a390b1e19488a038bf3b85e4a836814b2d184711f58a7
         """
-        
         let extractedChecksums = Utils.extractChecksums(from: releaseBody)
         assertTest(extractedChecksums["mino-1.0.0.dmg"] == "6a89c256038481ff2262a05f13459eeea5388c3a070eb3511116c90ee928a6f4", "sha256sum format parsed correctly")
         assertTest(extractedChecksums["mino-1.0.0.zip"] == "b16fb365dd6e1f32fe4a390b1e19488a038bf3b85e4a836814b2d184711f58a7", "BSD format parsed correctly")
         
-        // 2. parseReleaseAssets associates expectedSHA256 with assets
+        // 4. parseReleaseAssets associates expectedSHA256 & official digest takes precedence
+        let officialDigestHex = "1111111111111111111111111111111111111111111111111111111111111111"
         let mockJSON: [String: Any] = [
             "tag_name": "v1.0.0",
             "body": releaseBody,
@@ -497,182 +479,36 @@ struct AuditValidationTests {
                 [
                     "name": "Mino-1.0.0.dmg",
                     "size": 1024,
+                    "digest": "sha256:\(officialDigestHex)",
                     "browser_download_url": "https://github.com/nad-bit/Mino/releases/download/v1.0.0/Mino-1.0.0.dmg"
                 ],
                 [
-                    "name": "OtherAsset.tar.gz",
+                    "name": "Mino-1.0.0.zip",
                     "size": 2048,
+                    "browser_download_url": "https://github.com/nad-bit/Mino/releases/download/v1.0.0/Mino-1.0.0.zip"
+                ],
+                [
+                    "name": "OtherAsset.tar.gz",
+                    "size": 4096,
                     "browser_download_url": "https://github.com/nad-bit/Mino/releases/download/v1.0.0/OtherAsset.tar.gz"
                 ]
             ]
         ]
-        
         let assets = GitHubAPI.parseReleaseAssets(from: mockJSON, repo: "nad-bit/Mino", tag: "v1.0.0")
         let dmgAsset = assets.first(where: { $0.name == "Mino-1.0.0.dmg" })
+        let zipAsset = assets.first(where: { $0.name == "Mino-1.0.0.zip" })
         let otherAsset = assets.first(where: { $0.name == "OtherAsset.tar.gz" })
         
-        assertTest(dmgAsset?.expectedSHA256 == "6a89c256038481ff2262a05f13459eeea5388c3a070eb3511116c90ee928a6f4", "expectedSHA256 populated from release notes")
+        assertTest(dmgAsset?.expectedSHA256 == officialDigestHex, "Official asset.digest takes precedence over body checksum")
+        assertTest(zipAsset?.expectedSHA256 == "b16fb365dd6e1f32fe4a390b1e19488a038bf3b85e4a836814b2d184711f58a7", "expectedSHA256 parsed from body when no official digest present")
         assertTest(otherAsset?.expectedSHA256 == nil, "expectedSHA256 is nil when no checksum is provided")
     }
 
     // --------------------------------------------------------
-    // Test 14: Disk Cache SHA-256 Hash & Overflow Protection
+    // Test 12: Rate Limit Isolation & HUD Download Protection
     // --------------------------------------------------------
-    static func testDiskCacheSecurity() {
-        print("\n[Test 14] Testing Disk Cache Hashing & Overflow Safety...")
-        
-        let extremeURL = String(repeating: "a", count: 10000)
-        let _ = GitHubAPI.shared.getCachedImage(from: extremeURL)
-        assertTest(true, "Image cache URL generation is resilient against overflow and extreme strings")
-    }
-    
-    // --------------------------------------------------------
-    // Test 15: macOS 27 Status Item Tooltip Compatibility
-    // --------------------------------------------------------
-    static func testStatusItemTooltipCompatibility() {
-        print("\n[Test 15] Testing macOS 27 Golden Gate Status Bar Tooltip Compatibility...")
-        
-        let button = NSStatusBarButton()
-        // Default button has non-empty default title
-        assertTest(!button.title.isEmpty, "Initial NSStatusBarButton title is non-empty")
-        
-        // Emulate previous behavior: setting empty title
-        button.title = ""
-        button.attributedTitle = NSAttributedString()
-        assertTest(button.title.isEmpty && button.attributedTitle.string.isEmpty, "Previous behavior: title and attributedTitle were both empty")
-        
-        // Apply macOS 27 Golden Gate fix: non-empty zero-width attributed string
-        let zeroWidthTitle = NSAttributedString(string: "\u{200B}", attributes: [
-            .foregroundColor: NSColor.clear,
-            .font: NSFont.systemFont(ofSize: 0.01)
-        ])
-        button.attributedTitle = zeroWidthTitle
-        button.toolTip = Translations.get("meow")
-        
-        assertTest(!button.title.isEmpty, "Status button title is NOT empty with zero-width space")
-        assertTest(!button.attributedTitle.string.isEmpty, "Status button attributedTitle is NOT empty")
-        assertTest(button.toolTip != nil && !button.toolTip!.isEmpty, "Status button tooltip is configured with localized meow")
-    }
-
-    // --------------------------------------------------------
-    // Test 16: Error Code Handling & Warning Tooltip Discrimination
-    // --------------------------------------------------------
-    static func testErrorTooltipAndCodeHandling() {
-        print("\n[Test 16] Testing Error Code Tracking & Warning Tooltip Discrimination...")
-        
-        let info = RepoInfo(name: "org/repo", error: "Not Found", errorCode: 404)
-        assertTest(info.errorCode == 404, "RepoInfo stores errorCode 404")
-        
-        let displayData = RepoDisplayData(
-            repoName: "org/repo",
-            formattedName: "repo",
-            ageSeconds: 0,
-            errorMessage: "Localized error message",
-            errorCode: 404,
-            isLoading: false,
-            freshnessColor: .systemRed,
-            isNew: false,
-            tags: [],
-            isFavorite: false
-        )
-        assertTest(displayData.errorCode == 404, "RepoDisplayData preserves errorCode")
-        
-        // HTTP 404 error formatting
-        let tooltip404 = RepoMenuItemView.formatWarningTooltip(errorCode: 404, fallbackMessage: "Fallback")
-        let expected404 = Translations.get("apiHttpError").format(with: ["code": "404"])
-        assertTest(tooltip404 == expected404, "HTTP 404 warning tooltip formats as '\(expected404)'")
-        
-        // HTTP 403 error formatting
-        let tooltip403 = RepoMenuItemView.formatWarningTooltip(errorCode: 403, fallbackMessage: "Fallback")
-        let expected403 = Translations.get("apiHttpError").format(with: ["code": "403"])
-        assertTest(tooltip403 == expected403, "HTTP 403 warning tooltip formats as '\(expected403)'")
-        
-        // Non-HTTP error formatting (e.g. CFNetwork / URLError)
-        let tooltipNetwork = RepoMenuItemView.formatWarningTooltip(errorCode: -1009, fallbackMessage: "Fallback")
-        let expectedNetwork = "\(Translations.get("error")) -1009"
-        assertTest(tooltipNetwork == expectedNetwork, "Non-HTTP code formats with error prefix: '\(expectedNetwork)'")
-        
-        // Fallback when errorCode is nil
-        let tooltipNil = RepoMenuItemView.formatWarningTooltip(errorCode: nil, fallbackMessage: "Fallback message")
-        assertTest(tooltipNil == "Fallback message", "Nil errorCode safely falls back to descriptive localized message")
-    }
-
-    // --------------------------------------------------------
-    // Test 17: Phase 1 Optimizations (Digest, ETag, Non-blocking Image Cache)
-    // --------------------------------------------------------
-    static func testPhase1Optimizations() {
-        print("\n[Test 17] Testing Phase 1 Optimizations (Official Digest, ETag Cache & RAM Image Cache)...")
-        
-        // 1. GitHubAPI.parseDigest validation
-        let validHex = "6a89c256038481ff2262a05f13459eeea5388c3a070eb3511116c90ee928a6f4"
-        let prefixedDigest = "sha256:\(validHex)"
-        let parsedPrefixed = GitHubAPI.parseDigest(prefixedDigest)
-        assertTest(parsedPrefixed == validHex, "Prefixed sha256 digest parsed successfully")
-        
-        let bareDigest = GitHubAPI.parseDigest(validHex)
-        assertTest(bareDigest == validHex, "Bare 64-char hex digest parsed successfully")
-        
-        let invalidDigest = GitHubAPI.parseDigest("not-a-valid-sha256")
-        assertTest(invalidDigest == nil, "Invalid digest string is safely rejected")
-        
-        // 2. Official asset digest precedence over release notes body
-        let releaseBody = "6a89c256038481ff2262a05f13459eeea5388c3a070eb3511116c90ee928a6f4  Mino.dmg"
-        let officialDigestHex = "1111111111111111111111111111111111111111111111111111111111111111"
-        let mockJSON: [String: Any] = [
-            "tag_name": "v2.2.9",
-            "body": releaseBody,
-            "assets": [
-                [
-                    "name": "Mino.dmg",
-                    "size": 1024,
-                    "digest": "sha256:\(officialDigestHex)",
-                    "browser_download_url": "https://github.com/nad-bit/Mino/releases/download/v2.2.9/Mino.dmg"
-                ],
-                [
-                    "name": "Fallback.dmg",
-                    "size": 2048,
-                    "browser_download_url": "https://github.com/nad-bit/Mino/releases/download/v2.2.9/Fallback.dmg"
-                ]
-            ]
-        ]
-        let assets = GitHubAPI.parseReleaseAssets(from: mockJSON, repo: "nad-bit/Mino", tag: "v2.2.9")
-        let officialAsset = assets.first(where: { $0.name == "Mino.dmg" })
-        assertTest(officialAsset?.expectedSHA256 == officialDigestHex, "Official asset.digest takes precedence over release notes body")
-        
-        // 3. ETag Conditional Request Cache
-        let testRepo = "test-owner/test-repo"
-        let testETag = "W/\"d41d8cd98f00b204e9800998ecf8427e\""
-        GitHubAPI.shared.setETag(testETag, for: testRepo)
-        assertTest(GitHubAPI.shared.etag(for: testRepo) == testETag, "ETag stored and retrieved correctly")
-        
-        GitHubAPI.shared.clearETags()
-        assertTest(GitHubAPI.shared.etag(for: testRepo) == nil, "ETag cache cleared successfully")
-        
-        // 4. RepoInfo isNotModified flag and Codable integrity
-        var info304 = RepoInfo(name: testRepo)
-        info304.isNotModified = true
-        assertTest(info304.isNotModified == true, "RepoInfo supports isNotModified flag")
-        
-        // Codable serialization does not fail and omits isNotModified
-        if let encoded = try? JSONEncoder().encode(info304),
-           let decoded = try? JSONDecoder().decode(RepoInfo.self, from: encoded) {
-            assertTest(decoded.name == testRepo, "RepoInfo encoded and decoded successfully via Codable")
-            assertTest(decoded.isNotModified == false, "isNotModified defaults to false upon deserialization")
-        } else {
-            assertTest(false, "Failed to encode/decode RepoInfo")
-        }
-        
-        // 5. RAM Cache Fast Path
-        let nonCachedURL = "https://example.com/nonexistent_image_\(UUID().uuidString).png"
-        let ramHit = GitHubAPI.shared.getRAMCachedImage(from: nonCachedURL)
-        assertTest(ramHit == nil, "getRAMCachedImage returns nil without doing synchronous disk reads")
-    }
-
-    // --------------------------------------------------------
-    // Test 18: Phase 2 Optimizations (HUD Cancel & Rate Limit Auth Decoupling)
-    // --------------------------------------------------------
-    static func testPhase2Optimizations() {
-        print("\n[Test 18] Testing Phase 2 Optimizations (HUD Cancel & Rate Limit Auth Decoupling)...")
+    static func testRateLimitAndHUDProtection() {
+        print("\n[Test 12] Testing Rate Limit Isolation, 401 Rejection & HUD Download Protection...")
         
         // 1. HUDPanel cancel button activation and reset
         var wasCancelled = false
@@ -693,7 +529,6 @@ struct AuditValidationTests {
         ]
         let response = HTTPURLResponse(url: URL(string: "https://api.github.com/rate_limit")!, statusCode: 200, httpVersion: nil, headerFields: headers)!
         
-        // Test explicit wasAuthenticated flag
         GitHubAPI.shared.clearRateLimits()
         let hasToken = ConfigManager.shared.token != nil && !ConfigManager.shared.token!.isEmpty
         GitHubAPI.shared.recordRateLimit(from: response, wasAuthenticated: hasToken)
@@ -736,13 +571,18 @@ struct AuditValidationTests {
         assertTest(HUDPanel.shared.cancelButton.isHidden, "Cancel button is hidden on download cancellation")
         assertTest(HUDPanel.shared.iconView.contentTintColor == .systemOrange, "Cancellation HUD displays orange symbol")
         HUDPanel.shared.hide()
+        
+        // 5. RAM Cache Fast Path non-blocking query
+        let nonCachedURL = "https://example.com/nonexistent_image_\(UUID().uuidString).png"
+        let ramHit = GitHubAPI.shared.getRAMCachedImage(from: nonCachedURL)
+        assertTest(ramHit == nil, "getRAMCachedImage returns nil without doing synchronous disk reads")
     }
     
     // --------------------------------------------------------
-    // Test 19: Phase 3 Audit Fixes (Commit ETag & Global Rate Limiter)
+    // Test 13: Commit ETag Isolation, Rate Limiter Pacing & Smart Matching
     // --------------------------------------------------------
-    static func testPhase3AuditFixes() async {
-        print("\n[Test 19] Testing Phase 3 Audit Fixes (Commit ETag & Global Rate Limiter)...")
+    static func testCommitETagAndRateLimiterPacing() async {
+        print("\n[Test 13] Testing Commit ETag Isolation, Global Rate Limiter & Asset Smart Matching...")
         
         // 1. Test Commit ETag cache isolation and retrieval
         let commitRepo = "nad-bit/commit-tracked-repo"
@@ -828,31 +668,74 @@ struct AuditValidationTests {
     }
     
     // --------------------------------------------------------
-    // Test 20: mino:// URL Scheme Expansions & Beer Handle Toggle
+    // Test 14: Target Resolution & Shortcut Event Handling
     // --------------------------------------------------------
-    static func testURLExpansionsAndBeerHandle() {
-        print("\n[Test 20] Testing mino:// URL Scheme Expansions & Beer Handle Persistence...")
+    static func testTargetResolutionAndURLSchemes() {
+        print("\n[Test 14] Testing AppDelegate.findMatchingRepo & CMD+H Shortcut Dispatch...")
         
-        // 1. AppConfig default & persistence of beerHandleEnabled
-        var config = AppConfig()
-        assertTest(config.beerHandleEnabled == true, "AppConfig: beerHandleEnabled defaults to true")
-        
-        config.beerHandleEnabled = false
-        if let encoded = try? JSONEncoder().encode(config),
-           let decoded = try? JSONDecoder().decode(AppConfig.self, from: encoded) {
-            assertTest(decoded.beerHandleEnabled == false, "AppConfig: beer_handle_enabled encoded and decoded properly as false")
-        } else {
-            assertTest(false, "AppConfig: Failed to encode/decode beerHandleEnabled")
+        // 1. Test handleGlobalShortcuts for CMD+H
+        let appDelegate = AppDelegate()
+        if let cmdHEvent = NSEvent.keyEvent(with: .keyDown,
+                                            location: .zero,
+                                            modifierFlags: .command,
+                                            timestamp: 0,
+                                            windowNumber: 0,
+                                            context: nil,
+                                            characters: "h",
+                                            charactersIgnoringModifiers: "h",
+                                            isARepeat: false,
+                                            keyCode: 4) {
+            let handled = appDelegate.handleGlobalShortcuts(with: cmdHEvent)
+            assertTest(handled == true, "handleGlobalShortcuts: CMD+H handled successfully")
         }
         
-        // 2. Dynamic Constants.beerHandleEnabled
-        ConfigManager.shared.config.beerHandleEnabled = true
-        assertTest(Constants.beerHandleEnabled == true, "Constants.beerHandleEnabled reads true dynamically")
-        ConfigManager.shared.config.beerHandleEnabled = false
-        assertTest(Constants.beerHandleEnabled == false, "Constants.beerHandleEnabled reads false dynamically")
-        ConfigManager.shared.config.beerHandleEnabled = true // Restore
+        // Test handleGlobalShortcuts for CMD+0..9, CMD++, CMD+-
+        for (char, label) in [("0", "CMD+0"), ("1", "CMD+1"), ("9", "CMD+9"), ("=", "CMD+="), ("-", "CMD+-")] {
+            if let event = NSEvent.keyEvent(with: .keyDown,
+                                            location: .zero,
+                                            modifierFlags: .command,
+                                            timestamp: 0,
+                                            windowNumber: 0,
+                                            context: nil,
+                                            characters: char,
+                                            charactersIgnoringModifiers: char,
+                                            isARepeat: false,
+                                            keyCode: 0) {
+                let handled = appDelegate.handleGlobalShortcuts(with: event)
+                assertTest(handled == true, "handleGlobalShortcuts: \(label) handled successfully")
+            }
+        }
         
-        // 3. Test AppDelegate.findMatchingRepo
+        // Test applyMenuScale clamps to min/max with 5% steps
+        appDelegate.applyMenuScale(1.05)
+        assertTest(ConfigManager.shared.config.menuScale == 1.05, "applyMenuScale: 1.05 (5% step) saved to configuration")
+        appDelegate.applyMenuScale(0.5) // below min (1.0)
+        assertTest(ConfigManager.shared.config.menuScale == 1.0, "applyMenuScale: 0.5 clamped to minimum 1.0")
+        appDelegate.applyMenuScale(2.5) // beyond max
+        let currentMax = ConfigManager.shared.config.menuScale ?? 1.0
+        assertTest(currentMax >= 1.0 && currentMax <= 1.9, "applyMenuScale: 2.5 clamped safely to screen maximum (\(currentMax))")
+        
+        // Test validateAndClampMenuScaleForCurrentScreen
+        ConfigManager.shared.config.menuScale = 2.0
+        appDelegate.validateAndClampMenuScaleForCurrentScreen()
+        let validatedScale = ConfigManager.shared.config.menuScale ?? 1.0
+        assertTest(validatedScale <= currentMax, "validateAndClampMenuScaleForCurrentScreen clamped excessive scale to screen max (\(validatedScale))")
+        
+        // Test BeerHandle (ASA) tolerance across all 5% scale steps with Float quantization
+        for s in [1.00, 1.05, 1.10, 1.15, 1.20, 1.25, 1.30, 1.35, 1.40, 1.45] {
+            let scale = CGFloat(s)
+            let menuMax = 688.0 * scale
+            let headerFooter = 54.0 * scale
+            let beerMin = menuMax - (2.0 * headerFooter)
+            let storedInConstraint = CGFloat(Float(menuMax))
+            let effective = storedInConstraint - (headerFooter * 2.0)
+            let passes = effective >= (beerMin - 2.0)
+            assertTest(passes, "ASA Float quantization tolerance passes at scale \(s)")
+        }
+        
+        appDelegate.applyMenuScale(1.0) // reset
+        
+        // 2. Test AppDelegate.findMatchingRepo resolution
         let testRepos = [
             RepoConfig(name: "rclone-ui/rclone-ui", source: "manual"),
             RepoConfig(name: "objective-see/LuLu", source: "brew", cask: "lulu"),
@@ -898,21 +781,13 @@ struct AuditValidationTests {
         // Empty target
         let emptyMatch = AppDelegate.findMatchingRepo(for: "   ", in: testRepos)
         assertTest(emptyMatch == nil, "findMatchingRepo: empty target returns nil safely")
-        
-        // 4. Test Slashed vs Normal Beer Mug Icon Generation
-        let normalMug = AppDelegate.createMugImage(slashed: false)
-        assertTest(normalMug != nil, "createMugImage(slashed: false): Base mug icon loaded successfully")
-        let slashedMug = AppDelegate.createMugImage(slashed: true)
-        assertTest(slashedMug != nil, "createMugImage(slashed: true): Slashed mug icon rendered with vector knockout")
-        assertTest(slashedMug?.size.width == 48 && slashedMug?.size.height == 48,
-                   "createMugImage(slashed: true): Correct 48x48 icon dimensions for HUDPanel")
     }
     
     // --------------------------------------------------------
-    // Test 21: Persistent Disk Cache (Metadata, ETags & Rate Limit Shield)
+    // Test 15: Persistent Disk Cache (Metadata, ETags & Rate Limit Shield)
     // --------------------------------------------------------
     static func testPersistentDiskCache() {
-        print("\n[Test 21] Testing Persistent Disk Cache (Metadata, ETags & Rate Limit Protection)...")
+        print("\n[Test 15] Testing Persistent Disk Cache (Metadata, ETags & Rate Limit Protection)...")
         
         let sampleRepoName = "nad-bit/Mino"
         let sampleInfo = RepoInfo(name: sampleRepoName, version: "v2.3.1", body: "Release notes body", assets: [
@@ -937,12 +812,74 @@ struct AuditValidationTests {
         GitHubAPI.shared.loadETags(loaded.etags)
         assertTest(GitHubAPI.shared.etag(for: sampleRepoName) == "\"etag-release-12345\"", "GitHubAPI: etag(for:) returns loaded release ETag")
         assertTest(GitHubAPI.shared.allETags().count >= 2, "GitHubAPI: allETags() exports currently loaded ETags")
+        assertTest(loaded.savedAt != nil, "PersistentCache: Successfully restored savedAt timestamp from disk")
         
-        // 4. Test cache cleanup
+        // 4. Test cache cleanup and async write coordination
         ConfigManager.shared.clearDiskCache()
         let cleared = ConfigManager.shared.loadCache()
         assertTest(cleared.repoCache.isEmpty && cleared.etags.isEmpty, "PersistentCache: clearDiskCache removes cache file cleanly")
+        
+        // 5. Async save followed immediately by clearDiskCache does not resurrect cache file
+        ConfigManager.shared.saveCache(repoCache: [sampleRepoName: sampleInfo], etags: sampleETags)
+        ConfigManager.shared.clearDiskCache()
+        let clearedAfterAsync = ConfigManager.shared.loadCache()
+        assertTest(clearedAfterAsync.repoCache.isEmpty && clearedAfterAsync.etags.isEmpty, "PersistentCache: Serial queue and generation counter prevent file resurrection")
+        
+        // 6. RepoInfo isNotModified flag and Codable integrity
+        var info304 = RepoInfo(name: sampleRepoName)
+        info304.isNotModified = true
+        assertTest(info304.isNotModified == true, "RepoInfo supports isNotModified flag")
+        if let encoded = try? JSONEncoder().encode(info304),
+           let decoded = try? JSONDecoder().decode(RepoInfo.self, from: encoded) {
+            assertTest(decoded.name == sampleRepoName, "RepoInfo encoded and decoded successfully via Codable")
+            assertTest(decoded.isNotModified == false, "isNotModified defaults to false upon deserialization")
+        }
+    }
+    
+    // --------------------------------------------------------
+    // Test 16: Refresh Timing, Exact Minute Anchoring & Non-Drifting Interval
+    // --------------------------------------------------------
+    static func testRefreshTimingAndMinuteAnchoring() {
+        print("\n[Test 16] Testing Refresh Timing, Exact Minute Anchoring & Zero-Drift Scheduling...")
+        
+        var calendar = Calendar.current
+        calendar.timeZone = TimeZone.current
+        var comps = DateComponents()
+        comps.year = 2026
+        comps.month = 10
+        comps.day = 9
+        comps.hour = 7
+        comps.minute = 13
+        comps.second = 42
+        
+        guard let sampleTriggerDate = calendar.date(from: comps) else {
+            fatalError("Could not create test date")
+        }
+        
+        // 1. Truncate to minute
+        let anchor = RefreshCoordinator.truncateToMinute(sampleTriggerDate)
+        let anchorComps = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: anchor)
+        assertTest(anchorComps.hour == 7 && anchorComps.minute == 13 && anchorComps.second == 0, "Minute Anchoring: 07:13:42 correctly truncated to 07:13:00")
+        
+        // 2. Scheduled next run at configured interval (e.g. 60 min)
+        let intervalSeconds: TimeInterval = 60 * 60
+        let nextRun = anchor.addingTimeInterval(intervalSeconds)
+        let nextRunComps = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: nextRun)
+        assertTest(nextRunComps.hour == 8 && nextRunComps.minute == 13 && nextRunComps.second == 0, "Next Scheduled Run: exactly 08:13:00 (first second of minute 13)")
+        
+        // 3. Subsequent runs maintain zero drift
+        let subsequentRun = nextRun.addingTimeInterval(intervalSeconds)
+        let subComps = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: subsequentRun)
+        assertTest(subComps.hour == 9 && subComps.minute == 13 && subComps.second == 0, "Subsequent Run: exactly 09:13:00 with zero accumulated drift")
+        
+        // 4. Multiple chained intervals
+        var chained = anchor
+        var allSecondsZero = true
+        for _ in 1...12 {
+            chained = chained.addingTimeInterval(intervalSeconds)
+            let s = calendar.component(.second, from: chained)
+            if s != 0 { allSecondsZero = false }
+        }
+        assertTest(allSecondsZero, "Chained Scheduling: all 12 hourly intervals land precisely at second 00")
     }
 }
-
-

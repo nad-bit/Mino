@@ -41,8 +41,8 @@ class BeerHandlePanel: NSPanel {
     func positionRelativeTo(popoverWindow: NSWindow, scrollAreaFrame: NSRect, scrollAreaHeight: CGFloat) -> Bool {
         let effectiveHeight = scrollAreaHeight - (Constants.beerHandleVerticalInset * 2)
         
-        // Don't show if the effective height is below minimum
-        guard effectiveHeight >= Constants.beerHandleMinHeight else {
+        // Don't show if the effective height is below minimum (with 2.0 pt tolerance for Float quantization)
+        guard effectiveHeight >= (Constants.beerHandleMinHeight - 2.0) else {
             hide()
             return false
         }

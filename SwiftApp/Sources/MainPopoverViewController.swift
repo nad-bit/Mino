@@ -21,6 +21,7 @@ class MainPopoverViewController: NSViewController {
     
     private var headerHeightConstraint: NSLayoutConstraint?
     private var footerHeightConstraint: NSLayoutConstraint?
+    private var nrvMaxHeightConstraint: NSLayoutConstraint?
     
     // Centralized Mouse Tracking
     private var mouseMonitor: Any?
@@ -143,6 +144,9 @@ class MainPopoverViewController: NSViewController {
         
         footerHeightConstraint = footerContainer.heightAnchor.constraint(equalToConstant: Constants.menuHeaderFooterHeight)
         footerHeightConstraint?.isActive = true
+        
+        nrvMaxHeightConstraint = nrv.heightAnchor.constraint(lessThanOrEqualToConstant: Constants.menuMaxHeight)
+        nrvMaxHeightConstraint?.isActive = true
         
         setupScrollObservation()
     }
@@ -324,7 +328,8 @@ class MainPopoverViewController: NSViewController {
         
         let isSearching = !lowerQuery.isEmpty
         if isSearching {
-            footerView?.updateRepoCount(filteredCount: filteredEntries.count, totalCount: config.repos.count)
+            let filteredCasks = filteredEntries.filter { $0.repo.source == "brew" }.count
+            footerView?.updateRepoCount(filteredCount: filteredEntries.count, totalCount: config.repos.count, filteredCaskCount: filteredCasks)
         } else {
             footerView?.updateRepoCount()
         }
@@ -372,8 +377,8 @@ class MainPopoverViewController: NSViewController {
         let sortedRepos = sortedItems.map { $0.repo }
         
         // 5. Build Row Views & Calculate Target Width
-        let baseFontSize = config.menuFontSize ?? Constants.menuBaseFontSize
-        let rowHeight: CGFloat = (currentLayout == "cards") ? baseFontSize + 27 : baseFontSize + 9
+        let baseFontSize = (config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
+        let rowHeight: CGFloat = (currentLayout == "cards") ? baseFontSize + (27 * Constants.menuScale) : baseFontSize + (9 * Constants.menuScale)
         let targetWidth = Constants.menuWidth
         self.lastTargetWidth = targetWidth
         
@@ -466,17 +471,25 @@ class MainPopoverViewController: NSViewController {
     }
     
     func updatePreferredContentSize() {
+        let headerFooterHeight = Constants.menuHeaderFooterHeight * 2
+        let screen = (view.window?.screen) ?? NSScreen.main ?? NSScreen.screens.first
+        let screenVisibleHeight = screen?.visibleFrame.height ?? 850.0
+        let maxSafeMenuHeight = (screenVisibleHeight * 0.88) - headerFooterHeight
+        let maxAllowedMenuHeight = min(Constants.menuMaxHeight, maxSafeMenuHeight)
+        nrvMaxHeightConstraint?.constant = maxAllowedMenuHeight
+
         let visibleItemsHeight: CGFloat
         if tableRepos.isEmpty && noSearchResultsView?.isHidden == false {
             // Force layout of the tag cloud so its fittingSize is accurate
             noSearchResultsView?.layoutSubtreeIfNeeded()
-            visibleItemsHeight = noSearchResultsView?.intrinsicContentSize.height ?? 0
+            let nrvHeight = noSearchResultsView?.intrinsicContentSize.height ?? 0
+            visibleItemsHeight = min(nrvHeight, maxAllowedMenuHeight)
         } else {
             // Use the table height
             visibleItemsHeight = CGFloat(tableRepos.count) * lastRowHeight
         }
         
-        let targetScrollHeight = min(visibleItemsHeight, Constants.menuMaxHeight)
+        let targetScrollHeight = min(visibleItemsHeight, maxAllowedMenuHeight)
         
         // Use a persistent reference to the constraint to avoid leaking/conflicts
         if let existing = scrollView.constraints.first(where: { $0.firstAttribute == .height }) {
@@ -486,7 +499,6 @@ class MainPopoverViewController: NSViewController {
         }
         
         let targetWidth = self.lastTargetWidth ?? Constants.menuWidth
-        let headerFooterHeight = Constants.menuHeaderFooterHeight * 2
         self.preferredContentSize = NSSize(width: targetWidth, height: targetScrollHeight + headerFooterHeight)
         
         if let nrv = noSearchResultsView {
@@ -497,6 +509,18 @@ class MainPopoverViewController: NSViewController {
         DispatchQueue.main.async { [weak self] in
             self?.appDelegate?.updateBeerHandleVisibility()
         }
+    }
+    
+    func updateLayoutForScaleChange() {
+        headerHeightConstraint?.constant = Constants.menuHeaderFooterHeight
+        footerHeightConstraint?.constant = Constants.menuHeaderFooterHeight
+        headerView?.updateFontSize()
+        footerView?.updateFontSize()
+        let screen = (view.window?.screen) ?? NSScreen.main ?? NSScreen.screens.first
+        let screenVisibleHeight = screen?.visibleFrame.height ?? 850.0
+        let maxSafeMenuHeight = (screenVisibleHeight * 0.88) - (Constants.menuHeaderFooterHeight * 2)
+        nrvMaxHeightConstraint?.constant = min(Constants.menuMaxHeight, maxSafeMenuHeight)
+        rebuildMenu(preserveScroll: true)
     }
     
     // MARK: - Beer Handle Support
