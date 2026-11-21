@@ -49,8 +49,12 @@ class ConfigManager {
     private let keychainAccount = "github_token"
     
     private init() {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        configDir = homeDir.appendingPathComponent(".config/Mino")
+        if let customDir = ProcessInfo.processInfo.environment["MINO_CONFIG_DIR"], !customDir.isEmpty {
+            configDir = URL(fileURLWithPath: customDir)
+        } else {
+            let homeDir = FileManager.default.homeDirectoryForCurrentUser
+            configDir = homeDir.appendingPathComponent(".config/Mino")
+        }
         configFile = configDir.appendingPathComponent("repos.json")
         backupConfigFile = configDir.appendingPathComponent("repos.json.bak")
         cacheFile = configDir.appendingPathComponent("cache.json")
@@ -122,6 +126,7 @@ class ConfigManager {
             do {
                 let data = try JSONEncoder().encode(cache)
                 try data.write(to: targetURL, options: .atomic)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: targetURL.path)
             } catch {
                 print("⚠️ [ConfigManager] Failed to asynchronously save disk cache: \(error)")
             }
@@ -138,6 +143,7 @@ class ConfigManager {
             do {
                 let data = try JSONEncoder().encode(cache)
                 try data.write(to: self.cacheFile, options: .atomic)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: self.cacheFile.path)
             } catch {
                 print("⚠️ [ConfigManager] Failed to synchronously save disk cache: \(error)")
             }
@@ -246,7 +252,9 @@ class ConfigManager {
     private func saveConfigLocked() {
         do {
             if !FileManager.default.fileExists(atPath: configDir.path) {
-                try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true, attributes: nil)
+                try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            } else {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: configDir.path)
             }
             
             let encoder = JSONEncoder()
@@ -257,10 +265,12 @@ class ConfigManager {
             if FileManager.default.fileExists(atPath: configFile.path) {
                 try? FileManager.default.removeItem(at: backupConfigFile)
                 try? FileManager.default.copyItem(at: configFile, to: backupConfigFile)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backupConfigFile.path)
             }
             
             // Write atomically to prevent partial writes / truncation corruption
             try data.write(to: configFile, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configFile.path)
         } catch {
             print("Failed to save config: \(error)")
         }
@@ -311,7 +321,8 @@ class ConfigManager {
         ]
         
         let attributesToUpdate: [String: Any] = [
-            kSecValueData as String: data
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
         
         let updateStatus = SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary)
@@ -320,6 +331,7 @@ class ConfigManager {
         } else if updateStatus == errSecItemNotFound {
             var newItem = query
             newItem[kSecValueData as String] = data
+            newItem[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             let addStatus = SecItemAdd(newItem as CFDictionary, nil)
             return addStatus == errSecSuccess
         }

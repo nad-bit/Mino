@@ -166,6 +166,11 @@ class BeerHandlePanel: NSPanel {
         self.alphaValue = 0.0
         self.orderOut(nil)
     }
+    
+    /// Sweeps a liquid-crystal reflection band across the beer handle.
+    func sweepSheen(delay: TimeInterval, duration: TimeInterval, startX: CGFloat, endX: CGFloat) {
+        handleView.sweepSheen(delay: delay, duration: duration, startX: startX, endX: endX)
+    }
 }
 
 
@@ -177,6 +182,7 @@ private class BeerHandleView: NSView {
     
     private let effectView: NSVisualEffectView
     private var borderLayer: CAShapeLayer?
+    private let sheenOverlay = SheenOverlayView()
     
     override init(frame frameRect: NSRect) {
         effectView = NSVisualEffectView(frame: frameRect)
@@ -189,6 +195,19 @@ private class BeerHandleView: NSView {
         
         self.wantsLayer = true
         addSubview(effectView)
+        
+        sheenOverlay.translatesAutoresizingMaskIntoConstraints = false
+        effectView.addSubview(sheenOverlay, positioned: .above, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            sheenOverlay.topAnchor.constraint(equalTo: effectView.topAnchor),
+            sheenOverlay.leadingAnchor.constraint(equalTo: effectView.leadingAnchor),
+            sheenOverlay.trailingAnchor.constraint(equalTo: effectView.trailingAnchor),
+            sheenOverlay.bottomAnchor.constraint(equalTo: effectView.bottomAnchor)
+        ])
+    }
+    
+    func sweepSheen(delay: TimeInterval, duration: TimeInterval, startX: CGFloat, endX: CGFloat) {
+        sheenOverlay.sweep(delay: delay, duration: duration, startX: startX, endX: endX)
     }
     
     required init?(coder: NSCoder) {

@@ -5,6 +5,46 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-11-21 - Padre
+
+### Dynamic Multi-Task HUD & Visual Polish
+- **Dynamic Multitasking HUD**: Smart layout transition between single-task compact cards (340pt) and multi-task vertically stacked lists (400pt) for concurrent downloads and Homebrew installations. Each active operation features independent progress tracking, metrics, cancellation buttons, and completion states without blocking other active tasks.
+- **Top-Anchored HUD Positioning**: Positioned the HUD in the upper third (~20-25% from top of screen), matching native macOS system HUDs. Anchored top edge ensures smooth downward expansion when concurrent tasks are queued.
+- **Clean Completion Cards & Suppressed Tooltips**: Retained cryptographic SHA-256 hash display on download completion while completely eliminating intrusive AppKit truncation tooltips upon hovering.
+- **Enhanced Inline Keyboard Focus**: Thickened keyboard selection focus ring to 2.5 pt with accent tint background, corner radius, and optimized symbol point size to guarantee zero overlap with action icons.
+- **Global Hotkey Auto-Revert**: Added an automatic 7-second timeout to the shortcut recording button ("Pulsa teclas..."), safely reverting to the previous shortcut if no key combination is pressed.
+- **Metal Liquid-Crystal Reflection**: Continuous horizontal sheen animation across header, footer, release notes, settings, and beer mug handle synchronized at 1-minute intervals.
+
+### Security Architecture & Comprehensive Audit
+- **Formal Security Policy**: Published comprehensive `SECURITY.md` detailing Mino's defense-in-depth architecture, responsible disclosure process, and vulnerability triage commitments.
+- **Read-Only Cask Discovery**: Eliminated unattended tap trust execution during background cask searches (`findCaskForRepo`), ensuring that tracking repositories or typing in the search box remains strictly read-only and never modifies system security state.
+- **Safe Installation Trust Pipeline**: Automatic tap trust remains available strictly when the user explicitly triggers Cask installation or update, enforcing strict cask correlation and target validation.
+- **Gatekeeper Quarantine on Downloads**: Attached native `com.apple.quarantine` (`kLSQuarantineTypeWebDownload`) attributes to all downloaded release assets (`DMG`, `PKG`, `ZIP`) and declared `LSFileQuarantineEnabled` in `Info.plist`.
+- **Non-Destructive Atomic Downloads**: Destination asset files are no longer preemptively removed before downloading; downloads write to a temporary file, verify SHA-256 integrity, and atomically replace the destination only upon success.
+- **Scheme Authorization Hardening**: Enforced strict `https` scheme verification before attaching `Bearer` authorization headers to trusted GitHub hosts.
+- **Target Validation Hardening**: Hardened `Utils.isValidMinoTarget` to reject targets starting with `-`, mitigating flag injection in CLI wrappers.
+
+### Data Integrity & Concurrency
+- **Atomic Configuration Mutations**: Replaced isolated struct assignments across `AppDelegate`, `RepoCoordinator`, and `SettingsViewController` with atomic `ConfigManager.shared.modifyConfig` transactions, eliminating race conditions under concurrent worker pools.
+- **File System Permissions Hardening**: Enforced POSIX directory permissions `0700` on `~/.config/Mino` and file permissions `0600` on `repos.json` and `cache.json`.
+- **Keychain Accessibility Protection**: Configured `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` on token storage.
+- **Robust `.git` Suffix Stripping**: Replaced global `.git` string replacements with `Utils.stripGitSuffix`, preventing accidental corruption of repositories like `owner/.github` or `user/site.github.io`.
+
+### User Experience & Non-Destructive Scaling
+- **Release Asset Download Counts & Columnar Alignment**: Added real-time download counts for binary release assets (`.dmg`, `.pkg`, `.zip`, etc.) parsed directly from GitHub's release API payload. Displayed inside an elegant pill badge with subtle capsule borders and background, paired with a right-aligned columnar file size layout and generous margins to completely eliminate visual clustering between download counts and byte sizes.
+- **Minimalist Centered Search Field**: Refactored the header search control from an asymmetrical encapsulated `NSSearchField` to a borderless, minimalist centered `NSTextField` with a subtle separator underline matching the "Add Repository" aesthetic. Completely eliminates the optical and geometric offset of the leading search icon, achieving absolute symmetry with the insertion cursor and placeholder text strictly centered under the popover arrow.
+- **Hierarchical ESC Dismissal for Secondary Windows**: Ensured that pressing ESC while the Release Notes window (or Preferences, About, Add Repo) is open closes only the secondary window, leaving the main menu popover open and focused. Subsequent ESC presses then clear search text or dismiss the main menu hierarchically.
+- **Release Notes Popover Scroll Safety & Anchor Recycling**: Resolved an issue where scrolling the repository list while a Release Notes popover was open caused the popover to jump or reappear anchored to an unrelated repository at the opposite end of the list upon row recycling. Implemented real-time boundary intersection tracking on `clipView` scroll notifications to dismiss the popover cleanly when its anchor row scrolls out of view, and hardened `RepoMenuItemView.reconfigure` to dismiss the popover if its cell is repurposed for a different repository.
+- **Decoupled User Preference & Screen Scale**: Separated `userPreferredScale` in configuration from dynamic `effectiveScale`. Moving Mino to a smaller monitor now scales down the interface temporarily without permanently overwriting or losing the user's configured scale preference when returning to a larger display.
+- **Release Notes Scale Persistence & Shortcut Support**: Kept the Release Notes window continuously visible and active during scale changes, dynamically resizing in sync with the menu without closing. Added global shortcut forwarding (`CMD +`, `CMD -`, `CMD 0..9`) directly from `ReleaseNotesView` and `ReleaseNotesTextView`, while preserving the active tab and scroll offset.
+- **Non-Destructive HTML Sanitization**: Restricted event handler stripping strictly to HTML tags, preserving legitimate text and code blocks containing phrases like `online = true`. Blocked `<style>` tag injection vectors.
+
+### ProMotion & Rendering Performance
+- **Instant Responsive Hover & GPU Compositing**: Integrated immediate layer background transitions on hover state changes paired with `layerContentsRedrawPolicy = .onSetNeedsDisplay`, eliminating display-pass lag and ensuring responsive row highlighting alongside buttery 60/120Hz ProMotion GPU compositing.
+
+### Network Resilience & Outage Backoff
+- **Intelligent Outage Backoff**: Differentiated `lastRefreshAttempt` from successful refreshes. When a full refresh cycle encounters 100% network or rate limit failures, Mino avoids advancing the full interval and schedules an automatic fast retry within 5 minutes.
+
 ## [2.3.2] - 2026-10-10
 
 ### Scheduling Resilience & Minute Precision

@@ -21,18 +21,19 @@ struct RepoDisplayData {
 class MenuActionButton: NSButton {
     private var trackingArea: NSTrackingArea?
     private var isHovered = false
+    private(set) var isKeyboardFocused = false
     
     var baseColor: NSColor = .secondaryLabelColor {
-        didSet { if !isHovered { contentTintColor = baseColor } }
+        didSet { if !isHovered && !isKeyboardFocused { contentTintColor = baseColor } }
     }
     var hoverColor: NSColor = .labelColor {
-        didSet { if isHovered { contentTintColor = hoverColor } }
+        didSet { if isHovered && !isKeyboardFocused { contentTintColor = hoverColor } }
     }
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         self.wantsLayer = true
-        self.layer?.cornerRadius = 4
+        self.layer?.cornerRadius = 5
         self.layer?.masksToBounds = true
     }
     
@@ -40,9 +41,30 @@ class MenuActionButton: NSButton {
         fatalError("init(coder:) has not been implemented")
     }
     
+    override var alignmentRectInsets: NSEdgeInsets {
+        return NSEdgeInsetsZero
+    }
+    
     override var intrinsicContentSize: NSSize {
         // Buttons should be slightly smaller than the row height (approx 22pt) to avoid 'sticking out'
         return NSSize(width: 26, height: 18)
+    }
+    
+    func setKeyboardFocused(_ focused: Bool) {
+        isKeyboardFocused = focused
+        if focused {
+            self.layer?.borderWidth = 2.5
+            self.layer?.borderColor = NSColor.controlAccentColor.cgColor
+            self.layer?.cornerRadius = 5
+            self.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.22).cgColor
+            self.contentTintColor = .labelColor
+        } else {
+            self.layer?.borderWidth = 0
+            self.layer?.borderColor = nil
+            self.layer?.cornerRadius = 5
+            self.layer?.backgroundColor = isHovered ? hoverColor.withAlphaComponent(0.15).cgColor : NSColor.clear.cgColor
+            self.contentTintColor = isHovered ? hoverColor : baseColor
+        }
     }
     
     override func updateTrackingAreas() {
@@ -68,22 +90,28 @@ class MenuActionButton: NSButton {
     override func mouseEntered(with event: NSEvent) {
         super.mouseEntered(with: event)
         isHovered = true
-        contentTintColor = hoverColor
-        self.layer?.backgroundColor = hoverColor.withAlphaComponent(0.15).cgColor
+        if !isKeyboardFocused {
+            contentTintColor = hoverColor
+            self.layer?.backgroundColor = hoverColor.withAlphaComponent(0.15).cgColor
+        }
     }
     
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         isHovered = false
-        contentTintColor = baseColor
-        self.layer?.backgroundColor = NSColor.clear.cgColor
+        if !isKeyboardFocused {
+            contentTintColor = baseColor
+            self.layer?.backgroundColor = NSColor.clear.cgColor
+        }
     }
     
     func resetHoverState() {
         guard isHovered else { return }
         isHovered = false
-        contentTintColor = baseColor
-        self.layer?.backgroundColor = NSColor.clear.cgColor
+        if !isKeyboardFocused {
+            contentTintColor = baseColor
+            self.layer?.backgroundColor = NSColor.clear.cgColor
+        }
     }
 }
 
@@ -137,7 +165,7 @@ class RepoMenuItemView: NSView {
     }
     
     // Data (var for cell reuse via reconfigure(with:))
-    private var repoName: String
+    private(set) var repoName: String
     private var caskName: String?
     private let appDelegate: AppDelegate
     private let layoutMode: String
@@ -175,7 +203,8 @@ class RepoMenuItemView: NSView {
         self.displayData = displayData
         self.originalDate = displayData.originalDate
         
-        let rowHeight: CGFloat = (layout == "cards") ? baseFontSize + (27 * Constants.menuScale) : baseFontSize + (9 * Constants.menuScale)
+        let rawRowHeight: CGFloat = (layout == "cards") ? baseFontSize + (27 * Constants.menuScale) : baseFontSize + (9 * Constants.menuScale)
+        let rowHeight: CGFloat = ceil(rawRowHeight)
         
         super.init(frame: NSRect(x: 0, y: 0, width: 400, height: rowHeight))
         self.autoresizingMask = [.width]
@@ -197,22 +226,22 @@ class RepoMenuItemView: NSView {
         
         self.wantsLayer = true
         self.layerContentsRedrawPolicy = .onSetNeedsDisplay
-        self.layer?.cornerRadius = 5
-        self.layer?.masksToBounds = true
+        self.layer?.cornerRadius = 0
+        self.layer?.masksToBounds = false
     }
     
     /// Reconfigures this view with new data, reusing the NSView allocation,
     /// CALayer, and all instance-property components (buttons, labels, stacks).
     /// Only the lightweight NSStackView wrappers and constraints are recreated.
     func reconfigure(with data: RepoDisplayData) {
-        // Close release notes popover if it is currently open for this repo before we recycle the view.
+        // If this cell was the anchor for an open Release Notes popover and is now being
+        // recycled for a DIFFERENT repo, close the popover so it does not jump across the list.
         if let popover = appDelegate.releaseNotesPopover,
            popover.isShown,
            let vc = popover.contentViewController as? ReleaseNotesViewController,
-           vc.currentRepoName == self.repoName {
+           vc.currentRepoName == self.repoName,
+           data.repoName != self.repoName {
             popover.close()
-            // Purge WebKit's internal URL cache that accumulates when parsing
-            // HTML release notes via NSAttributedString(data:options:documentType:.html)
             URLCache.shared.removeAllCachedResponses()
         }
 
@@ -229,7 +258,7 @@ class RepoMenuItemView: NSView {
             deleteConfirmTimer = nil
         }
         lastHighlightState = false
-        focusedButtonIndex = nil
+        clearKeyboardFocus()
         
         // 3. Strip the old view hierarchy (auto-deactivates inter-view constraints)
         subviews.forEach { $0.removeFromSuperview() }
@@ -307,7 +336,7 @@ class RepoMenuItemView: NSView {
         let buttons = [installBtn, notesBtn, openRepoBtn, deleteBtn].filter { $0.action != nil }
         buttonStack.setViews(buttons, in: .leading)
         buttonStack.orientation = .horizontal
-        buttonStack.spacing = 0
+        buttonStack.spacing = 2
         buttonStack.alignment = .centerY
         buttonStack.distribution = .fillEqually
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
@@ -322,18 +351,14 @@ class RepoMenuItemView: NSView {
     
     /// Applies a visual keyboard focus ring to the button at the given index.
     func setKeyboardFocus(index: Int?) {
-        // Clear focus on all potential buttons to ensure no stale borders persist
         for btn in [installBtn, notesBtn, openRepoBtn, deleteBtn] {
-            btn.layer?.borderWidth = 0
+            btn.setKeyboardFocused(false)
         }
         
         focusedButtonIndex = index
         
-        // Apply new focus
         if let idx = index, idx < actionButtons.count {
-            let btn = actionButtons[idx]
-            btn.layer?.borderWidth = 2
-            btn.layer?.borderColor = NSColor.controlAccentColor.cgColor
+            actionButtons[idx].setKeyboardFocused(true)
         }
     }
     
@@ -348,10 +373,17 @@ class RepoMenuItemView: NSView {
         actionButtons[idx].performClick(nil)
     }
     
+    private var actionButtonIconSize: CGFloat {
+        let isCards = (layoutMode == "cards")
+        return isCards ? baseFontSize : max(8.5, baseFontSize - 3.0)
+    }
+    
     private func setupButton(_ btn: MenuActionButton, icon: String, action: Selector, tooltip: String) {
-        let size: CGFloat = baseFontSize
-        let imageConfig = NSImage.SymbolConfiguration(pointSize: size, weight: .regular)
+        let size: CGFloat = actionButtonIconSize
+        let imageConfig = NSImage.SymbolConfiguration(pointSize: size, weight: .medium)
         btn.image = NSImage(systemSymbolName: icon, accessibilityDescription: tooltip)?.withSymbolConfiguration(imageConfig)
+        btn.imageScaling = .scaleProportionallyDown
+        btn.imagePosition = .imageOnly
         btn.isBordered = false
         btn.target = self
         btn.action = action
@@ -776,7 +808,7 @@ class RepoMenuItemView: NSView {
             isConfirmingDelete = true
             
             // Swap icon to filled trash (armed state)
-            let imageConfig = NSImage.SymbolConfiguration(pointSize: baseFontSize, weight: .medium)
+            let imageConfig = NSImage.SymbolConfiguration(pointSize: actionButtonIconSize, weight: .medium)
             deleteBtn.image = NSImage(systemSymbolName: "trash.fill", accessibilityDescription: Translations.get("confirmDelete"))?.withSymbolConfiguration(imageConfig)
             deleteBtn.contentTintColor = .white
             deleteBtn.toolTip = Translations.get("confirmDelete")
@@ -809,7 +841,7 @@ class RepoMenuItemView: NSView {
         deleteConfirmTimer = nil
         
         // Restore trash icon
-        let imageConfig = NSImage.SymbolConfiguration(pointSize: baseFontSize, weight: .regular)
+        let imageConfig = NSImage.SymbolConfiguration(pointSize: actionButtonIconSize, weight: .regular)
         deleteBtn.image = NSImage(systemSymbolName: "trash", accessibilityDescription: Translations.get("deleteRepo"))?.withSymbolConfiguration(imageConfig)
         deleteBtn.toolTip = Translations.get("deleteRepo")
         
@@ -911,6 +943,17 @@ class RepoMenuItemView: NSView {
         // In cards mode, collapse the version pill background on highlight
         if layoutMode == "cards" {
             versionLabel.backgroundColor = highlighted ? .clear : NSColor.systemBlue.withAlphaComponent(0.7)
+        }
+        
+        // Update layer background color immediately for instant responsive hover feedback
+        if isConfirmingDelete {
+            layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.25).cgColor
+        } else if highlighted {
+            layer?.backgroundColor = NSColor.selectedContentBackgroundColor.cgColor
+        } else if displayData.isNew {
+            layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
+        } else {
+            layer?.backgroundColor = nil
         }
     }
     

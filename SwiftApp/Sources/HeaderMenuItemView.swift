@@ -47,6 +47,9 @@ class HeaderMenuItemView: NSView {
     private let progressBar = NSView()
     private var progressBarWidthConstraint: NSLayoutConstraint?
     
+    // Liquid-crystal reflection overlay
+    private let sheenOverlay = SheenOverlayView()
+    
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
         super.init(frame: NSRect(x: 0, y: 0, width: Constants.menuWidth, height: Constants.menuHeaderFooterHeight))
@@ -82,13 +85,18 @@ class HeaderMenuItemView: NSView {
         addBtn.hoverColor = .labelColor
         addBtn.translatesAutoresizingMaskIntoConstraints = false
         
-        // Search Field (Setup moved here since it was removed from refresh config block)
+        // Search Field (Minimalist, borderless, perfectly centered like AddRepo)
         self.searchField = MenuSearchField(appDelegate: appDelegate)
         self.searchField.delegate = appDelegate
         searchField.placeholderString = Translations.get("search")
-        searchField.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2)
+        searchField.font = .systemFont(ofSize: Constants.menuBaseFontSize - 2, weight: .medium)
         searchField.alignment = .center
+        searchField.isBezeled = false
+        searchField.drawsBackground = false
         searchField.focusRingType = .none
+        searchField.usesSingleLineMode = true
+        searchField.cell?.wraps = false
+        searchField.cell?.isScrollable = true
         searchField.translatesAutoresizingMaskIntoConstraints = false
         
         searchField.wantsLayer = true
@@ -151,7 +159,7 @@ class HeaderMenuItemView: NSView {
             
             searchField.centerXAnchor.constraint(equalTo: centerXAnchor),
             searchField.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.40),
-            searchField.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
+            searchField.centerYAnchor.constraint(equalTo: addBtn.centerYAnchor),
             
             quickAddStack.centerXAnchor.constraint(equalTo: centerXAnchor),
             quickAddStack.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 1.5),
@@ -208,10 +216,24 @@ class HeaderMenuItemView: NSView {
         // Define width constraint (initially inactive until targetWidth is set)
         widthConstraint = widthAnchor.constraint(equalToConstant: Constants.menuWidth)
         
-        let sfHeight = max(22.0, (Constants.menuHeaderFooterHeight * 0.48))
+        let sfHeight = ceil(searchField.cell?.cellSize.height ?? (Constants.menuBaseFontSize + 4))
         let sfHeightConst = searchField.heightAnchor.constraint(equalToConstant: sfHeight)
         self.searchFieldHeightConstraint = sfHeightConst
         sfHeightConst.isActive = true
+        
+        sheenOverlay.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(sheenOverlay, positioned: .above, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            sheenOverlay.topAnchor.constraint(equalTo: topAnchor),
+            sheenOverlay.leadingAnchor.constraint(equalTo: leadingAnchor),
+            sheenOverlay.trailingAnchor.constraint(equalTo: trailingAnchor),
+            sheenOverlay.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+    
+    /// Sweeps a liquid-crystal reflection band across the header.
+    func sweepSheen(delay: TimeInterval, duration: TimeInterval, startX: CGFloat, endX: CGFloat) {
+        sheenOverlay.sweep(delay: delay, duration: duration, startX: startX, endX: endX)
     }
     
     func updateFontSize() {
@@ -228,18 +250,9 @@ class HeaderMenuItemView: NSView {
         addBtn.constraints.first(where: { $0.firstAttribute == .width })?.constant = btnSize
         addBtn.constraints.first(where: { $0.firstAttribute == .height })?.constant = btnSize
         
-        let sfHeight = max(22.0, (Constants.menuHeaderFooterHeight * 0.48))
+        searchField.font = .systemFont(ofSize: baseFontSize - 2, weight: .medium)
+        let sfHeight = ceil(searchField.cell?.cellSize.height ?? (baseFontSize + 4))
         searchFieldHeightConstraint?.constant = sfHeight
-        searchField.font = .systemFont(ofSize: baseFontSize - 2)
-        
-        if let searchCell = searchField.cell as? NSSearchFieldCell {
-            let iconSize = max(11.0, baseFontSize - 3)
-            let searchConfig = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
-            searchCell.searchButtonCell?.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?.withSymbolConfiguration(searchConfig)
-            
-            let cancelConfig = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
-            searchCell.cancelButtonCell?.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: nil)?.withSymbolConfiguration(cancelConfig)
-        }
         
         if baseFontSize >= 18 {
             searchField.controlSize = .large

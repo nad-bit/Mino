@@ -163,17 +163,22 @@ class RepoCoordinator {
         popover.contentViewController?.view.window?.acceptsMouseMovedEvents = true
         popover.contentViewController?.view.window?.makeKey()
         
-        // Fetch the release body & assets asynchronously ONLY if not already cached in info
-        if info.body == nil {
+        // Fetch the release body & assets asynchronously if body is nil OR if download counts are missing
+        let hasMissingDownloads = info.assets?.contains(where: { !$0.isSourceArchive && $0.downloadCount == nil }) ?? true
+        if info.body == nil || hasMissingDownloads {
             Task {
                 let details = await GitHubAPI.shared.fetchReleaseDetails(repo: repoName, version: info.version)
                 await MainActor.run {
                     guard popover.isShown, vc.currentRepoName == repoName else { return }
                     var updatedInfo = info
-                    updatedInfo.body = details.body ?? ""
-                    updatedInfo.assets = details.assets
+                    if let freshBody = details.body, !freshBody.isEmpty {
+                        updatedInfo.body = freshBody
+                    }
+                    if let freshAssets = details.assets, !freshAssets.isEmpty {
+                        updatedInfo.assets = freshAssets
+                    }
                     delegate.repoCache[repoName] = updatedInfo
-                    vc.loadNotes(for: updatedInfo)
+                    vc.loadNotes(for: updatedInfo, preserveState: true)
                     ConfigManager.shared.saveCache(repoCache: delegate.repoCache, etags: GitHubAPI.shared.allETags())
                 }
             }
@@ -187,7 +192,7 @@ class RepoCoordinator {
         
         // Show installing notification with package icon while Brew works
         let brewImage = NSImage(systemSymbolName: "mug", accessibilityDescription: nil)
-        HUDPanel.shared.show(title: Translations.get("installingTitle"), subtitle: Translations.get("installingMsg").format(with: ["cask_name": caskName]), image: brewImage, duration: nil)
+        HUDPanel.shared.showProgress(id: caskName, title: caskName, subtitle: Translations.get("installingMsg").format(with: ["cask_name": caskName]), image: brewImage, progress: 0.0)
         
         Task { [weak delegate] in
             guard let delegate = delegate else { return }
@@ -197,7 +202,7 @@ class RepoCoordinator {
                 let msgId = result.message == "alreadyInstalled" ? "alreadyInstalled" : "installComplete"
                 let subtitle = Translations.get(msgId).format(with: ["cask_name": caskName])
                 await MainActor.run {
-                    HUDPanel.shared.showCompletion(title: Translations.get("installingTitle"), subtitle: subtitle, isSuccess: true)
+                    HUDPanel.shared.showCompletion(id: caskName, title: caskName, subtitle: subtitle, isSuccess: true)
                 }
                 
                 // Reveal in Finder
@@ -206,7 +211,7 @@ class RepoCoordinator {
                 // Aborted because Homebrew asked for a password
                 DispatchQueue.main.async {
                     delegate.animateStatusIcon(with: .wiggle)
-                    HUDPanel.shared.hide()
+                    HUDPanel.shared.removeTask(id: caskName)
                     let alert = NSAlert()
                     alert.messageText = Translations.get("sudoRequiredTitle")
                     alert.informativeText = Translations.get("sudoRequiredDesc").format(with: ["cask_name": caskName])
@@ -223,12 +228,12 @@ class RepoCoordinator {
                 
                 if isDownloadError {
                     await MainActor.run {
-                        HUDPanel.shared.showCompletion(title: Translations.get("brewDownloadErrorTitle"), subtitle: Translations.get("brewDownloadErrorMsg"), isSuccess: false)
+                        HUDPanel.shared.showCompletion(id: caskName, title: caskName, subtitle: Translations.get("brewDownloadErrorMsg"), isSuccess: false)
                     }
                 } else {
                     let subtitle = Translations.get("installFailed").format(with: ["cask_name": caskName])
                     await MainActor.run {
-                        HUDPanel.shared.showCompletion(title: Translations.get("error"), subtitle: subtitle, isSuccess: false)
+                        HUDPanel.shared.showCompletion(id: caskName, title: caskName, subtitle: subtitle, isSuccess: false)
                     }
                 }
             }
@@ -358,9 +363,12 @@ class RepoCoordinator {
         if ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == repoName.lowercased() }) {
             if let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name.lowercased() == repoName.lowercased() }) {
                 if ConfigManager.shared.config.repos[index].source == "manual" && source == "brew" {
-                    ConfigManager.shared.config.repos[index].source = "brew"
-                    ConfigManager.shared.config.repos[index].cask = cask
-                    ConfigManager.shared.saveConfig()
+                    ConfigManager.shared.modifyConfig { cfg in
+                        if index < cfg.repos.count {
+                            cfg.repos[index].source = "brew"
+                            cfg.repos[index].cask = cask
+                        }
+                    }
                     await MainActor.run {
                         delegate.rebuildMenu()
                         delegate.animateStatusIcon(with: .bounce)
@@ -463,7 +471,7 @@ class RepoCoordinator {
                         let range = NSRange(location: 0, length: urlString.utf16.count)
                         if let match = regex.firstMatch(in: urlString, options: [], range: range) {
                             if let r = Range(match.range(at: 1), in: urlString) {
-                                repoName = String(urlString[r]).replacingOccurrences(of: ".git", with: "")
+                                repoName = Utils.stripGitSuffix(String(urlString[r]))
                             }
                         }
                     }
@@ -521,25 +529,24 @@ class RepoCoordinator {
         let (info, tagsMeta, foundCask) = await (infoTask, tagsTask, caskTask)
         
         // Race Condition Guard 1: Verify repo is still present in user config (not deleted while fetching)
-        guard let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name.lowercased() == repoName.lowercased() }) else {
+        guard ConfigManager.shared.config.repos.contains(where: { $0.name.lowercased() == repoName.lowercased() }) else {
             return
         }
         
-        // Update tags and description
-        if let tags = tagsMeta.tags {
-            ConfigManager.shared.config.repos[index].tags = tags
+        // Update tags, description and Cask atomically under lock
+        ConfigManager.shared.modifyConfig { cfg in
+            guard let idx = cfg.repos.firstIndex(where: { $0.name.lowercased() == repoName.lowercased() }) else { return }
+            if let tags = tagsMeta.tags {
+                cfg.repos[idx].tags = tags
+            }
+            if let desc = tagsMeta.description {
+                cfg.repos[idx].repoDescription = desc
+            }
+            if let cask = foundCask {
+                cfg.repos[idx].source = "brew"
+                cfg.repos[idx].cask = cask
+            }
         }
-        if let desc = tagsMeta.description {
-            ConfigManager.shared.config.repos[index].repoDescription = desc
-        }
-        
-        // Update Cask if newly discovered
-        if let cask = foundCask {
-            ConfigManager.shared.config.repos[index].source = "brew"
-            ConfigManager.shared.config.repos[index].cask = cask
-        }
-        
-        ConfigManager.shared.saveConfig()
         
         // Update cache & timestamp anchor to prevent full refresh overwriting
         if info.isNotModified {

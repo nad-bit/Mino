@@ -631,13 +631,14 @@ class GitHubAPI {
                 guard let name = assetDict["name"] as? String,
                       let downloadURL = assetDict["browser_download_url"] as? String else { continue }
                 let size = assetDict["size"] as? Int64
+                let downloadCount = assetDict["download_count"] as? Int
                 
                 // Priority 1: GitHub official asset digest (e.g. "sha256:4f3b...")
                 let officialSHA = GitHubAPI.parseDigest(assetDict["digest"] as? String)
                 // Priority 2: Release notes body checksum fallback
                 let expectedSHA = officialSHA ?? checksums[name.lowercased()]
                 
-                result.append(ReleaseAsset(name: name, size: size, downloadURL: downloadURL, isSourceArchive: false, expectedSHA256: expectedSHA))
+                result.append(ReleaseAsset(name: name, size: size, downloadURL: downloadURL, isSourceArchive: false, expectedSHA256: expectedSHA, downloadCount: downloadCount))
             }
         }
         
@@ -894,6 +895,28 @@ class GitHubAPI {
             }
         }
         
+        // 2. Fallback: try latest release endpoint if tag-specific endpoint fails
+        if let url = URL(string: "\(Constants.githubAPIBaseURL)/repos/\(repo)/releases/latest") {
+            var request = URLRequest(url: url)
+            headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+            
+            if let (data, response) = try? await session.data(for: request),
+               let httpResponse = response as? HTTPURLResponse {
+                recordRateLimit(from: httpResponse, wasAuthenticated: wasAuth)
+                
+                if httpResponse.statusCode == 200,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let rawBody = json["body_html"] as? String ?? json["body"] as? String
+                    let tag = version ?? json["tag_name"] as? String
+                    let assets = GitHubAPI.parseReleaseAssets(from: json, repo: repo, tag: tag, releaseBody: rawBody)
+                    if let body = rawBody, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        return (body, assets)
+                    }
+                    return (nil, assets)
+                }
+            }
+        }
+        
         let fallbackBody = await fetchReleaseBody(repo: repo, version: version)
         return (fallbackBody, nil)
     }
@@ -941,7 +964,8 @@ class GitHubAPI {
         var request = URLRequest(url: url)
         request.setValue(Constants.userAgent, forHTTPHeaderField: "User-Agent")
         
-        if let host = url.host?.lowercased(),
+        if let scheme = url.scheme?.lowercased(), scheme == "https",
+           let host = url.host?.lowercased(),
            GitHubAPI.isTrustedGitHubHost(host),
            let token = ConfigManager.shared.token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -958,10 +982,6 @@ class GitHubAPI {
         let fileManager = FileManager.default
         let parentDir = destinationURL.deletingLastPathComponent()
         try? fileManager.createDirectory(at: parentDir, withIntermediateDirectories: true)
-        
-        if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.removeItem(at: destinationURL)
-        }
         
         let tempURL = parentDir.appendingPathComponent(".download_\(UUID().uuidString).tmp")
         fileManager.createFile(atPath: tempURL.path, contents: nil)
@@ -1013,6 +1033,20 @@ class GitHubAPI {
         }
         
         progress(receivedBytes, totalBytes > 0 ? totalBytes : receivedBytes)
+        
+        // Attach macOS Gatekeeper quarantine attribute
+        var values = URLResourceValues()
+        values.quarantineProperties = [
+            kLSQuarantineTypeKey as String: kLSQuarantineTypeWebDownload,
+            kLSQuarantineAgentNameKey as String: "Mino"
+        ]
+        var quarantinedTemp = tempURL
+        try? quarantinedTemp.setResourceValues(values)
+        
+        // Atomic destination replacement: safely remove previous file only after download & hash succeeded
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
         try fileManager.moveItem(at: tempURL, to: destinationURL)
         return computedDigest
     }

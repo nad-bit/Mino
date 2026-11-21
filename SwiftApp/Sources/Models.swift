@@ -6,6 +6,7 @@ struct ReleaseAsset: Codable, Equatable {
     var downloadURL: String
     var isSourceArchive: Bool
     var expectedSHA256: String? = nil
+    var downloadCount: Int? = nil
 }
 
 struct RepoInfo: Codable, Equatable {

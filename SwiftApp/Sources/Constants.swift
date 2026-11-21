@@ -24,7 +24,21 @@ enum Constants {
     
     // UI Constants
     static let newReleaseThresholdDays: Int = 7 // Fallback default, overridden by config
-    static var menuScale: CGFloat { CGFloat(ConfigManager.shared.config.menuScale ?? 1.0) }
+    
+    /// Internal storage for active screen-clamped scale.
+    /// Decouples the user's persistent preference in ConfigManager from temporary display constraints.
+    private static var _effectiveScale: Double? = nil
+    static var effectiveScale: Double {
+        get { _effectiveScale ?? (ConfigManager.shared.config.menuScale ?? 1.0) }
+        set { _effectiveScale = newValue }
+    }
+    
+    /// Global menu scale factor applied to layout geometries and fonts.
+    static var menuScale: CGFloat { CGFloat(effectiveScale) }
+    
+    /// Absolute bounds for menu scaling.
+    /// Discrete shortcuts CMD+1..CMD+9 map to 105%..145%, while zoom shortcuts (CMD+/CMD-)
+    /// and large-screen display profiles allow dynamic scaling up to menuScaleMax (190%).
     static let menuScaleMin: Double = 1.0
     static let menuScaleMax: Double = 1.9
     static var menuHeaderFooterHeight: CGFloat { 54.0 * menuScale }

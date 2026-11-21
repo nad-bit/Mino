@@ -86,8 +86,11 @@ class GlobalHotkeyManager {
 
 // MARK: - ShortcutRecorderButton
 class ShortcutRecorderButton: NSButton {
-    private var isRecording = false
+    static let recordingTimeout: TimeInterval = 7.0
+    
+    private(set) var isRecording = false
     private var keyMonitor: Any?
+    private var timeoutWorkItem: DispatchWorkItem?
     var onShortcutChanged: ((Int, NSEvent.ModifierFlags) -> Void)?
     
     override var acceptsFirstResponder: Bool { return true }
@@ -99,6 +102,20 @@ class ShortcutRecorderButton: NSButton {
         return super.resignFirstResponder()
     }
     
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil && isRecording {
+            stopRecording(cancelled: true)
+        }
+    }
+    
+    deinit {
+        timeoutWorkItem?.cancel()
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+    
     override func mouseDown(with event: NSEvent) {
         if !isRecording {
             startRecording()
@@ -107,10 +124,19 @@ class ShortcutRecorderButton: NSButton {
         }
     }
     
-    private func startRecording() {
+    func startRecording(timeout: TimeInterval = recordingTimeout) {
         isRecording = true
         self.window?.makeFirstResponder(self)
         updateDisplay()
+        
+        // Auto-revert timeout if no key combination is pressed within the duration
+        timeoutWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self, self.isRecording else { return }
+            self.stopRecording(cancelled: true)
+        }
+        self.timeoutWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: workItem)
         
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self = self else { return event }
@@ -140,8 +166,11 @@ class ShortcutRecorderButton: NSButton {
         }
     }
     
-    private func stopRecording(cancelled: Bool) {
+    func stopRecording(cancelled: Bool) {
         isRecording = false
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
+        
         if let monitor = keyMonitor {
             NSEvent.removeMonitor(monitor)
             keyMonitor = nil

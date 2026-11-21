@@ -250,8 +250,8 @@ final class HomebrewManager: Sendable {
     func installCask(cask: String) async -> (success: Bool, message: String) {
         _ = await runBrewUpdate()
         
-        // If it's a tap cask or qualified name, trust it automatically upfront
-        if cask.contains("/") {
+        // If it's a tap cask or qualified name, trust it automatically upfront when installing
+        if cask.contains("/") && Utils.isValidMinoTarget(cask) {
             _ = await trustTarget(cask)
         }
         
@@ -366,10 +366,10 @@ final class HomebrewManager: Sendable {
     }
     
     func findCaskForRepo(repoName: String) async -> String? {
-        return await executeFindCaskForRepo(repoName: repoName, canRetry: true)
+        return await executeFindCaskForRepo(repoName: repoName)
     }
     
-    private func executeFindCaskForRepo(repoName: String, canRetry: Bool) async -> String? {
+    private func executeFindCaskForRepo(repoName: String) async -> String? {
         let shortName = repoName.split(separator: "/").last.map { String($0) } ?? repoName
         let repoUrlPattern = "github.com/\(repoName)".lowercased()
         
@@ -379,7 +379,7 @@ final class HomebrewManager: Sendable {
         
         guard let process = createProcess(arguments: ["info", "--cask", "--json=v2"] + candidates) else { return nil }
         
-        // 2. Info mapping
+        // 2. Info mapping (read-only: searching never trusts taps)
         return await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
                 let pipeOut = Pipe()
@@ -390,7 +390,7 @@ final class HomebrewManager: Sendable {
                 do {
                     try process.run()
                     let data = pipeOut.fileHandleForReading.readDataToEndOfFile()
-                    let errData = pipeErr.fileHandleForReading.readDataToEndOfFile()
+                    _ = pipeErr.fileHandleForReading.readDataToEndOfFile()
                     process.waitUntilExit()
                     if process.terminationStatus == 0 {
                         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -407,18 +407,6 @@ final class HomebrewManager: Sendable {
                                 }
                             }
                         }
-                    } else if canRetry, let errStr = String(data: errData, encoding: .utf8),
-                              let target = self.extractTrustTarget(from: errStr) {
-                        Task {
-                            let trusted = await self.trustTarget(target)
-                            if trusted {
-                                let retry = await self.executeFindCaskForRepo(repoName: repoName, canRetry: false)
-                                continuation.resume(returning: retry)
-                            } else {
-                                continuation.resume(returning: nil)
-                            }
-                        }
-                        return
                     }
                 } catch {}
                 continuation.resume(returning: nil)
@@ -427,7 +415,8 @@ final class HomebrewManager: Sendable {
     }
     
     private func brewSearch(term: String) async -> [String] {
-        guard let process = createProcess(arguments: ["search", "--cask", term]) else { return [] }
+        guard Utils.isValidMinoTarget(term),
+              let process = createProcess(arguments: ["search", "--cask", term]) else { return [] }
         return await withCheckedContinuation { continuation in
             DispatchQueue.global().async {
                 let pipe = Pipe()
@@ -438,7 +427,8 @@ final class HomebrewManager: Sendable {
                     process.waitUntilExit()
                     if process.terminationStatus == 0 {
                         if let output = String(data: data, encoding: .utf8) {
-                            let results = output.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+                            let results = output.components(separatedBy: .whitespacesAndNewlines)
+                                .filter { !$0.isEmpty && Utils.isValidMinoTarget($0) }
                             continuation.resume(returning: results)
                             return
                         }

@@ -149,6 +149,19 @@ class ClickableAssetRow: NSView {
 
 class ReleaseNotesView: NSView {
     override var acceptsFirstResponder: Bool { true }
+    
+    override func cancelOperation(_ sender: Any?) {
+        if let popover = (NSApp.delegate as? AppDelegate)?.releaseNotesPopover {
+            popover.close()
+        }
+    }
+    
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let appDelegate = NSApp.delegate as? AppDelegate, appDelegate.handleGlobalShortcuts(with: event) {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }
 
 class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
@@ -165,8 +178,13 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
     private(set) var currentRepoName: String?
     private(set) var currentAssets: [ReleaseAsset]?
     private var repoReleasesURL: URL?
-    private var activeDownloadTask: Task<Void, Never>?
+    private var activeDownloadTasks: [String: Task<Void, Never>] = [:]
     private var viewWidthConstraint: NSLayoutConstraint?
+    private var savedScrollOrigin: NSPoint?
+    private var savedAssetsScrollOrigin: NSPoint?
+    
+    // Liquid-crystal reflection overlay
+    private let sheenOverlay = SheenOverlayView()
     
     init() {
         super.init(nibName: nil, bundle: nil)
@@ -221,6 +239,15 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             mainStack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             mainStack.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             widthConstraint
+        ])
+        
+        sheenOverlay.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(sheenOverlay, positioned: .above, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            sheenOverlay.topAnchor.constraint(equalTo: view.topAnchor),
+            sheenOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            sheenOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            sheenOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         
         // --- 1. Header Card (Title + Description inside box) ---
@@ -411,16 +438,21 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         }
     }
     
-    func loadNotes(for info: RepoInfo) {
+    func loadNotes(for info: RepoInfo, preserveState: Bool = false) {
+        let previousSegment = preserveState ? modeSegmentedControl.selectedSegment : 0
+        self.savedScrollOrigin = preserveState ? textView.enclosingScrollView?.contentView.bounds.origin : nil
+        self.savedAssetsScrollOrigin = preserveState ? assetsScrollView.contentView.bounds.origin : nil
+        
         self.currentRepoName = info.name
         self.currentAssets = info.assets
         
-        // Reset navigation segment to 0 ("Notas")
-        modeSegmentedControl.selectedSegment = 0
+        // Navigation segment (preserve user's active tab when scaling)
+        modeSegmentedControl.selectedSegment = previousSegment
+        let showNotes = (previousSegment == 0)
         if let scrollView = textView.enclosingScrollView {
-            scrollView.isHidden = false
+            scrollView.isHidden = !showNotes
         }
-        assetsScrollView.isHidden = true
+        assetsScrollView.isHidden = showNotes
         
         let hasAssets = info.assets != nil && !info.assets!.isEmpty
         modeSegmentedControl.setEnabled(hasAssets, forSegment: 1)
@@ -827,7 +859,14 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         } else {
             textView.string = cleanMarkdown
         }
-        textView.scrollToBeginningOfDocument(nil)
+        if let origin = savedScrollOrigin {
+            textView.enclosingScrollView?.contentView.scroll(to: origin)
+        } else {
+            textView.scrollToBeginningOfDocument(nil)
+        }
+        if let assetsOrigin = savedAssetsScrollOrigin {
+            assetsScrollView.contentView.scroll(to: assetsOrigin)
+        }
         textView.window?.invalidateCursorRects(for: textView)
     }
     
@@ -912,6 +951,52 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             rowStack.addArrangedSubview(spacer)
             
+            // Download Count Indicator (if available from GitHub API)
+            if let count = asset.downloadCount {
+                let dlBadge = NSStackView()
+                dlBadge.orientation = .horizontal
+                dlBadge.alignment = .centerY
+                dlBadge.spacing = 3.5 * Constants.menuScale
+                dlBadge.edgeInsets = NSEdgeInsets(
+                    top: 2.5 * Constants.menuScale,
+                    left: 6.5 * Constants.menuScale,
+                    bottom: 2.5 * Constants.menuScale,
+                    right: 6.5 * Constants.menuScale
+                )
+                dlBadge.wantsLayer = true
+                dlBadge.layer?.cornerRadius = 5.0 * Constants.menuScale
+                dlBadge.layer?.backgroundColor = NSColor.textColor.withAlphaComponent(0.06).cgColor
+                dlBadge.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.25).cgColor
+                dlBadge.layer?.borderWidth = 0.5
+                
+                let dlSymbol = NSImageView()
+                let symConfig = NSImage.SymbolConfiguration(pointSize: (9.0 * Constants.menuScale) + (offset * 0.4), weight: .semibold)
+                if let img = NSImage(systemSymbolName: "arrow.down", accessibilityDescription: "Downloads")?.withSymbolConfiguration(symConfig) {
+                    dlSymbol.image = img
+                    dlSymbol.contentTintColor = .secondaryLabelColor
+                }
+                dlSymbol.translatesAutoresizingMaskIntoConstraints = false
+                dlBadge.addArrangedSubview(dlSymbol)
+                
+                let countLabel = NSTextField(labelWithString: Utils.formatDownloadCount(count))
+                countLabel.font = .systemFont(ofSize: (11.0 * Constants.menuScale) + (offset * 0.5), weight: .medium)
+                countLabel.textColor = .secondaryLabelColor
+                dlBadge.addArrangedSubview(countLabel)
+                
+                let exact = NumberFormatter.localizedString(from: NSNumber(value: count), number: .decimal)
+                dlBadge.toolTip = "\(exact) \(Translations.get("downloads"))"
+                dlBadge.setContentHuggingPriority(.required, for: .horizontal)
+                dlBadge.setContentCompressionResistancePriority(.required, for: .horizontal)
+                dlBadge.widthAnchor.constraint(greaterThanOrEqualToConstant: 50 * Constants.menuScale).isActive = true
+                rowStack.addArrangedSubview(dlBadge)
+                
+                // Visual breathing gap between badge and size column
+                let gapSpacer = NSView()
+                gapSpacer.translatesAutoresizingMaskIntoConstraints = false
+                gapSpacer.widthAnchor.constraint(equalToConstant: 6 * Constants.menuScale).isActive = true
+                rowStack.addArrangedSubview(gapSpacer)
+            }
+            
             // Size Label
             let sizeText: String
             if let s = asset.size, s > 0 {
@@ -924,7 +1009,10 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             let sizeLabel = NSTextField(labelWithString: sizeText)
             sizeLabel.font = .systemFont(ofSize: (12 * Constants.menuScale) + (offset * 0.5), weight: .regular)
             sizeLabel.textColor = .secondaryLabelColor
+            sizeLabel.alignment = .right
             sizeLabel.setContentHuggingPriority(.required, for: .horizontal)
+            sizeLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+            sizeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 68 * Constants.menuScale).isActive = true
             rowStack.addArrangedSubview(sizeLabel)
             
             // Download Arrow Icon
@@ -1009,12 +1097,12 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                     }
                     
                     Task { @MainActor in
-                        HUDPanel.shared.updateDownloadProgress(status: status, details: details, progress: progressRatio)
+                        HUDPanel.shared.updateDownloadProgress(id: fileName, status: status, details: details, progress: progressRatio)
                     }
                 }
                 
                 await MainActor.run {
-                    self.activeDownloadTask = nil
+                    self.activeDownloadTasks[fileName] = nil
                     let finalSize = (try? destURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map { Int64($0) } ?? asset.size ?? 0
                     let sizeStr = self.formatBytes(finalSize)
                     let compText = Translations.get("downloadSuccess")
@@ -1023,29 +1111,29 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                         : "\(sizeStr) • \(compText)"
                     let shaBadge = !computedSHA.isEmpty ? "SHA-256: \(computedSHA.prefix(8))..." : nil
                     
-                    HUDPanel.shared.showDownloadCompletion(title: fileName, subtitle: subtitle, sha: shaBadge, destinationURL: destURL)
+                    HUDPanel.shared.showDownloadCompletion(id: fileName, title: fileName, subtitle: subtitle, sha: shaBadge, destinationURL: destURL)
                 }
             } catch is CancellationError {
                 await MainActor.run {
-                    self.activeDownloadTask = nil
+                    self.activeDownloadTasks[fileName] = nil
                     try? FileManager.default.removeItem(at: destURL)
-                    HUDPanel.shared.showCancellation(title: fileName, subtitle: Translations.get("downloadCancelled"), duration: 2.5)
+                    HUDPanel.shared.showCancellation(id: fileName, title: fileName, subtitle: Translations.get("downloadCancelled"), duration: 2.5)
                 }
             } catch {
                 await MainActor.run {
-                    self.activeDownloadTask = nil
+                    self.activeDownloadTasks[fileName] = nil
                     let failTitle = Translations.get("downloadFailed").format(with: ["filename": fileName])
-                    HUDPanel.shared.showCompletion(title: failTitle, subtitle: error.localizedDescription, isSuccess: false)
+                    HUDPanel.shared.showCompletion(id: fileName, title: failTitle, subtitle: error.localizedDescription, isSuccess: false)
                 }
             }
         }
-        self.activeDownloadTask = downloadTask
+        self.activeDownloadTasks[fileName] = downloadTask
         
-        HUDPanel.shared.showDownloadProgress(title: fileName, status: "...", details: "", progress: 0.0, onCancel: { [weak self] in
+        HUDPanel.shared.showDownloadProgress(id: fileName, title: fileName, status: "...", details: "", progress: 0.0, onCancel: { [weak self] in
             downloadTask?.cancel()
-            self?.activeDownloadTask = nil
+            self?.activeDownloadTasks[fileName] = nil
             try? FileManager.default.removeItem(at: destURL)
-            HUDPanel.shared.showCancellation(title: fileName, subtitle: Translations.get("downloadCancelled"), duration: 2.5)
+            HUDPanel.shared.showCancellation(id: fileName, title: fileName, subtitle: Translations.get("downloadCancelled"), duration: 2.5)
         })
     }
     
@@ -1196,8 +1284,13 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         preferredContentSize = NSSize(width: Constants.notesWindowWidth, height: Constants.notesWindowHeight)
         updateSegmentedControlFontSize()
         if let currentRepo = currentRepoName, let info = (NSApp.delegate as? AppDelegate)?.repoCache[currentRepo] {
-            loadNotes(for: info)
+            loadNotes(for: info, preserveState: true)
         }
+    }
+    
+    /// Sweeps a liquid-crystal reflection band across the Release Notes view.
+    func sweepSheen(delay: TimeInterval, duration: TimeInterval, startX: CGFloat, endX: CGFloat) {
+        sheenOverlay.sweep(delay: delay, duration: duration, startX: startX, endX: endX)
     }
 }
 
@@ -1207,6 +1300,19 @@ class ReleaseNotesTextView: NSTextView {
     /// Suppress context menu cleanly at the view level so right-clicking doesn't prevent closing on outside clicks
     override func menu(for event: NSEvent) -> NSMenu? {
         return nil
+    }
+    
+    override func cancelOperation(_ sender: Any?) {
+        if let popover = (NSApp.delegate as? AppDelegate)?.releaseNotesPopover {
+            popover.close()
+        }
+    }
+    
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let appDelegate = NSApp.delegate as? AppDelegate, appDelegate.handleGlobalShortcuts(with: event) {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
     
     /// Shifts the text container origin to the right by half the scroller width

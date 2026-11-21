@@ -9,6 +9,7 @@
   [![macOS](https://img.shields.io/badge/macOS-12.0+-000000?style=flat&logo=apple&logoColor=white)](https://apple.com/macos)
   [![Swift](https://img.shields.io/badge/Swift-5.0+-FA7343?style=flat&logo=swift&logoColor=white)](https://swift.org)
   [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+  [![Security](https://img.shields.io/badge/Security-Hardened-success.svg)](SECURITY.md)
 </div>
 
 
@@ -28,7 +29,7 @@
 - **⏱ Tooltip Tracker**: The refresh countdown is hidden for a cleaner look — simply hover over the refresh icon to see the time remaining, or hover over the footer count for the exact last-update timestamp.
 - **🎯 Multi-Hunt Window**: The floating "Add Repositories..." window acts as a persistent tracking hub. Keep it open while you browse Safari, and simply hit `CMD+C` on sequential GitHub URLs. Mino automatically sniffs your clipboard and queues them up for rapid batch-ingestion without ever losing focus.
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
-- **🔐 Hardened Security & Resilience**: GitHub OAuth tokens stored in macOS Keychain with minimal scopes (`""`), strict domain allowlist validation, atomic configuration persistence, and link protocol isolation
+- **🔐 Hardened Security & Resilience**: GitHub OAuth tokens stored in macOS Keychain with minimal scopes (`""`), strict domain allowlist validation, atomic configuration persistence, link protocol isolation, and SHA-256 asset verification (see [SECURITY.md](SECURITY.md))
 - **💾 Persistent Disk Cache & 0 ms Cold Starts**: Instant launch even with 900+ repositories. Full release metadata and HTTP ETags are persisted to disk (`~/.config/Mino/cache.json`), rendering the entire menu and release notes immediately without cold-start network bursts
 - **🛡 Smart Launch & HTTP 304 Rate Limit Shield**: Unconditional startup refreshes are eliminated. Unchanged repositories respond with `304 Not Modified` via conditional `ETag` headers, consuming **0 units** of your GitHub API quota
 - **⚡️ Deep Linking (`mino://`)**: Native URL scheme integration for adding repos/casks (`mino://add/...`), launching notes directly from PopClip/Raycast (`mino://notes/...`), and toggling decorative UI accents (`mino://handle`)

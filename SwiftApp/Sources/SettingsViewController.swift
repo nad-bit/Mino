@@ -46,6 +46,9 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     // Throttle properties for rate limit hover checks
     private var lastRateLimitFetchDate: Date?
     private var isFetchingRateLimit = false
+    
+    // Liquid-crystal reflection overlay
+    private let sheenOverlay = SheenOverlayView()
 
     override func loadView() {
         let view = SettingsView(frame: NSRect(x: 0, y: 0, width: 480, height: 100))
@@ -54,6 +57,16 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
             self?.updateTokenBadgeStyle(hasToken: hasToken)
         }
         self.view = view
+        
+        sheenOverlay.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(sheenOverlay, positioned: .above, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            sheenOverlay.topAnchor.constraint(equalTo: view.topAnchor),
+            sheenOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            sheenOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            sheenOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        
         setupUI()
     }
     
@@ -813,6 +826,11 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         if let popover = (NSApp.delegate as? AppDelegate)?.settingsPopover {
             popover.close()
         }
+    }
+    
+    /// Sweeps a liquid-crystal reflection band across the Settings view.
+    func sweepSheen(delay: TimeInterval, duration: TimeInterval, startX: CGFloat, endX: CGFloat) {
+        sheenOverlay.sweep(delay: delay, duration: duration, startX: startX, endX: endX)
     }
 }
 

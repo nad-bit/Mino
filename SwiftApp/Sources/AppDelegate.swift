@@ -9,7 +9,7 @@ enum SymbolAnimation {
 }
 
 @MainActor
-class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPopoverDelegate, NSTextViewDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSPopoverDelegate, NSTextViewDelegate {
     var statusItem: NSStatusItem!
     private var statusIconView: NSImageView!
     private var statusIndicatorDot: NSBox!
@@ -26,7 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     var footerView: FooterMenuItemView?
     
     // Search properties
-    var searchField: NSSearchField?
+    var searchField: MenuSearchField?
     var currentSearchQuery: String = ""
     private var lastMainPopoverOpenTime: Date?
     
@@ -264,8 +264,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     
     func applyBeerHandleState(_ newState: Bool) {
         DispatchQueue.main.async {
-            ConfigManager.shared.config.beerHandleEnabled = newState
-            ConfigManager.shared.saveConfig()
+            ConfigManager.shared.modifyConfig { cfg in
+                cfg.beerHandleEnabled = newState
+            }
             
             if newState {
                 self.updateBeerHandleVisibility()
@@ -292,9 +293,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     func validateAndClampMenuScaleForCurrentScreen() {
         let activeScreen = (statusItem?.button?.window?.screen) ?? NSScreen.main ?? NSScreen.screens.first
         let maxScale = maxAllowedScaleForScreen(activeScreen)
-        let currentScale = ConfigManager.shared.config.menuScale ?? 1.0
-        if currentScale > maxScale {
-            applyMenuScale(maxScale, showHUD: false)
+        let preferredScale = ConfigManager.shared.config.menuScale ?? 1.0
+        let effectiveScale = min(preferredScale, maxScale)
+        
+        // Update effective scale in memory without clobbering user's persistent preference
+        Constants.effectiveScale = effectiveScale
+        
+        DispatchQueue.main.async {
+            let notesPopover = self.releaseNotesPopover
+            let notesVC = notesPopover?.contentViewController as? ReleaseNotesViewController
+            let isNotesShown = notesPopover?.isShown == true
+            let currentNotesRepo = notesVC?.currentRepoName
+
+            self.mainPopoverVC?.updateLayoutForScaleChange()
+            if let targetSize = self.mainPopoverVC?.preferredContentSize {
+                self.mainPopover?.contentSize = targetSize
+            }
+            if isNotesShown, let vc = notesVC, let popover = notesPopover, let repo = currentNotesRepo {
+                vc.updateLayoutForScaleChange()
+                popover.contentSize = vc.preferredContentSize
+                
+                if let anchor = self.mainPopoverVC.repoViews.first(where: { $0.repoName == repo }) {
+                    let edge: NSRectEdge = (anchor == self.statusItem?.button) ? .minY : .minX
+                    if popover.isShown {
+                        popover.close()
+                    }
+                    popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: edge)
+                } else {
+                    popover.close()
+                }
+            }
         }
     }
     
@@ -308,12 +336,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         let maxAllowedScale = maxAllowedScaleForScreen(screen)
         
         let rounded = round(newScale * 20.0) / 20.0 // 5% steps (0.05)
-        let clamped = max(Constants.menuScaleMin, min(maxAllowedScale, rounded))
+        let clampedPreferred = max(Constants.menuScaleMin, min(Constants.menuScaleMax, rounded))
+        let effective = min(clampedPreferred, maxAllowedScale)
         
-        ConfigManager.shared.config.menuScale = clamped
-        ConfigManager.shared.saveConfig()
+        ConfigManager.shared.modifyConfig { cfg in
+            cfg.menuScale = clampedPreferred
+        }
+        Constants.effectiveScale = effective
         
         DispatchQueue.main.async {
+            let notesPopover = self.releaseNotesPopover
+            let notesVC = notesPopover?.contentViewController as? ReleaseNotesViewController
+            let isNotesShown = notesPopover?.isShown == true
+            let currentNotesRepo = notesVC?.currentRepoName
+
             // 1. Update Main Popover
             self.mainPopoverVC?.updateLayoutForScaleChange()
             if let targetSize = self.mainPopoverVC?.preferredContentSize {
@@ -321,15 +357,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             }
             
             // 2. Update Release Notes if open
-            if let notesVC = self.releaseNotesPopover?.contentViewController as? ReleaseNotesViewController {
-                notesVC.updateLayoutForScaleChange()
-                self.releaseNotesPopover?.contentSize = notesVC.preferredContentSize
+            if isNotesShown, let vc = notesVC, let popover = notesPopover, let repo = currentNotesRepo {
+                vc.updateLayoutForScaleChange()
+                popover.contentSize = vc.preferredContentSize
+                
+                if let anchor = self.mainPopoverVC.repoViews.first(where: { $0.repoName == repo }) {
+                    let edge: NSRectEdge = (anchor == self.statusItem?.button) ? .minY : .minX
+                    if popover.isShown {
+                        popover.close()
+                    }
+                    popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: edge)
+                } else {
+                    popover.close()
+                }
             }
             
             // 3. Show HUDPanel feedback with percentage (e.g. "120%")
             if showHUD {
-                let percent = Int(round(clamped * 100))
-                let isAtMax = (rounded > maxAllowedScale && clamped == maxAllowedScale)
+                let percent = Int(round(effective * 100))
+                let isAtMax = (rounded > maxAllowedScale && effective == maxAllowedScale)
                 let subtitle = isAtMax ? "\(percent)% (Max)" : "\(percent)%"
                 let scaleIcon = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: "Scale")
                 HUDPanel.shared.show(title: Translations.get("menuScaleTitle"), subtitle: subtitle, image: scaleIcon)
@@ -772,14 +818,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     // MARK: - Search Filtering Logic
     
     func controlTextDidChange(_ obj: Notification) {
-        guard let field = obj.object as? NSSearchField else { return }
+        guard let field = obj.object as? NSTextField else { return }
+        if field.stringValue.isEmpty {
+            field.currentEditor()?.selectedRange = NSRange(location: 0, length: 0)
+        }
         currentSearchQuery = field.stringValue
         filterMenuBySearchQuery(currentSearchQuery)
         headerView?.updateSearchOpacity()
     }
     
     func controlTextDidBeginEditing(_ obj: Notification) {
-        if let field = obj.object as? NSSearchField,
+        if let field = obj.object as? NSTextField,
            let editor = field.currentEditor() as? NSTextView {
             editor.menu = nil
         }
@@ -813,7 +862,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         
         // With NSTableView, we don't hide views manually. 
         // We just rebuild the data source and reload the table.
-        mainPopoverVC.rebuildMenu()
+        mainPopoverVC?.rebuildMenu()
     }
     
     // MARK: - Animations
@@ -1087,6 +1136,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             popoverIsOpen = true
             lastMainPopoverOpenTime = Date()
             
+            // Start the 1-minute anchored sheen cycle while menu is open
+            mainPopoverVC.startSheenMinuteTimer()
+            
             // Show beer handle after a brief delay to let the popover window settle
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 self.updateBeerHandleVisibility()
@@ -1106,6 +1158,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
             lastSettingsCloseTime = Date()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 self.updateBeerHandleVisibility()
+                if self.mainPopover?.isShown == true, let popoverWindow = self.mainPopover?.contentViewController?.view.window {
+                    popoverWindow.makeKeyAndOrderFront(nil)
+                }
             }
             return
         }
@@ -1113,6 +1168,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         if popover == releaseNotesPopover || popover == aboutPopover || popover == addRepoPopover {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 self.updateBeerHandleVisibility()
+                if self.mainPopover?.isShown == true, let popoverWindow = self.mainPopover?.contentViewController?.view.window {
+                    popoverWindow.makeKeyAndOrderFront(nil)
+                }
             }
             return
         }
@@ -1120,6 +1178,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
         if popover == mainPopover {
             popoverIsOpen = false
             mainPopoverVC.clearHighlight()
+            mainPopoverVC.stopSheenMinuteTimer()
             
             // Hide beer handle immediately when popover closes
             beerHandle?.hide()
@@ -1166,6 +1225,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
     // MARK: - Keyboard Shortcuts
     
     func handleGlobalShortcuts(with event: NSEvent) -> Bool {
+        // 0. Escape key (ESC) -> Dismiss secondary popover if shown, or clear search if typing, or dismiss menu if empty
+        if event.keyCode == 53 { // ESC
+            if releaseNotesPopover?.isShown == true {
+                releaseNotesPopover?.close()
+                return true
+            }
+            if settingsPopover?.isShown == true {
+                settingsPopover?.close()
+                return true
+            }
+            if aboutPopover?.isShown == true {
+                aboutPopover?.close()
+                return true
+            }
+            if addRepoPopover?.isShown == true {
+                addRepoPopover?.close()
+                return true
+            }
+            
+            if let sf = searchField, !sf.stringValue.isEmpty {
+                sf.stringValue = ""
+                currentSearchQuery = ""
+                filterMenuBySearchQuery("")
+                headerView?.updateSearchOpacity()
+                return true
+            } else {
+                mainPopover?.close()
+                return true
+            }
+        }
+        
         // 1. Navigation (Arrows) - Intercepted even without modifiers
         if event.keyCode == 125 { // Down Arrow
             mainPopoverVC.clearButtonFocus()
@@ -1307,7 +1397,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSSearchFieldDelegate, NSPop
 
 // MARK: - MenuSearchField (subclass for AppDelegate reference)
 
-class MenuSearchField: NSSearchField {
+class MenuSearchField: NSTextField {
     private weak var appDelegate: AppDelegate?
     
     convenience init(appDelegate: AppDelegate) {
@@ -1335,6 +1425,36 @@ class MenuSearchField: NSSearchField {
             }
         }
         return super.hitTest(point)
+    }
+    
+    override func cancelOperation(_ sender: Any?) {
+        if let appDelegate = appDelegate {
+            if appDelegate.releaseNotesPopover?.isShown == true {
+                appDelegate.releaseNotesPopover?.close()
+                return
+            }
+            if appDelegate.settingsPopover?.isShown == true {
+                appDelegate.settingsPopover?.close()
+                return
+            }
+            if appDelegate.aboutPopover?.isShown == true {
+                appDelegate.aboutPopover?.close()
+                return
+            }
+            if appDelegate.addRepoPopover?.isShown == true {
+                appDelegate.addRepoPopover?.close()
+                return
+            }
+        }
+        
+        if !stringValue.isEmpty {
+            stringValue = ""
+            appDelegate?.currentSearchQuery = ""
+            appDelegate?.filterMenuBySearchQuery("")
+            appDelegate?.headerView?.updateSearchOpacity()
+        } else {
+            appDelegate?.mainPopover?.close()
+        }
     }
     
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

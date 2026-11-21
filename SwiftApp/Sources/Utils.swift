@@ -54,7 +54,7 @@ class Utils {
             // 2. Try finding a full GitHub URL in the string
             if let match = githubUrlRegex?.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)),
                let r = Range(match.range(at: 1), in: text) {
-                let candidate = String(text[r]).replacingOccurrences(of: ".git", with: "")
+                let candidate = stripGitSuffix(String(text[r]))
                 if candidate.split(separator: "/").count == 2 {
                     return candidate
                 }
@@ -63,7 +63,7 @@ class Utils {
             // 3. Check if the ENTIRE string is "owner/repo" isolated.
             if let match = githubExactRegex?.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)),
                let r = Range(match.range(at: 1), in: text) {
-                let candidate = String(text[r]).replacingOccurrences(of: ".git", with: "")
+                let candidate = stripGitSuffix(String(text[r]))
                 if candidate.split(separator: "/").count == 2 {
                     return candidate
                 }
@@ -477,6 +477,19 @@ class Utils {
     
     // MARK: - Security Sanitization & Validation
     
+    /// Strips trailing `.git` or `.git/` suffix from a repository path without corrupting
+    /// legitimate repository names like `owner/.github` or `owner/user.github.io`.
+    static func stripGitSuffix(_ path: String) -> String {
+        var trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasSuffix("/") {
+            trimmed = String(trimmed.dropLast())
+        }
+        if trimmed.hasSuffix(".git") {
+            return String(trimmed.dropLast(4))
+        }
+        return trimmed
+    }
+    
     /// Structural HTML sanitizer that strips executable tags, active content, and dangerous attributes/schemes.
     static func sanitizeHTML(_ html: String) -> String {
         var clean = html
@@ -492,7 +505,8 @@ class Utils {
             "<button[\\s\\S]*?</button>",
             "<input[^>]*>",
             "<link[^>]*>",
-            "<meta[^>]*>"
+            "<meta[^>]*>",
+            "<style[\\s\\S]*?</style>"
         ]
         
         for pattern in dangerousTagPatterns {
@@ -501,10 +515,15 @@ class Utils {
             }
         }
         
-        // 2. Strip inline event handlers (e.g. onload=..., onclick=..., onerror=...)
-        let eventHandlerPattern = "(?i)\\s*on[a-z0-9_-]+\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)"
-        if let regex = try? NSRegularExpression(pattern: eventHandlerPattern) {
-            clean = regex.stringByReplacingMatches(in: clean, options: [], range: NSRange(location: 0, length: clean.utf16.count), withTemplate: "")
+        // 2. Strip inline event handlers strictly within HTML tags (e.g. <img onload=...>, <a onclick=...>)
+        // without corrupting legitimate prose in text/code blocks like "online = true" or "only = false".
+        let tagWithEventHandlerPattern = "(?i)<([a-zA-Z0-9]+)\\s+([^>]*?)on[a-z0-9_-]+\\s*=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s>]+)([^>]*)>"
+        if let regex = try? NSRegularExpression(pattern: tagWithEventHandlerPattern) {
+            var previous = ""
+            while previous != clean {
+                previous = clean
+                clean = regex.stringByReplacingMatches(in: clean, options: [], range: NSRange(location: 0, length: clean.utf16.count), withTemplate: "<$1 $2 $3>")
+            }
         }
         
         // 3. Neutralize dangerous pseudo-protocols in href and src attributes (javascript:, vbscript:, data:, file:)
@@ -585,7 +604,7 @@ class Utils {
         let parts = target.split(separator: "/", omittingEmptySubsequences: false)
         guard parts.count >= 1 && parts.count <= 3 else { return false }
         
-        let componentRegex = "^[a-zA-Z0-9_.-]+$"
+        let componentRegex = "^[a-zA-Z0-9][a-zA-Z0-9_.-]*$"
         for part in parts {
             let partStr = String(part)
             guard !partStr.isEmpty,
@@ -649,6 +668,21 @@ class Utils {
         }
         
         return checksums
+    }
+    
+    /// Formats a download count into an elegant, readable string (e.g. "42", "1,420", "12.5k", "2.1M").
+    static func formatDownloadCount(_ count: Int) -> String {
+        if count >= 1_000_000 {
+            let millions = Double(count) / 1_000_000.0
+            return String(format: "%.1fM", millions).replacingOccurrences(of: ".0M", with: "M")
+        } else if count >= 10_000 {
+            let thousands = Double(count) / 1_000.0
+            return String(format: "%.1fk", thousands).replacingOccurrences(of: ".0k", with: "k")
+        } else {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            return formatter.string(from: NSNumber(value: count)) ?? "\(count)"
+        }
     }
 }
 

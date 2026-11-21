@@ -2,15 +2,16 @@
 set -e
 
 APP_NAME="Mino"
-VERSION="2.3.2"
-BUILD_NUMBER="331"
+VERSION="2.4.0"
+BUILD_NUMBER="332"
 BUILD_DIR="build"
 
 if [ "$1" == "--test" ]; then
     echo "🧪 Compiling and running verification tests with production sources..."
     mkdir -p "$BUILD_DIR"
+    mkdir -p /tmp/clang-module-cache
     TEST_SOURCES=$(ls Sources/*.swift | grep -v "Sources/main.swift")
-    swiftc $TEST_SOURCES Tests/AuditValidationTests.swift -o "$BUILD_DIR/audit_test_runner"
+    swiftc -module-cache-path /tmp/clang-module-cache $TEST_SOURCES Tests/AuditValidationTests.swift -o "$BUILD_DIR/audit_test_runner"
     "$BUILD_DIR/audit_test_runner"
     rm -f "$BUILD_DIR/audit_test_runner"
     exit 0
@@ -62,6 +63,8 @@ function create_app_structure() {
     <string>12.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>LSFileQuarantineEnabled</key>
+    <true/>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
@@ -86,8 +89,9 @@ APP_X86_64="$BUILD_DIR/${APP_NAME}_Intel.app"
 APP_UNIVERSAL="$BUILD_DIR/${APP_NAME}_Universal.app"
 
 if [ "$1" != "--release" ] && [ "$1" != "--publish-tap" ]; then
+    mkdir -p /tmp/clang-module-cache
     echo "🎨 Generating Global App Icon from SF Symbol..."
-    swift GenerateIcon.swift
+    swift -module-cache-path /tmp/clang-module-cache GenerateIcon.swift
     
     if [ -f "../icon.png" ]; then
         echo "🎨 Scaling icon.png to unified AppIcon.icns bundle..."
@@ -113,7 +117,7 @@ if [ "$1" != "--release" ] && [ "$1" != "--publish-tap" ]; then
 
     echo "🧪 Running validation tests against production sources..."
     TEST_SOURCES=$(ls Sources/*.swift | grep -v "Sources/main.swift")
-    swiftc $TEST_SOURCES Tests/AuditValidationTests.swift -o "$BUILD_DIR/audit_test_runner"
+    swiftc -module-cache-path /tmp/clang-module-cache $TEST_SOURCES Tests/AuditValidationTests.swift -o "$BUILD_DIR/audit_test_runner"
     "$BUILD_DIR/audit_test_runner"
     rm -f "$BUILD_DIR/audit_test_runner"
 
@@ -123,10 +127,10 @@ if [ "$1" != "--release" ] && [ "$1" != "--publish-tap" ]; then
     create_app_structure "$APP_UNIVERSAL"
 
     echo "🔨 Compiling Swift sources for ARM64 (Apple Silicon)..."
-    swiftc -Osize -parse-as-library Sources/*.swift -target arm64-apple-macosx12.0 -o "$APP_ARM64/Contents/MacOS/$APP_NAME"
+    swiftc -module-cache-path /tmp/clang-module-cache -Osize -parse-as-library Sources/*.swift -target arm64-apple-macosx12.0 -o "$APP_ARM64/Contents/MacOS/$APP_NAME"
 
     echo "🔨 Compiling Swift sources for x86_64 (Intel)..."
-    swiftc -Osize -parse-as-library Sources/*.swift -target x86_64-apple-macosx12.0 -o "$APP_X86_64/Contents/MacOS/$APP_NAME"
+    swiftc -module-cache-path /tmp/clang-module-cache -Osize -parse-as-library Sources/*.swift -target x86_64-apple-macosx12.0 -o "$APP_X86_64/Contents/MacOS/$APP_NAME"
 
     echo "🔗 Creating Universal Binary..."
     lipo -create -output "$APP_UNIVERSAL/Contents/MacOS/$APP_NAME" "$APP_ARM64/Contents/MacOS/$APP_NAME" "$APP_X86_64/Contents/MacOS/$APP_NAME"

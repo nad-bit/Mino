@@ -23,12 +23,16 @@ class MainPopoverViewController: NSViewController {
     private var footerHeightConstraint: NSLayoutConstraint?
     private var nrvMaxHeightConstraint: NSLayoutConstraint?
     
+    private var isRebuildingMenu = false
+    
     // Centralized Mouse Tracking
     private var mouseMonitor: Any?
     private var rightClickMonitor: Any?
     internal var currentlyHighlightedRow: RepoMenuItemView?
     internal var currentlyHighlightedRowIndex: Int?
     private var lastMousePosition: NSPoint = .zero
+    
+    private var sheenMinuteTimer: Timer?
     
     // Pre-calculated search index for instant filtering in large repository libraries (900+ repos)
     private struct SearchIndexEntry {
@@ -157,6 +161,34 @@ class MainPopoverViewController: NSViewController {
     
     @objc private func handleScroll() {
         updateHighlightUnderMouse()
+        closeReleaseNotesIfScrolledOutOfView()
+    }
+    
+    private func closeReleaseNotesIfScrolledOutOfView() {
+        guard !isRebuildingMenu,
+              let appDelegate = appDelegate,
+              let popover = appDelegate.releaseNotesPopover,
+              popover.isShown,
+              let vc = popover.contentViewController as? ReleaseNotesViewController,
+              let currentRepo = vc.currentRepoName else {
+            return
+        }
+        
+        guard let rowIndex = tableRepos.firstIndex(where: { $0.repoName == currentRepo }) else {
+            popover.close()
+            URLCache.shared.removeAllCachedResponses()
+            return
+        }
+        
+        let rowRect = tableView.rect(ofRow: rowIndex)
+        let visibleRect = clipView.documentVisibleRect
+        let intersection = visibleRect.intersection(rowRect)
+        
+        // If the anchor row has scrolled out of the visible viewport (less than 4pt visible at boundary)
+        if intersection.isNull || intersection.isEmpty || intersection.height < 4 {
+            popover.close()
+            URLCache.shared.removeAllCachedResponses()
+        }
     }
     
     override func viewWillAppear() {
@@ -256,6 +288,8 @@ class MainPopoverViewController: NSViewController {
     
     func rebuildMenu(preserveScroll: Bool = false) {
         guard let appDelegate = appDelegate else { return }
+        isRebuildingMenu = true
+        defer { isRebuildingMenu = false }
         
         let scrollPoint = scrollView.contentView.bounds.origin
         
@@ -378,7 +412,8 @@ class MainPopoverViewController: NSViewController {
         
         // 5. Build Row Views & Calculate Target Width
         let baseFontSize = (config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
-        let rowHeight: CGFloat = (currentLayout == "cards") ? baseFontSize + (27 * Constants.menuScale) : baseFontSize + (9 * Constants.menuScale)
+        let rawRowHeight: CGFloat = (currentLayout == "cards") ? baseFontSize + (27 * Constants.menuScale) : baseFontSize + (9 * Constants.menuScale)
+        let rowHeight: CGFloat = ceil(rawRowHeight)
         let targetWidth = Constants.menuWidth
         self.lastTargetWidth = targetWidth
         
@@ -721,6 +756,164 @@ class MainPopoverViewController: NSViewController {
            let row = tableView.view(atColumn: 0, row: idx, makeIfNecessary: false) as? RepoMenuItemView {
             row.clearKeyboardFocus()
         }
+    }
+    
+    // MARK: - Metal Liquid-Crystal Reflection Effect
+    
+    /// Coordinates a continuous, liquid-crystal reflection sweeping horizontally from left to right
+    /// across the active windows/views in exactly 1.0 second:
+    /// Notes/Settings (if open) -> Header & Footer in parallel (skipping repo list) -> Beer Handle (if visible).
+    func triggerLiquidGlassReflection() {
+        guard let appDelegate = appDelegate else { return }
+        
+        struct Participant {
+            let screenMinX: CGFloat
+            let screenMaxX: CGFloat
+            let localWidth: CGFloat
+            let sweep: (_ delay: TimeInterval, _ duration: TimeInterval, _ startX: CGFloat, _ endX: CGFloat) -> Void
+        }
+        
+        var participants: [Participant] = []
+        
+        // 1. Leftmost: Secondary Popover (Release Notes or Settings, if open)
+        if let notesPopover = appDelegate.releaseNotesPopover,
+           notesPopover.isShown,
+           let notesVC = notesPopover.contentViewController as? ReleaseNotesViewController,
+           notesVC.isViewLoaded,
+           let win = notesVC.view.window {
+            let notesView = notesVC.view
+            let screenRect = win.convertToScreen(notesView.convert(notesView.bounds, to: nil))
+            participants.append(Participant(
+                screenMinX: screenRect.minX,
+                screenMaxX: screenRect.maxX,
+                localWidth: notesView.bounds.width,
+                sweep: { delay, dur, startX, endX in
+                    notesVC.sweepSheen(delay: delay, duration: dur, startX: startX, endX: endX)
+                }
+            ))
+        } else if let settingsPopover = appDelegate.settingsPopover,
+                  settingsPopover.isShown,
+                  let settingsVC = settingsPopover.contentViewController as? SettingsViewController,
+                  settingsVC.isViewLoaded,
+                  let win = settingsVC.view.window {
+            let settingsView = settingsVC.view
+            let screenRect = win.convertToScreen(settingsView.convert(settingsView.bounds, to: nil))
+            participants.append(Participant(
+                screenMinX: screenRect.minX,
+                screenMaxX: screenRect.maxX,
+                localWidth: settingsView.bounds.width,
+                sweep: { delay, dur, startX, endX in
+                    settingsVC.sweepSheen(delay: delay, duration: dur, startX: startX, endX: endX)
+                }
+            ))
+        }
+        
+        // 2. Center: Header and Footer (skipping repo list!)
+        if let header = appDelegate.headerView, let win = header.window {
+            let screenRect = win.convertToScreen(header.convert(header.bounds, to: nil))
+            participants.append(Participant(
+                screenMinX: screenRect.minX,
+                screenMaxX: screenRect.maxX,
+                localWidth: header.bounds.width,
+                sweep: { delay, dur, startX, endX in
+                    header.sweepSheen(delay: delay, duration: dur, startX: startX, endX: endX)
+                }
+            ))
+        }
+        
+        if let footer = appDelegate.footerView, let win = footer.window {
+            let screenRect = win.convertToScreen(footer.convert(footer.bounds, to: nil))
+            participants.append(Participant(
+                screenMinX: screenRect.minX,
+                screenMaxX: screenRect.maxX,
+                localWidth: footer.bounds.width,
+                sweep: { delay, dur, startX, endX in
+                    footer.sweepSheen(delay: delay, duration: dur, startX: startX, endX: endX)
+                }
+            ))
+        }
+        
+        // 3. Rightmost: Beer Handle (ASA), if visible
+        if let handle = appDelegate.beerHandle, handle.isCurrentlyVisible {
+            let frame = handle.frame
+            participants.append(Participant(
+                screenMinX: frame.minX,
+                screenMaxX: frame.maxX,
+                localWidth: frame.width,
+                sweep: { delay, dur, startX, endX in
+                    handle.sweepSheen(delay: delay, duration: dur, startX: startX, endX: endX)
+                }
+            ))
+        }
+        
+        guard !participants.isEmpty else { return }
+        
+        let globalMinX = participants.map { $0.screenMinX }.min() ?? 0
+        let globalMaxX = participants.map { $0.screenMaxX }.max() ?? 0
+        let totalSpan = globalMaxX - globalMinX
+        guard totalSpan > 10 else { return }
+        
+        let totalDuration: TimeInterval = 1.0
+        let margin: CGFloat = 80.0
+        let totalTravel = totalSpan + (2.0 * margin)
+        let globalSpeed = totalTravel / CGFloat(totalDuration)
+        
+        for p in participants {
+            let localStartX = -margin
+            let localEndX = p.localWidth + margin
+            
+            let delay = Double(max(0, (p.screenMinX - globalMinX)) / globalSpeed)
+            let duration = Double((p.localWidth + (2.0 * margin)) / globalSpeed)
+            
+            p.sweep(delay, duration, localStartX, localEndX)
+        }
+    }
+    
+    /// Triggers a liquid-crystal reflection sweep across the active menu components.
+    func triggerSheen(duration: TimeInterval = 1.0) {
+        triggerLiquidGlassReflection()
+    }
+    
+    /// Starts the exact 1-minute anchored timer for the liquid crystal reflection while the menu is open.
+    func startSheenMinuteTimer() {
+        stopSheenMinuteTimer()
+        
+        let now = Date()
+        let cal = Calendar.current
+        let seconds = cal.component(.second, from: now)
+        let nanoseconds = cal.component(.nanosecond, from: now)
+        let delayToNextMinute = max(1.0, Double(60 - seconds) - (Double(nanoseconds) / 1_000_000_000.0))
+        
+        let timer = Timer(timeInterval: delayToNextMinute, repeats: false) { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.appDelegate?.mainPopover?.isShown == true else { return }
+                self.triggerLiquidGlassReflection()
+                self.scheduleRecurringSheenTimer()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.sheenMinuteTimer = timer
+    }
+    
+    private func scheduleRecurringSheenTimer() {
+        sheenMinuteTimer?.invalidate()
+        let timer = Timer(timeInterval: 60.0, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, self.appDelegate?.mainPopover?.isShown == true else {
+                    self?.stopSheenMinuteTimer()
+                    return
+                }
+                self.triggerLiquidGlassReflection()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.sheenMinuteTimer = timer
+    }
+    
+    /// Stops and invalidates the sheen timer immediately to ensure zero idle overhead.
+    func stopSheenMinuteTimer() {
+        sheenMinuteTimer?.invalidate()
+        sheenMinuteTimer = nil
     }
 }
 

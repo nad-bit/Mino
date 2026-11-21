@@ -8,6 +8,9 @@ class FooterMenuItemView: NSView {
     private let repoCountLabel = NSTextField(labelWithString: "")
     private let appDelegate: AppDelegate
     
+    // Liquid-crystal reflection overlay
+    private let sheenOverlay = SheenOverlayView()
+    
     // Track states
     private var lastHighlightState = false
     
@@ -79,6 +82,20 @@ class FooterMenuItemView: NSView {
         ])
         
         updateFontSize()
+        
+        sheenOverlay.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(sheenOverlay, positioned: .above, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            sheenOverlay.topAnchor.constraint(equalTo: topAnchor),
+            sheenOverlay.leadingAnchor.constraint(equalTo: leadingAnchor),
+            sheenOverlay.trailingAnchor.constraint(equalTo: trailingAnchor),
+            sheenOverlay.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+    
+    /// Sweeps a liquid-crystal reflection band across the footer.
+    func sweepSheen(delay: TimeInterval, duration: TimeInterval, startX: CGFloat, endX: CGFloat) {
+        sheenOverlay.sweep(delay: delay, duration: duration, startX: startX, endX: endX)
     }
     
     func updateFontSize() {
@@ -131,7 +148,7 @@ class FooterMenuItemView: NSView {
     
     /// Updates the tooltip of the refresh button combining refresh countdown/title and last update timestamp.
     func updateRefreshTooltip(lastRefreshDate: Date? = nil) {
-        let date = lastRefreshDate ?? appDelegate.refreshCoordinator.lastRefreshTime
+        let date = lastRefreshDate ?? appDelegate.refreshCoordinator?.lastRefreshTime ?? Date.distantPast
         let lastUpdateText: String
         if date == Date.distantPast {
             lastUpdateText = Translations.get("lastUpdateNever")

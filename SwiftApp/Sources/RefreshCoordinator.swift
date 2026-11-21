@@ -37,6 +37,7 @@ class RefreshCoordinator {
     var exactRefreshTimer: Timer?
     var isRefreshing = false
     private(set) var inFlightAnchorDate: Date?
+    var lastRefreshAttempt: Date = Date.distantPast
     private var wakeObserver: Any?
     
     init(delegate: AppDelegate) {
@@ -112,11 +113,12 @@ class RefreshCoordinator {
         if isRefreshing { return Translations.get("refreshing") }
         
         let refreshMinutes = ConfigManager.shared.config.refreshMinutes
-        let nextRefreshDate = lastRefreshTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
+        let baseTime = (lastRefreshTime != Date.distantPast) ? lastRefreshTime : lastRefreshAttempt
+        let nextRefreshDate = baseTime.addingTimeInterval(TimeInterval(refreshMinutes * 60))
         let nextRefreshSeconds = nextRefreshDate.timeIntervalSince(Date())
         
         let refreshNow = Translations.get("refreshNow")
-        if lastRefreshTime != Date.distantPast && nextRefreshSeconds > 0 {
+        if baseTime != Date.distantPast && nextRefreshSeconds > 0 {
             let totalMinutes = Int(ceil(nextRefreshSeconds / 60))
             let h = totalMinutes / 60
             let m = totalMinutes % 60
@@ -208,9 +210,11 @@ class RefreshCoordinator {
                 // Seed initial concurrent worker batch
                 for _ in 0..<maxConcurrentTasks {
                     guard let repo = repoIterator.next() else { break }
-                    let cachedVersion = delegate.repoCache[repo]?.version
+                    let cached = delegate.repoCache[repo]
+                    let cachedVersion = cached?.version
                     let looksLikeSHA = cachedVersion?.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
-                    let hasExistingRelease = cachedVersion != nil && !looksLikeSHA
+                    let hasMissingDownloads = cached?.assets?.contains(where: { !$0.isSourceArchive && $0.downloadCount == nil }) ?? false
+                    let hasExistingRelease = cachedVersion != nil && !looksLikeSHA && !hasMissingDownloads
                     let hasExistingCommit = cachedVersion != nil && looksLikeSHA
                     
                     group.addTask {
@@ -228,9 +232,11 @@ class RefreshCoordinator {
                         delegate.headerView?.updateProgress(fraction: fraction)
                     }
                     if let nextRepo = repoIterator.next() {
-                        let cachedVersion = delegate.repoCache[nextRepo]?.version
+                        let cached = delegate.repoCache[nextRepo]
+                        let cachedVersion = cached?.version
                         let looksLikeSHA = cachedVersion?.range(of: "^[0-9a-f]{7}$", options: .regularExpression) != nil
-                        let hasExistingRelease = cachedVersion != nil && !looksLikeSHA
+                        let hasMissingDownloads = cached?.assets?.contains(where: { !$0.isSourceArchive && $0.downloadCount == nil }) ?? false
+                        let hasExistingRelease = cachedVersion != nil && !looksLikeSHA && !hasMissingDownloads
                         let hasExistingCommit = cachedVersion != nil && looksLikeSHA
                         
                         group.addTask {
@@ -309,21 +315,32 @@ class RefreshCoordinator {
                 try? await Task.sleep(nanoseconds: UInt64((1.0 - elapsed) * 1_000_000_000))
             }
             
-            // Persist the anchor date from the start of this refresh cycle.
-            // This anchors future runs to the exact first second (:00) of the configured minute
-            // without drifting, and ensures that UserDefaults is only updated after
-            // the refresh has completed successfully.
-            self.lastRefreshTime = anchorDate
+            let successCount = results.filter { $0.1.error == nil }.count
+            let isBatchSuccessful = (successCount > 0) || results.isEmpty
+            
+            self.lastRefreshAttempt = anchorDate
+            if isBatchSuccessful {
+                self.lastRefreshTime = anchorDate
+            }
             self.inFlightAnchorDate = nil
             self.isRefreshing = false
             delegate.headerView?.setRefreshing(false)
             delegate.setStatusIconRefreshing(false)
+            if delegate.mainPopover?.isShown == true {
+                delegate.mainPopoverVC?.triggerSheen()
+            }
             
             // Release accumulated HTTP connection pools, TLS session tickets,
             // and internal Foundation caches that grow over days of continuous use.
             GitHubAPI.shared.resetSession()
             
-            self.startTimers()
+            if isBatchSuccessful {
+                self.startTimers()
+            } else {
+                // If every single repo failed (network outage / rate limit), schedule a faster 5-minute retry
+                self.scheduleRetryTimer(delaySeconds: 300)
+            }
+            
             delegate.updatePopularTagsCache()
             delegate.refreshQuickAddState()
             delegate.rebuildMenu(preserveScroll: true)
@@ -336,6 +353,23 @@ class RefreshCoordinator {
             delegate.footerView?.updateTimeText(self.getRefreshTitle(), isRefreshing: false)
             delegate.footerView?.updateRepoCount()
         }
+    }
+    
+    private func scheduleRetryTimer(delaySeconds: TimeInterval) {
+        exactRefreshTimer?.invalidate()
+        let retryDate = Date().addingTimeInterval(delaySeconds)
+        let timer = Timer(fire: retryDate, interval: 0, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.triggerFullRefresh(nil)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        exactRefreshTimer = timer
+        
+        countdownTimer?.invalidate()
+        let cTimer = Timer(timeInterval: 1.0, target: self, selector: #selector(updateCountdown), userInfo: nil, repeats: true)
+        RunLoop.main.add(cTimer, forMode: .common)
+        countdownTimer = cTimer
     }
     
     // MARK: - Tag & Description Backfill
