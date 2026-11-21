@@ -25,8 +25,7 @@ We deeply appreciate the efforts of security researchers and community members w
 If you believe you have identified a security vulnerability in Mino:
 
 1. **Do not disclose the issue publicly** in GitHub Issues, Discussions, or social media.
-2. Submit a private report via **[GitHub Private Vulnerability Reporting](https://github.com/nad-bit/Mino/security/advisories/new)** (preferred), or contact the maintainer directly:
-   - **`nadied@yandex.com`**
+2. Submit a private report via **[GitHub Private Vulnerability Reporting](https://github.com/nad-bit/Mino/security/advisories/new)**
 3. Please include:
    - A detailed description of the potential vulnerability.
    - Exact steps or minimal proof-of-concept (PoC) to reproduce the behavior.
