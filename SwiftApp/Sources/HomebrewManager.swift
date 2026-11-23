@@ -1,6 +1,6 @@
 import Foundation
 
-final class HomebrewManager: Sendable {
+final class HomebrewManager: @unchecked Sendable {
     static let shared = HomebrewManager()
     
     var brewPath: String? {
@@ -217,9 +217,24 @@ final class HomebrewManager: Sendable {
                 
                 do {
                     try process.run()
-                    let data = pipeOut.fileHandleForReading.readDataToEndOfFile()
-                    let errData = pipeErr.fileHandleForReading.readDataToEndOfFile()
+                    var data = Data()
+                    var errData = Data()
+                    let readGroup = DispatchGroup()
+                    
+                    readGroup.enter()
+                    DispatchQueue.global().async {
+                        data = pipeOut.fileHandleForReading.readDataToEndOfFile()
+                        readGroup.leave()
+                    }
+                    
+                    readGroup.enter()
+                    DispatchQueue.global().async {
+                        errData = pipeErr.fileHandleForReading.readDataToEndOfFile()
+                        readGroup.leave()
+                    }
+                    
                     process.waitUntilExit()
+                    readGroup.wait()
                     
                     if process.terminationStatus == 0 {
                         if let output = String(data: data, encoding: .utf8) {
@@ -247,7 +262,30 @@ final class HomebrewManager: Sendable {
         }
     }
     
+    // Serialized installation queue: Homebrew is fundamentally a single-instance tool for write/install operations.
+    // Chaining installations sequentially guarantees zero flock or .git/index.lock contention when multiple casks are requested.
+    private let installQueueLock = NSLock()
+    private var installTail: Task<(success: Bool, message: String), Never>?
+    
+    private func enqueueInstallTask(cask: String) -> Task<(success: Bool, message: String), Never> {
+        installQueueLock.lock()
+        defer { installQueueLock.unlock() }
+        let previousTask = installTail
+        let currentTask = Task { [weak self] () -> (success: Bool, message: String) in
+            _ = await previousTask?.value
+            guard let self = self else { return (false, "Deallocated") }
+            return await self.performInstallCask(cask: cask)
+        }
+        installTail = currentTask
+        return currentTask
+    }
+    
     func installCask(cask: String) async -> (success: Bool, message: String) {
+        let task = enqueueInstallTask(cask: cask)
+        return await task.value
+    }
+    
+    private func performInstallCask(cask: String) async -> (success: Bool, message: String) {
         _ = await runBrewUpdate()
         
         // If it's a tap cask or qualified name, trust it automatically upfront when installing
@@ -371,7 +409,6 @@ final class HomebrewManager: Sendable {
     
     private func executeFindCaskForRepo(repoName: String) async -> String? {
         let shortName = repoName.split(separator: "/").last.map { String($0) } ?? repoName
-        let repoUrlPattern = "github.com/\(repoName)".lowercased()
         
         // 1. Search candidates
         let candidates = await brewSearch(term: shortName)
@@ -389,18 +426,34 @@ final class HomebrewManager: Sendable {
                 
                 do {
                     try process.run()
-                    let data = pipeOut.fileHandleForReading.readDataToEndOfFile()
-                    _ = pipeErr.fileHandleForReading.readDataToEndOfFile()
+                    var data = Data()
+                    let readGroup = DispatchGroup()
+                    
+                    readGroup.enter()
+                    DispatchQueue.global().async {
+                        data = pipeOut.fileHandleForReading.readDataToEndOfFile()
+                        readGroup.leave()
+                    }
+                    
+                    readGroup.enter()
+                    DispatchQueue.global().async {
+                        _ = pipeErr.fileHandleForReading.readDataToEndOfFile()
+                        readGroup.leave()
+                    }
+                    
                     process.waitUntilExit()
+                    readGroup.wait()
+                    
                     if process.terminationStatus == 0 {
                         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                            let casks = json["casks"] as? [[String: Any]] {
                             
                             for cask in casks {
-                                let hp = (cask["homepage"] as? String ?? "").lowercased()
-                                let url = (cask["url"] as? String ?? "").lowercased()
+                                let hp = cask["homepage"] as? String ?? ""
+                                let url = cask["url"] as? String ?? ""
                                 if let token = cask["token"] as? String {
-                                    if hp.contains(repoUrlPattern) || url.contains(repoUrlPattern) {
+                                    if self.matchesGitHubRepo(urlString: hp, expectedRepo: repoName) ||
+                                       self.matchesGitHubRepo(urlString: url, expectedRepo: repoName) {
                                         continuation.resume(returning: token)
                                         return
                                     }
@@ -412,6 +465,25 @@ final class HomebrewManager: Sendable {
                 continuation.resume(returning: nil)
             }
         }
+    }
+    
+    /// Canonical GitHub repository URL correlation via strict URLComponents parsing.
+    /// Prevents substring spoofing in URL queries or foreign hosts.
+    private func matchesGitHubRepo(urlString: String, expectedRepo: String) -> Bool {
+        guard let components = URLComponents(string: urlString),
+              let scheme = components.scheme?.lowercased(), (scheme == "https" || scheme == "http"),
+              let host = components.host?.lowercased(), (host == "github.com" || host == "www.github.com") else {
+            return false
+        }
+        let expectedPath = "/" + expectedRepo.lowercased()
+        var path = components.path.lowercased()
+        if path.hasSuffix(".git") {
+            path = String(path.dropLast(4))
+        }
+        if path.hasSuffix("/") {
+            path = String(path.dropLast())
+        }
+        return path == expectedPath || path.hasPrefix(expectedPath + "/")
     }
     
     private func brewSearch(term: String) async -> [String] {

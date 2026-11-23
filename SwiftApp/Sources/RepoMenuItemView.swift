@@ -24,10 +24,10 @@ class MenuActionButton: NSButton {
     private(set) var isKeyboardFocused = false
     
     var baseColor: NSColor = .secondaryLabelColor {
-        didSet { if !isHovered && !isKeyboardFocused { contentTintColor = baseColor } }
+        didSet { if !isHovered { contentTintColor = baseColor } }
     }
     var hoverColor: NSColor = .labelColor {
-        didSet { if isHovered && !isKeyboardFocused { contentTintColor = hoverColor } }
+        didSet { if isHovered { contentTintColor = hoverColor } }
     }
     
     override init(frame frameRect: NSRect) {
@@ -57,7 +57,7 @@ class MenuActionButton: NSButton {
             self.layer?.borderColor = NSColor.controlAccentColor.cgColor
             self.layer?.cornerRadius = 5
             self.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.22).cgColor
-            self.contentTintColor = .labelColor
+            // Retain original icon color (do not override with .labelColor, which turns black in Light Mode)
         } else {
             self.layer?.borderWidth = 0
             self.layer?.borderColor = nil
@@ -453,13 +453,14 @@ class RepoMenuItemView: NSView {
         addSubview(contentStack)
         addSubview(buttonStack)
         
-        titleLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        versionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        versionLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         versionLabel.setContentHuggingPriority(.required, for: .horizontal)
         
+        let fontScale = max(1.0, baseFontSize / Constants.menuBaseFontSize)
         versionMaxWidthConstraint?.isActive = false
-        let maxTagVerW = 140.0 * Constants.menuScale
+        let maxTagVerW = 220.0 * fontScale * Constants.menuScale
         let tagVerConstraint = versionLabel.widthAnchor.constraint(lessThanOrEqualToConstant: maxTagVerW)
         tagVerConstraint.isActive = true
         versionMaxWidthConstraint = tagVerConstraint
@@ -507,13 +508,14 @@ class RepoMenuItemView: NSView {
         topRow.alignment = .firstBaseline
         topRow.translatesAutoresizingMaskIntoConstraints = false
         
-        titleLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        versionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        versionLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         versionLabel.setContentHuggingPriority(.required, for: .horizontal)
         
+        let fontScale = max(1.0, baseFontSize / Constants.menuBaseFontSize)
         versionMaxWidthConstraint?.isActive = false
-        let maxCardVerW = 160.0 * Constants.menuScale
+        let maxCardVerW = 260.0 * fontScale * Constants.menuScale
         let cardVerConstraint = versionLabel.widthAnchor.constraint(lessThanOrEqualToConstant: maxCardVerW)
         cardVerConstraint.isActive = true
         versionMaxWidthConstraint = cardVerConstraint
@@ -595,7 +597,7 @@ class RepoMenuItemView: NSView {
                 versionLabel.layer?.cornerRadius = 0
                 versionLabel.layer?.masksToBounds = false
                 versionLabel.layer?.backgroundColor = NSColor.clear.cgColor
-                versionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                versionLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
                 versionLabel.setContentHuggingPriority(.required, for: .horizontal)
             } else {
                 versionLabel.stringValue = ""
@@ -613,7 +615,7 @@ class RepoMenuItemView: NSView {
             versionLabel.layer?.opacity = 1.0
             versionLabel.layer?.cornerRadius = cornerRadius
             versionLabel.layer?.masksToBounds = true
-            versionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            versionLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
             versionLabel.setContentHuggingPriority(.required, for: .horizontal)
         } else if data.isLoading {
             versionLabel.stringValue = Translations.get("loading")
@@ -714,10 +716,10 @@ class RepoMenuItemView: NSView {
         addSubview(contentStack)
         addSubview(buttonStack)
         
-        titleLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        versionLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        versionLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        versionLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        versionLabel.setContentHuggingPriority(.required, for: .horizontal)
         ageLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         starLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
         buttonStack.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -730,13 +732,14 @@ class RepoMenuItemView: NSView {
             titleWidthConstraint = tConstraint
         }
         
+        let fontScale = max(1.0, baseFontSize / Constants.menuBaseFontSize)
         versionMaxWidthConstraint?.isActive = false
         if versionColumnWidth > 0 {
             let vConstraint = versionLabel.widthAnchor.constraint(equalToConstant: versionColumnWidth)
             vConstraint.isActive = true
             versionMaxWidthConstraint = vConstraint
         } else {
-            let maxColVerW = 120.0 * Constants.menuScale
+            let maxColVerW = 200.0 * fontScale * Constants.menuScale
             let vConstraint = versionLabel.widthAnchor.constraint(lessThanOrEqualToConstant: maxColVerW)
             vConstraint.isActive = true
             versionMaxWidthConstraint = vConstraint

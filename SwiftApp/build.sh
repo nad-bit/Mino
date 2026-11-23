@@ -2,8 +2,8 @@
 set -e
 
 APP_NAME="Mino"
-VERSION="2.4.0"
-BUILD_NUMBER="332"
+VERSION="2.4.1"
+BUILD_NUMBER="333"
 BUILD_DIR="build"
 
 if [ "$1" == "--test" ]; then
@@ -107,7 +107,22 @@ if [ "$1" != "--release" ] && [ "$1" != "--publish-tap" ]; then
         sips -z 512 512 "../icon.png" --out "$ICONSET_DIR/icon_256x256@2x.png" > /dev/null 2>&1
         sips -z 512 512 "../icon.png" --out "$ICONSET_DIR/icon_512x512.png" > /dev/null 2>&1
         sips -z 1024 1024 "../icon.png" --out "$ICONSET_DIR/icon_512x512@2x.png" > /dev/null 2>&1
-        iconutil -c icns "$ICONSET_DIR" -o "$BUILD_DIR/AppIcon.icns" > /dev/null 2>&1
+        iconutil -c icns "$ICONSET_DIR" -o "$BUILD_DIR/AppIcon.icns" > /dev/null 2>&1 || python3 -c '
+import struct, os
+tags = {16: b"ic04", 32: b"ic05", 64: b"ic12", 128: b"ic07", 256: b"ic08", 512: b"ic09", 1024: b"ic10"}
+data = b""
+for name in sorted(os.listdir("'"$ICONSET_DIR"'")):
+    if not name.endswith(".png"): continue
+    path = os.path.join("'"$ICONSET_DIR"'", name)
+    with open(path, "rb") as f: png = f.read()
+    w = struct.unpack(">I", png[16:20])[0]
+    if w in tags:
+        tag = tags[w]
+        data += tag + struct.pack(">I", len(png) + 8) + png
+header = b"icns" + struct.pack(">I", len(data) + 8)
+with open("'"$BUILD_DIR"'/AppIcon.icns", "wb") as f:
+    f.write(header + data)
+' 2>/dev/null || true
         rm -rf "$ICONSET_DIR"
         mkdir -p ../docs
         mv ../icon.png ../docs/icon.png

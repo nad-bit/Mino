@@ -57,12 +57,12 @@ final class SheenOverlayView: NSView {
         
         sheenLayer.removeAllAnimations()
         
-        let beamWidth: CGFloat = 65.0
-        let layerHeight: CGFloat = bounds.height * 1.5 + 120.0
+        let beamWidth: CGFloat = 115.0
+        let layerHeight: CGFloat = bounds.height * 1.5 + 160.0
         
         sheenLayer.bounds = CGRect(x: 0, y: 0, width: beamWidth, height: layerHeight)
-        // 12-degree forward tilt
-        sheenLayer.transform = CATransform3DMakeRotation(-12.0 * .pi / 180.0, 0, 0, 1)
+        // 14-degree forward tilt
+        sheenLayer.transform = CATransform3DMakeRotation(-14.0 * .pi / 180.0, 0, 0, 1)
         
         let midY = bounds.height / 2.0
         let startPoint = CGPoint(x: startX, y: midY)
@@ -71,30 +71,34 @@ final class SheenOverlayView: NSView {
         sheenLayer.position = startPoint
         sheenLayer.opacity = 0.0
         
-        // Adaptive liquid crystal specular profile for Dark and Light mode
+        // Adaptive liquid crystal specular profile for Dark and Light mode (softened Gaussian diffusion)
         let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let peakAlpha: CGFloat = isDark ? 0.22 : 0.40
+        let peakAlpha: CGFloat = isDark ? 0.20 : 0.28
         
         sheenLayer.colors = [
             NSColor.white.withAlphaComponent(0.0).cgColor,
-            NSColor.white.withAlphaComponent(peakAlpha * 0.05).cgColor,
-            NSColor.white.withAlphaComponent(peakAlpha * 0.25).cgColor,
-            NSColor.white.withAlphaComponent(peakAlpha * 0.70).cgColor,
+            NSColor.white.withAlphaComponent(peakAlpha * 0.03).cgColor,
+            NSColor.white.withAlphaComponent(peakAlpha * 0.12).cgColor,
+            NSColor.white.withAlphaComponent(peakAlpha * 0.35).cgColor,
+            NSColor.white.withAlphaComponent(peakAlpha * 0.75).cgColor,
             NSColor.white.withAlphaComponent(peakAlpha).cgColor,
-            NSColor.white.withAlphaComponent(peakAlpha * 0.70).cgColor,
-            NSColor.white.withAlphaComponent(peakAlpha * 0.25).cgColor,
-            NSColor.white.withAlphaComponent(peakAlpha * 0.05).cgColor,
+            NSColor.white.withAlphaComponent(peakAlpha * 0.75).cgColor,
+            NSColor.white.withAlphaComponent(peakAlpha * 0.35).cgColor,
+            NSColor.white.withAlphaComponent(peakAlpha * 0.12).cgColor,
+            NSColor.white.withAlphaComponent(peakAlpha * 0.03).cgColor,
             NSColor.white.withAlphaComponent(0.0).cgColor
         ]
         sheenLayer.locations = [
             0.0,
-            0.15,
-            0.32,
-            0.44,
+            0.10,
+            0.22,
+            0.36,
+            0.45,
             0.50,
-            0.56,
-            0.68,
-            0.85,
+            0.55,
+            0.64,
+            0.78,
+            0.90,
             1.0
         ]
         
@@ -130,7 +134,7 @@ final class SheenOverlayView: NSView {
     
     /// Compatibility helper to trigger a full local sweep across this view.
     func triggerSheen(duration: TimeInterval = 1.0) {
-        let margin: CGFloat = 80.0
+        let margin: CGFloat = 110.0
         sweep(delay: 0, duration: duration, startX: -margin, endX: bounds.width + margin)
     }
 }

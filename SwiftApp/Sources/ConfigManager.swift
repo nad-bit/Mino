@@ -185,6 +185,9 @@ class ConfigManager {
     }
     
     func loadConfig() {
+        // Enforce strict POSIX permissions across directory and existing config files on startup
+        ensureSecurePOSIXPermissions()
+        
         var loadedSuccessfully = false
         let decoder = JSONDecoder()
         
@@ -276,6 +279,21 @@ class ConfigManager {
         }
         
         NotificationCenter.default.post(name: Notification.Name("ConfigChanged"), object: nil)
+    }
+    
+    // MARK: - POSIX Security Normalization
+    
+    /// Normalizes directory (0700) and file (0600) POSIX permissions for existing and legacy installations.
+    func ensureSecurePOSIXPermissions() {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: configDir.path) {
+            try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: configDir.path)
+        }
+        for file in [configFile, backupConfigFile, cacheFile] {
+            if fm.fileExists(atPath: file.path) {
+                try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+            }
+        }
     }
     
     // MARK: - Atomic Domain Methods

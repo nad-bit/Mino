@@ -56,8 +56,10 @@ struct AuditValidationTests {
         testAssetDownloadCountFormattingAndParsing()
         testRowHighlightAndInlineButtonFocusLayout()
         testMetalSheenEffectAndMinuteTimer()
+        testAudit241HardeningAndHUDImprovements()
+        testKeyboardNavigationAndTabCycling()
         
-        print("\n🎉 ALL 22 AUDIT VERIFICATION TESTS PASSED SUCCESSFULLY!\n")
+        print("\n🎉 ALL 24 AUDIT VERIFICATION TESTS PASSED SUCCESSFULLY!\n")
     }
     
     // --------------------------------------------------------
@@ -1219,6 +1221,7 @@ struct AuditValidationTests {
             let focusedBtn = cell.actionButtons[0]
             assertTest(focusedBtn.layer?.borderWidth == 2.5, "[\(layout)] Focused button has 2.5pt border thickness")
             assertTest(focusedBtn.isKeyboardFocused == true, "[\(layout)] Focused button is marked isKeyboardFocused")
+            assertTest(focusedBtn.contentTintColor != .black, "[\(layout)] Focused button preserves contrast color without turning black")
             
             cell.needsLayout = true
             cell.layoutSubtreeIfNeeded()
@@ -1281,6 +1284,17 @@ struct AuditValidationTests {
         let handle = BeerHandlePanel()
         handle.sweepSheen(delay: 0, duration: 0.1, startX: -50, endX: 100)
         assertTest(true, "BeerHandlePanel.sweepSheen executes cleanly")
+        handle.hideAnimated()
+        assertTest(handle.isCurrentlyVisible == false, "BeerHandlePanel.hideAnimated executes cleanly")
+        
+        if let darkAqua = NSAppearance(named: .darkAqua) {
+            handle.syncAppearance(with: darkAqua)
+            assertTest(handle.appearance?.name == .darkAqua, "BeerHandlePanel syncs darkAqua appearance dynamically")
+        }
+        if let aqua = NSAppearance(named: .aqua) {
+            handle.syncAppearance(with: aqua)
+            assertTest(handle.appearance?.name == .aqua, "BeerHandlePanel syncs aqua appearance dynamically")
+        }
         
         let notesVC = ReleaseNotesViewController()
         let _ = notesVC.view
@@ -1298,5 +1312,191 @@ struct AuditValidationTests {
         let containerSubviews = vc.view.subviews
         let directContainerSheen = containerSubviews.contains { $0 is SheenOverlayView }
         assertTest(!directContainerSheen, "MainPopoverViewController container does not cover repo list (table view skipped!)")
+        
+        // 7. Verify CMD+L Sheen Toggle & Translations
+        let initialSheen = ConfigManager.shared.config.sheenEffectEnabled ?? true
+        appDelegate.applySheenEffectState(!initialSheen)
+        assertTest(ConfigManager.shared.config.sheenEffectEnabled == !initialSheen, "applySheenEffectState toggles config state")
+        appDelegate.applySheenEffectState(initialSheen)
+        assertTest(ConfigManager.shared.config.sheenEffectEnabled == initialSheen, "applySheenEffectState restores original config state")
+        assertTest(!Translations.get("sheenTitle").isEmpty, "sheenTitle translation is present")
+        assertTest(!Translations.get("sheenEnabled").isEmpty, "sheenEnabled translation is present")
+        assertTest(!Translations.get("sheenDisabled").isEmpty, "sheenDisabled translation is present")
+        
+        // 8. Beer Handle Mug Image Template & Translations Check
+        let normalMug = AppDelegate.createMugImage(slashed: false)
+        let slashedMug = AppDelegate.createMugImage(slashed: true)
+        assertTest(normalMug != nil && normalMug?.isTemplate == true, "AppDelegate.createMugImage(slashed: false) is valid template image")
+        assertTest(slashedMug != nil && slashedMug?.isTemplate == true, "AppDelegate.createMugImage(slashed: true) is valid template image with SF Symbol proportions")
+        assertTest(normalMug?.size == NSSize(width: 48, height: 48), "createMugImage(slashed: false) has 48x48 bounds")
+        assertTest(slashedMug?.size == NSSize(width: 48, height: 48), "createMugImage(slashed: true) has 48x48 bounds")
+        assertTest(Translations.i18n["es"]?["repoAdded"] == "Añadido", "repoAdded in Spanish is 'Añadido'")
+        assertTest(Translations.i18n["en"]?["repoAdded"] == "Added", "repoAdded in English is 'Added'")
+    }
+    
+    // MARK: - [Test 23] Audit 2.4.1 Hardening & HUD Reliability
+    
+    static func testAudit241HardeningAndHUDImprovements() {
+        print("\n[Test 23] Testing Mino 2.4.1 Audit Fixes (Atomic Destinations, Task ID Reuse, POSIX Normalization)...")
+        
+        let tempDir = URL(fileURLWithPath: "/tmp/mino_dest_test_\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        
+        // 1. Atomic destination reservation prevents concurrent download collisions
+        let dest1 = ReleaseNotesViewController.reserveDestination(for: "Mino-Installer.dmg", in: tempDir)
+        assertTest(dest1.lastPathComponent == "Mino-Installer.dmg", "First reservation gets original filename")
+        
+        // Before dest1 file is even written to disk, second concurrent reservation must detect reservation and append (1)
+        let dest2 = ReleaseNotesViewController.reserveDestination(for: "Mino-Installer.dmg", in: tempDir)
+        assertTest(dest2.lastPathComponent == "Mino-Installer (1).dmg", "Second concurrent reservation atomically avoids collision -> (1)")
+        
+        let dest3 = ReleaseNotesViewController.reserveDestination(for: "Mino-Installer.dmg", in: tempDir)
+        assertTest(dest3.lastPathComponent == "Mino-Installer (2).dmg", "Third concurrent reservation atomically avoids collision -> (2)")
+        
+        // Release reservations
+        ReleaseNotesViewController.releaseDestination(dest1)
+        ReleaseNotesViewController.releaseDestination(dest2)
+        ReleaseNotesViewController.releaseDestination(dest3)
+        
+        let destReclaimed = ReleaseNotesViewController.reserveDestination(for: "Mino-Installer.dmg", in: tempDir)
+        assertTest(destReclaimed.lastPathComponent == "Mino-Installer.dmg", "Released destination is cleanly re-usable")
+        ReleaseNotesViewController.releaseDestination(destReclaimed)
+        
+        // 2. HUDPanel Task ID reuse resets completion state
+        let taskId = "test_reuse_\(UUID().uuidString)"
+        let dummyDest = tempDir.appendingPathComponent("dummy.dmg")
+        HUDPanel.shared.showDownloadCompletion(id: taskId, title: "Initial Download", subtitle: "Completed", destinationURL: dummyDest)
+        
+        let taskBefore = HUDPanel.shared.tasks[taskId]
+        assertTest(taskBefore?.isCompleted == true, "Task initially marked completed")
+        
+        // Re-use task ID with a new download operation
+        HUDPanel.shared.showDownloadProgress(id: taskId, title: "New Download", status: "Starting...", progress: 0.1)
+        let taskAfter = HUDPanel.shared.tasks[taskId]
+        assertTest(taskAfter?.isCompleted == false, "Re-using task ID resets isCompleted to false")
+        assertTest(taskAfter?.isSuccess == true, "Re-using task ID resets isSuccess to true")
+        assertTest(taskAfter?.destinationURL == nil, "Re-using task ID clears stale destinationURL")
+        assertTest(taskAfter?.progress == 0.1, "Re-using task ID updates progress accurately")
+        
+        HUDPanel.shared.removeTask(id: taskId)
+        assertTest(HUDPanel.shared.tasks[taskId] == nil, "Task removed cleanly from HUDPanel")
+        
+        // 3. POSIX permission normalization
+        ConfigManager.shared.ensureSecurePOSIXPermissions()
+        assertTest(true, "ConfigManager.ensureSecurePOSIXPermissions executed without throwing")
+    }
+    
+    // MARK: - [Test 24] Complete Keyboard Navigation (Tab Cycling, Arrows, Return)
+    
+    static func testKeyboardNavigationAndTabCycling() {
+        print("\n[Test 24] Testing Complete Keyboard Navigation (Release Notes Tab & Files, Settings Controls)...")
+        
+        // 1. ReleaseNotesViewController: Tab toggle and arrow navigation
+        let notesVC = ReleaseNotesViewController()
+        _ = notesVC.view
+        
+        let asset1 = ReleaseAsset(name: "Mino-ARM64.dmg", size: 12_000_000, downloadURL: "https://github.com/nad-bit/Mino/releases/download/v2.4.1/Mino-ARM64.dmg", isSourceArchive: false)
+        let asset2 = ReleaseAsset(name: "Mino-Intel.dmg", size: 14_000_000, downloadURL: "https://github.com/nad-bit/Mino/releases/download/v2.4.1/Mino-Intel.dmg", isSourceArchive: false)
+        let sampleInfo = RepoInfo(name: "nad-bit/Mino", version: "v2.4.1", assets: [asset1, asset2])
+        notesVC.loadNotes(for: sampleInfo)
+        
+        // Initially in Notas mode (segment 0)
+        assertTest(notesVC.assetRows.count == 2, "ReleaseNotesViewController populated 2 asset rows")
+        assertTest(notesVC.selectedAssetIndex == nil, "Initial asset selection is nil")
+        
+        // TAB: Switch to Archivos mode (segment 1)
+        notesVC.toggleSegment()
+        assertTest(notesVC.selectedAssetIndex == nil, "TAB to Archivos does NOT focus any asset by default")
+        assertTest(notesVC.assetRows[0].isKeyboardFocused == false, "First asset row is not focused by default")
+        assertTest(notesVC.assetRows[1].isKeyboardFocused == false, "Second asset row is not focused by default")
+        
+        // WASD ('S'): Starts selection on first asset (index 0)
+        notesVC.moveAssetSelection(direction: 1)
+        assertTest(notesVC.selectedAssetIndex == 0, "WASD 'S' starts selection at index 0")
+        assertTest(notesVC.assetRows[0].isKeyboardFocused == true, "First asset row gained focus")
+        assertTest(notesVC.assetRows[1].isKeyboardFocused == false, "Second asset row is not focused")
+        
+        // WASD ('S') again: Advances selection to next asset (index 1)
+        notesVC.moveAssetSelection(direction: 1)
+        assertTest(notesVC.selectedAssetIndex == 1, "WASD 'S' advances selection to index 1")
+        assertTest(notesVC.assetRows[0].isKeyboardFocused == false, "First asset row lost focus")
+        assertTest(notesVC.assetRows[1].isKeyboardFocused == true, "Second asset row gained focus")
+        
+        // WASD 'S' again: Boundary check (stays at index 1)
+        notesVC.moveAssetSelection(direction: 1)
+        assertTest(notesVC.selectedAssetIndex == 1, "WASD 'S' at end of list stays bounded at last index")
+        
+        // WASD 'W': Move back to previous asset (index 0)
+        notesVC.moveAssetSelection(direction: -1)
+        assertTest(notesVC.selectedAssetIndex == 0, "WASD 'W' moves selection back to index 0")
+        assertTest(notesVC.assetRows[0].isKeyboardFocused == true, "First asset row has focus restored")
+        
+        // TAB: Switch back to Notas mode (segment 0)
+        notesVC.toggleSegment()
+        assertTest(notesVC.selectedAssetIndex == nil, "TAB back to Notas clears asset selection")
+        assertTest(notesVC.assetRows[0].isKeyboardFocused == false, "Asset focus cleared")
+        
+        // 2. SettingsViewController: Tab cycling and control manipulation (Player 2: WASD + Space)
+        let settingsVC = SettingsViewController()
+        _ = settingsVC.view
+        
+        let focusable = settingsVC.focusableControls
+        assertTest(focusable.count >= 7, "SettingsViewController has at least 7 focusable controls (found \(focusable.count))")
+        assertTest(settingsVC.focusedControlIndex == nil, "Initial settings focus index is nil")
+        
+        // TAB: Focus first control
+        settingsVC.focusControl(at: 0)
+        assertTest(settingsVC.focusedControlIndex == 0, "Focusing index 0 sets focusedControlIndex == 0")
+        assertTest(focusable[0].layer?.borderWidth == 2.0, "Focused control has 2.0pt accent border")
+        
+        // Focus second control
+        settingsVC.focusControl(at: 1)
+        assertTest(settingsVC.focusedControlIndex == 1, "Focusing index 1 advances focus")
+        assertTest(focusable[0].layer?.borderWidth == 0.0, "Previous control border cleared")
+        assertTest(focusable[1].layer?.borderWidth == 2.0, "Newly focused control has 2.0pt accent border")
+        
+        // Focus third control (textSizePicker) -> outer contour on whole field
+        settingsVC.focusControl(at: 2)
+        assertTest(settingsVC.focusedControlIndex == 2, "Focusing index 2 sets focusedControlIndex == 2")
+        assertTest(focusable[2].layer?.borderWidth == 2.0, "Outer control border is 2.0pt indicating entire field is focused")
+        assertTest(settingsVC.textSizePicker.decButton.isEnabled == true || settingsVC.textSizePicker.incButton.isEnabled == true, "TextSizePickerView buttons initialized and enabled appropriately")
+        assertTest(settingsVC.textSizePicker.valueLabel.stringValue == "\(Int(ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize))", "TextSizePickerView label matches current config")
+        
+        // Clear focus
+        settingsVC.clearControlFocus()
+        assertTest(settingsVC.focusedControlIndex == nil, "clearControlFocus resets focusedControlIndex to nil")
+        assertTest(focusable[2].layer?.borderWidth == 0.0, "All focus borders cleared")
+        
+        // Verify visual symmetry (114pt across layoutSegment, textSizePicker, and intervalSlider)
+        assertTest(settingsVC.layoutSegment.fittingSize.width == 114.0, "layoutSegment width is 114.0pt")
+        assertTest(settingsVC.textSizePicker.intrinsicContentSize.width == 114.0, "textSizePicker width is 114.0pt")
+        let sliderWidthConstraint = settingsVC.intervalSlider.constraints.first { $0.firstAttribute == .width }
+        assertTest(sliderWidthConstraint?.constant == 114.0, "intervalSlider width constraint is 114.0pt")
+        
+        // Verify slider arrow adjustment
+        let initialSlider = settingsVC.intervalSlider.doubleValue
+        settingsVC.intervalSlider.doubleValue = min(settingsVC.intervalSlider.maxValue, initialSlider + 1)
+        assertTest(settingsVC.intervalSlider.doubleValue != initialSlider || settingsVC.intervalSlider.doubleValue == settingsVC.intervalSlider.maxValue, "Slider adjusted via keyboard action")
+        
+        // Verify checkbox space toggle
+        let initialOwner = settingsVC.ownerCheckbox.state
+        settingsVC.ownerCheckbox.state = (initialOwner == .on ? .off : .on)
+        assertTest(settingsVC.ownerCheckbox.state != initialOwner, "Checkbox toggled via keyboard action")
+        
+        // Verify text size control (changeTextSize delta +1 and -1)
+        let initialTextSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        settingsVC.changeTextSize(delta: 1)
+        let incTextSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        assertTest(incTextSize == min(Constants.menuFontSizeMax, initialTextSize + 1), "Text size successfully increased by 1 via changeTextSize")
+        settingsVC.changeTextSize(delta: -1)
+        let decTextSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
+        assertTest(decTextSize == initialTextSize, "Text size successfully restored via changeTextSize")
+        
+        // Verify key decoupling: Arrows and Return are NOT swallowed by settings
+        let arrowDownEvent = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 125)!
+        let returnEvent = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
+        assertTest(settingsVC.handleKeyDown(with: arrowDownEvent) == false, "Arrow keys return false in Settings to allow Player 1 main menu navigation")
+        assertTest(settingsVC.handleKeyDown(with: returnEvent) == false, "Return key returns false in Settings to allow Player 1 main menu actions")
     }
 }

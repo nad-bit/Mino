@@ -61,6 +61,9 @@ enum Constants {
     static var beerHandleEnabled: Bool {
         ConfigManager.shared.config.beerHandleEnabled ?? true
     }
+    static var sheenEffectEnabled: Bool {
+        ConfigManager.shared.config.sheenEffectEnabled ?? true
+    }
     static let beerHandleDesign: BeerHandleDesign = .curved  // .curved (D shape) or .rectangular
     static let beerHandleAnimation: BeerHandleAnimation = .slide // .fade or .slide
     static var beerHandleWidth: CGFloat { menuWidth / 4 } // Extends 1/4 of menu width to the right

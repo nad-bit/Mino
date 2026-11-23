@@ -763,7 +763,8 @@ class MainPopoverViewController: NSViewController {
     /// Coordinates a continuous, liquid-crystal reflection sweeping horizontally from left to right
     /// across the active windows/views in exactly 1.0 second:
     /// Notes/Settings (if open) -> Header & Footer in parallel (skipping repo list) -> Beer Handle (if visible).
-    func triggerLiquidGlassReflection() {
+    func triggerLiquidGlassReflection(force: Bool = false) {
+        guard force || Constants.sheenEffectEnabled else { return }
         guard let appDelegate = appDelegate else { return }
         
         struct Participant {
@@ -854,7 +855,7 @@ class MainPopoverViewController: NSViewController {
         guard totalSpan > 10 else { return }
         
         let totalDuration: TimeInterval = 1.0
-        let margin: CGFloat = 80.0
+        let margin: CGFloat = 110.0
         let totalTravel = totalSpan + (2.0 * margin)
         let globalSpeed = totalTravel / CGFloat(totalDuration)
         
@@ -870,13 +871,14 @@ class MainPopoverViewController: NSViewController {
     }
     
     /// Triggers a liquid-crystal reflection sweep across the active menu components.
-    func triggerSheen(duration: TimeInterval = 1.0) {
-        triggerLiquidGlassReflection()
+    func triggerSheen(duration: TimeInterval = 1.0, force: Bool = false) {
+        triggerLiquidGlassReflection(force: force)
     }
     
     /// Starts the exact 1-minute anchored timer for the liquid crystal reflection while the menu is open.
     func startSheenMinuteTimer() {
         stopSheenMinuteTimer()
+        guard Constants.sheenEffectEnabled else { return }
         
         let now = Date()
         let cal = Calendar.current
@@ -977,6 +979,11 @@ class MainPopoverView: NSView {
         }
         return super.performKeyEquivalent(with: event)
     }
+    
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        appDelegate?.beerHandle?.syncAppearance(with: effectiveAppearance)
+    }
 }
 
 extension MainPopoverViewController: NSWindowDelegate {
@@ -986,5 +993,4 @@ extension MainPopoverViewController: NSWindowDelegate {
             window.delegate = self
         }
     }
-    
 }

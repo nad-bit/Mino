@@ -2,7 +2,7 @@
 
 At **Mino**, security is not an afterthought or a compliance checklist—it is an intrinsic architectural pillar woven into every data flow, background task, and user interaction.
 
-Because Mino handles user credentials (GitHub Personal Access Tokens), parses rich untrusted content from the web (Release Notes, markdown, images), interacts with the local system via Homebrew, and downloads binaries, we adhere to strict **Defense in Depth** principles. Every boundary where untrusted remote data meets macOS is guarded by multi-layered validation, structural sanitization, and cryptographic guarantees.
+Because Mino handles user credentials (GitHub Device Flow OAuth), parses rich untrusted content from the web (Release Notes, markdown, images), interacts with the local system via Homebrew, and downloads binaries, we adhere to strict **Defense in Depth** principles. Every boundary where untrusted remote data meets macOS is guarded by multi-layered validation, structural sanitization, and cryptographic guarantees.
 
 ---
 
@@ -12,9 +12,9 @@ Only active major and minor releases receive automated security patches and back
 
 | Version | Supported          | Status |
 | ------- | ------------------ | ------ |
-| 2.3.x   | :white_check_mark: | Current production release |
-| 2.2.x   | :white_check_mark: | Critical security patches only |
-| < 2.2   | :x:                | End of Life (Upgrade recommended) |
+| 2.4.x   | :white_check_mark: | Current production release |
+| 2.3.x   | :white_check_mark: | Critical security patches only |
+| < 2.3   | :x:                | End of Life (Upgrade recommended) |
 
 ---
 
@@ -44,9 +44,10 @@ If you believe you have identified a security vulnerability in Mino:
 Below is a technical breakdown of the protective measures engineered into Mino to safeguard your macOS system and privacy:
 
 ### 1. Network Perimeter & Host Allowlisting
-- **Strict Host Whitelist**: All network traffic initiated by `GitHubAPI` is strictly locked to an exact allowlist: `github.com`, `api.github.com`, and `raw.githubusercontent.com`.
+- **Strict Host Whitelist**: All network traffic initiated by `GitHubAPI` is strictly locked to an exact allowlist: `github.com`, `api.github.com`, and `raw.githubusercontent.com`. Public Homebrew Cask discovery queries use the official read-only API at `formulae.brew.sh` without transmitting credentials.
 - **Anti-Spoofing & Wildcard Rejection**: Mino strictly rejects wildcard subdomains, spoofed TLDs, and attacker suffix trickery (e.g. `github.com.attacker.example` or `evil-github.com`).
-- **No Third-Party Telemetry**: Mino communicates exclusively with official GitHub endpoints. There are zero third-party analytics, tracking pixels, or remote telemetry frameworks.
+- **HTTPS Downgrade Protection**: HTTP redirects to non-HTTPS endpoints are strictly blocked, and authorization headers are stripped when following redirects outside trusted hosts.
+- **No Third-Party Telemetry**: Mino communicates exclusively with official GitHub endpoints and Homebrew's public formula API. There are zero third-party analytics, tracking pixels, or remote telemetry frameworks.
 
 ### 2. Input Validation & Shell Injection Prevention
 - **Canonical Target Sanitization**: Every repository name, tap, and Cask identifier is strictly validated through `Utils.isValidMinoTarget` before processing.
@@ -67,16 +68,19 @@ Because release notes on GitHub are authored by third parties and rendered in ri
   - Dangerous pseudo-protocols (`javascript:`, `vbscript:`, `data:`, `file:`) are neutralized to `about:blank`.
   - Local traversal schemes (`file://`, `shortcuts://`, `terminal://`) are blocked from invoking external applications.
 
-### 4. Cryptographic Asset Integrity & SHA-256 Verification
+### 4. Cryptographic Asset Integrity & Safe Download Pipeline
 - **Real-Time Streaming Checksums**: Binary assets (DMGs, PKGs, ZIPs) downloaded via Mino's asset manager are streamed through Apple `CryptoKit` to compute their SHA-256 digest on the fly with zero extra memory overhead.
 - **Automated Verification**: Mino cross-references computed digests against official GitHub release asset digests and release notes checksum blocks.
 - **Instant Quarantine & Safe Deletion**: If a checksum mismatch is detected, the compromised artifact is instantly purged from disk, an error HUD alert is triggered, and the download task is terminated before execution.
+- **True Atomic Destination Replacement**: Completed downloads are replaced atomically using macOS `FileManager.replaceItemAt`, eliminating missing-file windows and preserving previous assets if replacement fails.
+- **Isolated Multitasking Identities**: Each download task is isolated by a unique UUID and pre-allocates destination paths atomically to eliminate concurrent collision races.
+- **Task Cancellation Architecture**: The HUD allows safely aborting in-progress direct asset downloads. Homebrew Cask installations are treated as atomic system transactions to prevent corrupting `/Applications` or leaving orphaned disk mounts.
 
 ### 5. Local Storage & Credential Hardening
-- **Keychain Storage**: GitHub Personal Access Tokens (PATs) and OAuth credentials are saved securely in the macOS Keychain (`kSecClassGenericPassword`). Tokens are never persisted in plaintext configurations or shell history.
-- **Minimal OAuth Scopes**: Mino requests empty scope (`""`), restricting access strictly to public data unless the user explicitly configures a private repo token.
+- **Keychain Storage**: GitHub Device Flow OAuth tokens are saved securely in the macOS Keychain (`kSecClassGenericPassword`). Tokens are never persisted in plaintext configurations or shell history.
+- **Minimal OAuth Scopes**: Mino requests empty scope (`""`), restricting access strictly to public read-only data with zero permission to modify user repositories or account settings.
 - **Atomic File Operations**: All configuration modifications (`repos.json`, `cache.json`) use temporary files followed by atomic filesystem renames (`atomicWrite`), preventing partial writes or file corruption upon power loss.
-- **POSIX Permission Isolation**: Configuration directories and files are initialized with strict permissions (`0o700` for directories, `0o600` for files), isolating your repository lists from other local system users.
+- **POSIX Permission Isolation**: Configuration directories and files are initialized and validated on startup with strict permissions (`0o700` for directories, `0o600` for files), isolating your repository lists from other local system users.
 - **Automated Backup & Self-Healing**: Every config modification maintains an automatic atomic backup snapshot (`repos.json.bak`). If corruption is ever detected, Mino self-heals by cleanly rolling back to the snapshot.
 
 ### 6. DoS & Decompression Bomb Mitigations

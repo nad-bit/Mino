@@ -1,12 +1,143 @@
 import Cocoa
 
 class SettingsView: NSView {
+    weak var viewController: SettingsViewController?
     var onAppearanceChanged: (() -> Void)?
     override var acceptsFirstResponder: Bool { true }
+    
+    override func cancelOperation(_ sender: Any?) {
+        if let popover = (NSApp.delegate as? AppDelegate)?.settingsPopover {
+            popover.close()
+        }
+    }
+    
+    override func keyDown(with event: NSEvent) {
+        if let vc = viewController, vc.handleKeyDown(with: event) {
+            return
+        }
+        if let appDelegate = NSApp.delegate as? AppDelegate, appDelegate.handleGlobalShortcuts(with: event) {
+            return
+        }
+        super.keyDown(with: event)
+    }
+    
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let vc = viewController, vc.handleKeyDown(with: event) {
+            return true
+        }
+        if let appDelegate = NSApp.delegate as? AppDelegate, appDelegate.handleGlobalShortcuts(with: event) {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
     
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         onAppearanceChanged?()
+    }
+}
+
+class TextSizePickerView: NSControl {
+    let decButton = NSButton()
+    let valueLabel = NSTextField(labelWithString: "16")
+    let incButton = NSButton()
+    
+    var onDecrease: (() -> Void)?
+    var onIncrease: (() -> Void)?
+    
+    override var focusRingType: NSFocusRingType {
+        get { .none }
+        set { }
+    }
+    
+    override var isEnabled: Bool {
+        didSet {
+            decButton.isEnabled = isEnabled
+            incButton.isEnabled = isEnabled
+            valueLabel.textColor = isEnabled ? .labelColor : .disabledControlTextColor
+        }
+    }
+    
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: 114, height: 24)
+    }
+    
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setupUI()
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupUI()
+    }
+    
+    private func setupUI() {
+        wantsLayer = true
+        let chevronCfg = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        
+        decButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Decrease")?.withSymbolConfiguration(chevronCfg)
+        decButton.bezelStyle = .rounded
+        decButton.controlSize = .regular
+        decButton.focusRingType = .none
+        decButton.target = self
+        decButton.action = #selector(decClicked)
+        decButton.translatesAutoresizingMaskIntoConstraints = false
+        
+        incButton.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Increase")?.withSymbolConfiguration(chevronCfg)
+        incButton.bezelStyle = .rounded
+        incButton.controlSize = .regular
+        incButton.focusRingType = .none
+        incButton.target = self
+        incButton.action = #selector(incClicked)
+        incButton.translatesAutoresizingMaskIntoConstraints = false
+        
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+        valueLabel.alignment = .center
+        valueLabel.textColor = .labelColor
+        valueLabel.isEditable = false
+        valueLabel.isSelectable = false
+        valueLabel.drawsBackground = false
+        valueLabel.isBezeled = false
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        let stack = NSStackView(views: [decButton, valueLabel, incButton])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 4
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            widthAnchor.constraint(equalToConstant: 114),
+            heightAnchor.constraint(equalToConstant: 24),
+            decButton.widthAnchor.constraint(equalToConstant: 34),
+            decButton.heightAnchor.constraint(equalToConstant: 24),
+            incButton.widthAnchor.constraint(equalToConstant: 34),
+            incButton.heightAnchor.constraint(equalToConstant: 24),
+            valueLabel.widthAnchor.constraint(equalToConstant: 38)
+        ])
+    }
+    
+    @objc private func decClicked() {
+        onDecrease?()
+    }
+    
+    @objc private func incClicked() {
+        onIncrease?()
+    }
+    
+    func setValue(_ value: Int) {
+        valueLabel.stringValue = "\(value)"
+    }
+    
+    func setEnabled(canDecrease: Bool, canIncrease: Bool) {
+        decButton.isEnabled = canDecrease
+        incButton.isEnabled = canIncrease
     }
 }
 
@@ -25,13 +156,13 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     
     let loginSwitch = NSSwitch()
     let shortcutBtn = ShortcutRecorderButton()
-    private let ownerCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    let ownerCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let ownerLabel = NSTextField(labelWithString: "")
     private let newIndicatorLabel = NSTextField(labelWithString: "")
-    private let newIndicatorStepper = NSStepper()
+    let newIndicatorStepper = NSStepper()
     let sortSegment = NSSegmentedControl()
     let layoutSegment = NSSegmentedControl()
-    private let textSizePicker = NSSegmentedControl()
+    let textSizePicker = TextSizePickerView()
     
     var tempToken: String?
     private var isConfirmingDelete = false
@@ -52,6 +183,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
 
     override func loadView() {
         let view = SettingsView(frame: NSRect(x: 0, y: 0, width: 480, height: 100))
+        view.viewController = self
         view.onAppearanceChanged = { [weak self] in
             let hasToken = ConfigManager.shared.token != nil && !ConfigManager.shared.token!.isEmpty
             self?.updateTokenBadgeStyle(hasToken: hasToken)
@@ -84,7 +216,252 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
     
     override func viewDidAppear() {
         super.viewDidAppear()
+        clearControlFocus()
         self.view.window?.makeFirstResponder(self.view)
+    }
+    
+    // MARK: - Keyboard Navigation (Tab, Arrows, Space, Return)
+    
+    var focusableControls: [NSControl] {
+        var controls: [NSControl] = []
+        
+        // 1. Token (Connect or Delete, whichever is visible)
+        if !tokenDeleteBtn.isHidden {
+            controls.append(tokenDeleteBtn)
+        } else if !tokenConnectBtn.isHidden {
+            controls.append(tokenConnectBtn)
+        }
+        
+        // 2. Menu Layout Segment
+        controls.append(layoutSegment)
+        
+        // 3. Text Size Picker Segment
+        controls.append(textSizePicker)
+        
+        // 4. Sort Segment
+        controls.append(sortSegment)
+        
+        // 5. New Indicator Stepper
+        controls.append(newIndicatorStepper)
+        
+        // 6. Show Owner Checkbox
+        controls.append(ownerCheckbox)
+        
+        // 7. Refresh Interval Slider
+        controls.append(intervalSlider)
+        
+        // 8. Global Shortcut Button
+        controls.append(shortcutBtn)
+        
+        // 9. Startup Switch
+        controls.append(loginSwitch)
+        
+        return controls.filter { $0.isEnabled && !$0.isHidden }
+    }
+    
+    private(set) var focusedControlIndex: Int? {
+        didSet {
+            let controls = focusableControls
+            for (i, control) in controls.enumerated() {
+                control.wantsLayer = true
+                if i == focusedControlIndex {
+                    control.layer?.borderWidth = 2.0
+                    control.layer?.borderColor = NSColor.controlAccentColor.cgColor
+                    control.layer?.cornerRadius = (control is NSButton || control is NSSwitch || control is TextSizePickerView) ? 6 : 4
+                } else {
+                    control.layer?.borderWidth = 0.0
+                    control.layer?.borderColor = nil
+                }
+            }
+        }
+    }
+    
+    func focusControl(at index: Int) {
+        let controls = focusableControls
+        guard index >= 0 && index < controls.count else { return }
+        focusedControlIndex = index
+        let control = controls[index]
+        self.view.window?.makeFirstResponder(control)
+        control.scrollToVisible(control.bounds)
+    }
+    
+    func clearControlFocus() {
+        focusedControlIndex = nil
+    }
+    
+    func handleKeyDown(with event: NSEvent) -> Bool {
+        // 1. ESC -> Close popover
+        if event.keyCode == 53 {
+            if let popover = (NSApp.delegate as? AppDelegate)?.settingsPopover {
+                popover.close()
+                return true
+            }
+        }
+        
+        let controls = focusableControls
+        guard !controls.isEmpty else { return false }
+        
+        // 2. TAB (keyCode 48) -> cycle focus
+        if event.keyCode == 48 {
+            let isShift = event.modifierFlags.contains(.shift)
+            let direction = isShift ? -1 : 1
+            if let current = focusedControlIndex {
+                let next = (current + direction + controls.count) % controls.count
+                focusControl(at: next)
+            } else {
+                focusControl(at: direction > 0 ? 0 : controls.count - 1)
+            }
+            return true
+        }
+        
+        // If a control is focused, handle contextual action keys (Player 2: WASD + Space)
+        guard let currentIdx = focusedControlIndex, currentIdx < controls.count else {
+            return false
+        }
+        
+        let control = controls[currentIdx]
+        
+        switch event.keyCode {
+        case 49: // Space (49) -> Toggle / Click / Select
+            if let btn = control as? ShortcutRecorderButton {
+                if !btn.isRecording {
+                    btn.startRecording()
+                } else {
+                    btn.stopRecording(cancelled: true)
+                }
+                return true
+            } else if let btn = control as? NSButton {
+                if btn == ownerCheckbox {
+                    btn.state = (btn.state == .on ? .off : .on)
+                    toggleOwner(btn)
+                } else {
+                    btn.performClick(nil)
+                }
+                return true
+            } else if let sw = control as? NSSwitch {
+                sw.state = (sw.state == .on ? .off : .on)
+                toggleLogin(sw)
+                return true
+            } else if let picker = control as? TextSizePickerView {
+                if picker.incButton.isEnabled {
+                    changeTextSize(delta: 1)
+                    picker.incButton.highlight(true)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        picker.incButton.highlight(false)
+                    }
+                }
+                return true
+            } else if let seg = control as? NSSegmentedControl {
+                if seg == sortSegment {
+                    seg.selectedSegment = (seg.selectedSegment == 0 ? 1 : 0)
+                    seg.sendAction(seg.action, to: seg.target)
+                    return true
+                } else if seg == layoutSegment {
+                    seg.selectedSegment = (seg.selectedSegment + 1) % seg.segmentCount
+                    seg.sendAction(seg.action, to: seg.target)
+                    return true
+                }
+            }
+            
+        case 0: // 'A' key (WASD Left)
+            if let picker = control as? TextSizePickerView {
+                if picker.decButton.isEnabled {
+                    changeTextSize(delta: -1)
+                    picker.decButton.highlight(true)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        picker.decButton.highlight(false)
+                    }
+                }
+                return true
+            } else if let seg = control as? NSSegmentedControl {
+                if seg.selectedSegment > 0 {
+                    seg.selectedSegment -= 1
+                    seg.sendAction(seg.action, to: seg.target)
+                    return true
+                }
+            } else if let slider = control as? NSSlider {
+                slider.doubleValue = max(slider.minValue, slider.doubleValue - 1)
+                intervalChanged(slider)
+                return true
+            } else if let stepper = control as? NSStepper {
+                stepper.integerValue = max(0, stepper.integerValue - 1)
+                indicatorDaysChanged(stepper)
+                return true
+            }
+            
+        case 2: // 'D' key (WASD Right)
+            if let picker = control as? TextSizePickerView {
+                if picker.incButton.isEnabled {
+                    changeTextSize(delta: 1)
+                    picker.incButton.highlight(true)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        picker.incButton.highlight(false)
+                    }
+                }
+                return true
+            } else if let seg = control as? NSSegmentedControl {
+                if seg.selectedSegment < seg.segmentCount - 1 {
+                    seg.selectedSegment += 1
+                    seg.sendAction(seg.action, to: seg.target)
+                    return true
+                }
+            } else if let slider = control as? NSSlider {
+                slider.doubleValue = min(slider.maxValue, slider.doubleValue + 1)
+                intervalChanged(slider)
+                return true
+            } else if let stepper = control as? NSStepper {
+                stepper.integerValue = min(30, stepper.integerValue + 1)
+                indicatorDaysChanged(stepper)
+                return true
+            }
+            
+        case 13: // 'W' key (WASD Up)
+            if let picker = control as? TextSizePickerView {
+                if picker.incButton.isEnabled {
+                    changeTextSize(delta: 1)
+                    picker.incButton.highlight(true)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        picker.incButton.highlight(false)
+                    }
+                }
+                return true
+            } else if let slider = control as? NSSlider {
+                slider.doubleValue = min(slider.maxValue, slider.doubleValue + 1)
+                intervalChanged(slider)
+                return true
+            } else if let stepper = control as? NSStepper {
+                stepper.integerValue = min(30, stepper.integerValue + 1)
+                indicatorDaysChanged(stepper)
+                return true
+            }
+            
+        case 1: // 'S' key (WASD Down)
+            if let picker = control as? TextSizePickerView {
+                if picker.decButton.isEnabled {
+                    changeTextSize(delta: -1)
+                    picker.decButton.highlight(true)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        picker.decButton.highlight(false)
+                    }
+                }
+                return true
+            } else if let slider = control as? NSSlider {
+                slider.doubleValue = max(slider.minValue, slider.doubleValue - 1)
+                intervalChanged(slider)
+                return true
+            } else if let stepper = control as? NSStepper {
+                stepper.integerValue = max(0, stepper.integerValue - 1)
+                indicatorDaysChanged(stepper)
+                return true
+            }
+            
+        default:
+            break
+        }
+        
+        // Unhandled keys (Arrows 123-126, Return 36, etc.) return false
+        // so Player 1 can navigate and launch actions on the main repo list!
+        return false
     }
     
     deinit {
@@ -179,20 +556,15 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         layoutSegment.action = #selector(layoutChanged(_:))
         addSettingsRow(to: menuStack, label: layoutLabel, controls: [layoutSegment])
         
-        // Text Size Picker Row — same style as layoutSegment
+        // Text Size Picker Row
         let textSizeRowLabel = NSTextField(labelWithString: Translations.get("textSizeLabel"))
         textSizeRowLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        
-        let chevronCfg = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
-        textSizePicker.segmentCount = 3
-        textSizePicker.setImage(NSImage(systemSymbolName: "chevron.left",  accessibilityDescription: "Decrease")?.withSymbolConfiguration(chevronCfg), forSegment: 0)
-        textSizePicker.setLabel("", forSegment: 1)   // value set in loadCurrentSettings
-        textSizePicker.setImage(NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Increase")?.withSymbolConfiguration(chevronCfg), forSegment: 2)
-        textSizePicker.segmentStyle = .rounded
-        for i in 0..<3 { textSizePicker.setWidth(38, forSegment: i) }
-        textSizePicker.trackingMode = .momentary
-        textSizePicker.target = self
-        textSizePicker.action = #selector(textSizePickerAction(_:))
+        textSizePicker.onDecrease = { [weak self] in
+            self?.changeTextSize(delta: -1)
+        }
+        textSizePicker.onIncrease = { [weak self] in
+            self?.changeTextSize(delta: 1)
+        }
         addSettingsRow(to: menuStack, label: textSizeRowLabel, controls: [textSizePicker])
         
         // Sorting Row
@@ -241,7 +613,7 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         intervalSlider.target = self
         intervalSlider.action = #selector(intervalChanged(_:))
         intervalSlider.translatesAutoresizingMaskIntoConstraints = false
-        intervalSlider.widthAnchor.constraint(equalToConstant: 110).isActive = true
+        intervalSlider.widthAnchor.constraint(equalToConstant: 114).isActive = true
         
         addSettingsRow(to: intervalStack, label: intervalLabel, controls: [intervalSlider])
         
@@ -349,8 +721,6 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         layoutSegment.selectedSegment = layoutIndex
         
         // Load Text Size
-        let currentFontSize = ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize
-        textSizePicker.setLabel("\(Int(currentFontSize))", forSegment: 1)
         updateTextSizePicker()
         
         let showNewIndicator = ConfigManager.shared.config.showNewIndicator ?? true
@@ -529,23 +899,21 @@ class SettingsViewController: NSViewController, NSTextFieldDelegate, OAuthWindow
         self.isUpdatingSelf = false
     }
     
-    @objc private func textSizePickerAction(_ sender: NSSegmentedControl) {
-        let current = Int(sender.label(forSegment: 1) ?? "") ?? Int(Constants.menuBaseFontSize)
-        let newValue: Int
-        switch sender.selectedSegment {
-        case 0: newValue = max(Int(Constants.menuFontSizeMin), current - 1)
-        case 2: newValue = min(Int(Constants.menuFontSizeMax), current + 1)
-        default: return
-        }
-        textSizePicker.setLabel("\(newValue)", forSegment: 1)
-        updateTextSizePicker()
+    func changeTextSize(delta: Int) {
+        let current = Int(ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize)
+        let newValue = max(Int(Constants.menuFontSizeMin), min(Int(Constants.menuFontSizeMax), current + delta))
+        guard newValue != current else { return }
         scheduleTextSizeSave(CGFloat(newValue))
+        updateTextSizePicker()
     }
     
-    private func updateTextSizePicker() {
-        let current = Int(textSizePicker.label(forSegment: 1) ?? "") ?? Int(Constants.menuBaseFontSize)
-        textSizePicker.setEnabled(current > Int(Constants.menuFontSizeMin), forSegment: 0)
-        textSizePicker.setEnabled(current < Int(Constants.menuFontSizeMax), forSegment: 2)
+    func updateTextSizePicker() {
+        let current = Int(ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize)
+        textSizePicker.setValue(current)
+        textSizePicker.setEnabled(
+            canDecrease: current > Int(Constants.menuFontSizeMin),
+            canIncrease: current < Int(Constants.menuFontSizeMax)
+        )
     }
     
     private func scheduleTextSizeSave(_ size: CGFloat) {

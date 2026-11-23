@@ -7,6 +7,7 @@ class BeerHandlePanel: NSPanel {
     
     private let handleView: BeerHandleView
     private(set) var isCurrentlyVisible = false
+    private var appearanceObserver: NSKeyValueObservation?
     
     init() {
         handleView = BeerHandleView()
@@ -29,6 +30,40 @@ class BeerHandlePanel: NSPanel {
         self.ignoresMouseEvents = true // Purely decorative — no interaction
         
         self.contentView = handleView
+        
+        // Dynamic theme synchronization: Observe system appearance changes via KVO and DistributedNotificationCenter
+        // because non-activating borderless panels are not child windows and do not receive automatic theme cascade.
+        appearanceObserver = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor in
+                self?.syncAppearance(with: NSApp.effectiveAppearance)
+            }
+        }
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(systemThemeDidChange),
+            name: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil
+        )
+    }
+    
+    deinit {
+        DistributedNotificationCenter.default().removeObserver(self)
+        appearanceObserver?.invalidate()
+    }
+    
+    @objc private func systemThemeDidChange(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            self?.syncAppearance(with: NSApp.effectiveAppearance)
+        }
+    }
+    
+    /// Synchronizes the panel and handle visual effect appearance with the given appearance.
+    func syncAppearance(with targetAppearance: NSAppearance) {
+        self.appearance = targetAppearance
+        handleView.syncAppearance(with: targetAppearance)
+        if isCurrentlyVisible {
+            self.invalidateShadow()
+        }
     }
     
     /// Position the handle relative to the popover window.
@@ -60,6 +95,7 @@ class BeerHandlePanel: NSPanel {
         let handleFrame = NSRect(x: handleX, y: handleY, width: handleWidth, height: handleHeight)
         self.setFrame(handleFrame, display: true)
         handleView.frame = NSRect(x: 0, y: 0, width: handleWidth, height: handleHeight)
+        syncAppearance(with: popoverWindow.effectiveAppearance)
         handleView.needsDisplay = true
         return true
     }
@@ -70,10 +106,12 @@ class BeerHandlePanel: NSPanel {
         guard !isCurrentlyVisible else { return }
         isCurrentlyVisible = true
         
-        // Match the popover's window level and effective appearance so the handle floats at the same z-order and theme
+        // Match the popover's window level and effective appearance so the handle floats at the same z-order and adapts dynamically
         if let popoverWindow = popoverWindow {
             self.level = popoverWindow.level
-            self.appearance = popoverWindow.effectiveAppearance
+            syncAppearance(with: popoverWindow.effectiveAppearance)
+        } else {
+            syncAppearance(with: NSApp.effectiveAppearance)
         }
         
         let animation = Constants.beerHandleAnimation
@@ -116,12 +154,12 @@ class BeerHandlePanel: NSPanel {
     }
     
     /// Hide the handle with the configured animation
-    func hideAnimated() {
+    func hideAnimated(duration: TimeInterval? = nil) {
         guard isCurrentlyVisible else { return }
         isCurrentlyVisible = false
         
         let animation = Constants.beerHandleAnimation
-        let duration = Constants.beerHandleAnimationDuration
+        let animDuration = duration ?? Constants.beerHandleAnimationDuration
         
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             self.alphaValue = 0.0
@@ -132,11 +170,12 @@ class BeerHandlePanel: NSPanel {
         switch animation {
         case .fade:
             NSAnimationContext.runAnimationGroup({ context in
-                context.duration = duration
+                context.duration = animDuration
                 self.animator().alphaValue = 0.0
             }) { [weak self] in
                 Task { @MainActor in
-                    self?.orderOut(nil)
+                    guard let self = self, !self.isCurrentlyVisible else { return }
+                    self.orderOut(nil)
                 }
             }
             
@@ -146,15 +185,16 @@ class BeerHandlePanel: NSPanel {
             endFrame.origin.x += Constants.beerHandleWidth + 5
             
             NSAnimationContext.runAnimationGroup({ context in
-                context.duration = duration
+                context.duration = animDuration
                 context.timingFunction = CAMediaTimingFunction(name: .easeIn)
                 self.animator().alphaValue = 0.0
                 self.animator().setFrame(endFrame, display: true)
             }) { [weak self] in
                 Task { @MainActor in
-                    self?.orderOut(nil)
+                    guard let self = self, !self.isCurrentlyVisible else { return }
+                    self.orderOut(nil)
                     // Restore original frame for next show
-                    self?.setFrame(currentFrame, display: false)
+                    self.setFrame(currentFrame, display: false)
                 }
             }
         }
@@ -249,8 +289,29 @@ private class BeerHandleView: NSView {
             borderLayer = stroke
         }
         borderLayer?.path = cgPath
-        borderLayer?.strokeColor = NSColor.separatorColor.withAlphaComponent(0.5).cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            borderLayer?.strokeColor = NSColor.separatorColor.withAlphaComponent(0.5).cgColor
+        }
         borderLayer?.frame = bounds
+    }
+    
+    func syncAppearance(with targetAppearance: NSAppearance) {
+        self.appearance = targetAppearance
+        effectView.appearance = targetAppearance
+        effectView.material = .popover
+        effectView.state = .active
+        
+        targetAppearance.performAsCurrentDrawingAppearance {
+            borderLayer?.strokeColor = NSColor.separatorColor.withAlphaComponent(0.5).cgColor
+        }
+        
+        needsDisplay = true
+        effectView.needsDisplay = true
+    }
+    
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        syncAppearance(with: effectiveAppearance)
     }
     
     /// Draws a D-shaped curved handle (classic beer mug style).

@@ -94,6 +94,8 @@ class ClickableTagPill: ClickableTextField {
 class ClickableAssetRow: NSView {
     var onClick: (() -> Void)?
     private var trackingArea: NSTrackingArea?
+    private var isHovered: Bool = false
+    private(set) var isKeyboardFocused: Bool = false
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -120,11 +122,13 @@ class ClickableAssetRow: NSView {
     }
     
     override func mouseEntered(with event: NSEvent) {
-        updateHoverState()
+        isHovered = true
+        updateAppearanceState()
     }
     
     override func mouseExited(with event: NSEvent) {
-        setHighlighted(false)
+        isHovered = false
+        updateAppearanceState()
     }
     
     override func mouseDown(with event: NSEvent) {
@@ -133,21 +137,40 @@ class ClickableAssetRow: NSView {
     
     func updateHoverState() {
         guard let window = window else {
-            setHighlighted(false)
+            isHovered = false
+            updateAppearanceState()
             return
         }
         let mouseLocation = window.mouseLocationOutsideOfEventStream
         let localPoint = convert(mouseLocation, from: nil)
-        let isHover = bounds.contains(localPoint)
-        setHighlighted(isHover)
+        isHovered = bounds.contains(localPoint)
+        updateAppearanceState()
     }
     
-    private func setHighlighted(_ highlight: Bool) {
-        layer?.backgroundColor = highlight ? NSColor.textColor.withAlphaComponent(0.08).cgColor : nil
+    func setKeyboardFocused(_ focused: Bool) {
+        isKeyboardFocused = focused
+        updateAppearanceState()
+    }
+    
+    private func updateAppearanceState() {
+        if isKeyboardFocused {
+            layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
+            layer?.borderWidth = 1.5
+            layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.65).cgColor
+        } else if isHovered {
+            layer?.backgroundColor = NSColor.textColor.withAlphaComponent(0.08).cgColor
+            layer?.borderWidth = 0
+            layer?.borderColor = nil
+        } else {
+            layer?.backgroundColor = nil
+            layer?.borderWidth = 0
+            layer?.borderColor = nil
+        }
     }
 }
 
 class ReleaseNotesView: NSView {
+    weak var viewController: ReleaseNotesViewController?
     override var acceptsFirstResponder: Bool { true }
     
     override func cancelOperation(_ sender: Any?) {
@@ -156,7 +179,20 @@ class ReleaseNotesView: NSView {
         }
     }
     
+    override func keyDown(with event: NSEvent) {
+        if let vc = viewController, vc.handleKeyDown(with: event) {
+            return
+        }
+        if let appDelegate = NSApp.delegate as? AppDelegate, appDelegate.handleGlobalShortcuts(with: event) {
+            return
+        }
+        super.keyDown(with: event)
+    }
+    
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let vc = viewController, vc.handleKeyDown(with: event) {
+            return true
+        }
         if let appDelegate = NSApp.delegate as? AppDelegate, appDelegate.handleGlobalShortcuts(with: event) {
             return true
         }
@@ -165,7 +201,7 @@ class ReleaseNotesView: NSView {
 }
 
 class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
-    private var textView: NSTextView!
+    private var textView: ReleaseNotesTextView!
     private var titleLabel: NSTextField!
     private var descriptionLabel: NSTextField!
     private var modeSegmentedControl: NSSegmentedControl!
@@ -221,6 +257,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
     
     override func loadView() {
         let view = ReleaseNotesView(frame: NSRect(x: 0, y: 0, width: Constants.notesWindowWidth, height: Constants.notesWindowHeight))
+        view.viewController = self
         self.view = view
         
         let mainStack = NSStackView()
@@ -303,6 +340,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         scrollView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         
         textView = ReleaseNotesTextView()
+        textView.viewController = self
         textView.delegate = self
         textView.isEditable = false
         textView.isSelectable = true
@@ -396,6 +434,22 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         self.preferredContentSize = NSSize(width: Constants.notesWindowWidth, height: Constants.notesWindowHeight)
     }
     
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        NotificationCenter.default.addObserver(self, selector: #selector(configDidUpdate), name: Notification.Name("ConfigChanged"), object: nil)
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    @objc private func configDidUpdate() {
+        if let repoName = currentRepoName,
+           let info = (NSApp.delegate as? AppDelegate)?.repoCache[repoName] {
+            loadNotes(for: info, preserveState: true)
+        }
+    }
+    
     override func viewDidAppear() {
         super.viewDidAppear()
         self.view.window?.acceptsMouseMovedEvents = true
@@ -408,12 +462,174 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         NSWorkspace.shared.open(url)
     }
     
+    // MARK: - Keyboard Navigation (Player 2: WASD + Space, Tab, Esc)
+    
+    private(set) var selectedAssetIndex: Int?
+    
+    var assetRows: [ClickableAssetRow] {
+        assetsContainerView.arrangedSubviews.compactMap { $0 as? ClickableAssetRow }
+    }
+    
+    func handleKeyDown(with event: NSEvent) -> Bool {
+        // 1. ESC -> Close popover
+        if event.keyCode == 53 {
+            if let popover = (NSApp.delegate as? AppDelegate)?.releaseNotesPopover {
+                popover.close()
+                return true
+            }
+        }
+        
+        // 2. TAB -> Switch between Notas and Archivos
+        if event.keyCode == 48 {
+            toggleSegment()
+            return true
+        }
+        
+        // 3. 'A' (keyCode 0) -> Switch to Notas (Left segment)
+        if event.keyCode == 0 {
+            if modeSegmentedControl.selectedSegment != 0 {
+                modeSegmentedControl.selectedSegment = 0
+                segmentChanged(modeSegmentedControl)
+                return true
+            }
+        }
+        
+        // 4. 'D' (keyCode 2) -> Switch to Archivos (Right segment)
+        if event.keyCode == 2 {
+            if modeSegmentedControl.selectedSegment != 1 && modeSegmentedControl.isEnabled(forSegment: 1) {
+                modeSegmentedControl.selectedSegment = 1
+                segmentChanged(modeSegmentedControl)
+                return true
+            }
+        }
+        
+        let isAssetsMode = modeSegmentedControl.selectedSegment == 1
+        
+        if isAssetsMode {
+            switch event.keyCode {
+            case 1: // 'S' -> Next file
+                moveAssetSelection(direction: 1)
+                return true
+            case 13: // 'W' -> Previous file
+                moveAssetSelection(direction: -1)
+                return true
+            case 49: // Space -> Download selected file
+                if downloadSelectedAsset() {
+                    return true
+                }
+            default:
+                break
+            }
+        } else {
+            switch event.keyCode {
+            case 1: // 'S' -> Scroll notes down
+                scrollNotes(direction: 1)
+                return true
+            case 13: // 'W' -> Scroll notes up
+                scrollNotes(direction: -1)
+                return true
+            case 116: // Page Down
+                scrollNotes(direction: 8)
+                return true
+            case 121: // Page Up
+                scrollNotes(direction: -8)
+                return true
+            case 115: // Home
+                scrollNotesToTop()
+                return true
+            case 119: // End
+                scrollNotesToEnd()
+                return true
+            default:
+                break
+            }
+        }
+        
+        // Unhandled keys (Arrows 123-126, Return 36, etc.) return false
+        // so Player 1 can navigate and launch actions on the main repo list!
+        return false
+    }
+    
+    func toggleSegment() {
+        if modeSegmentedControl.selectedSegment == 0 {
+            guard modeSegmentedControl.isEnabled(forSegment: 1) else { return }
+            modeSegmentedControl.selectedSegment = 1
+        } else {
+            modeSegmentedControl.selectedSegment = 0
+        }
+        segmentChanged(modeSegmentedControl)
+    }
+    
+    func moveAssetSelection(direction: Int) {
+        let rows = assetRows
+        guard !rows.isEmpty else { return }
+        if let current = selectedAssetIndex {
+            let next = max(0, min(rows.count - 1, current + direction))
+            selectAsset(at: next)
+        } else {
+            selectAsset(at: direction > 0 ? 0 : rows.count - 1)
+        }
+    }
+    
+    func selectAsset(at index: Int) {
+        let rows = assetRows
+        guard index >= 0 && index < rows.count else { return }
+        selectedAssetIndex = index
+        for (i, row) in rows.enumerated() {
+            row.setKeyboardFocused(i == index)
+        }
+        rows[index].scrollToVisible(rows[index].bounds)
+    }
+    
+    func clearAssetFocus() {
+        selectedAssetIndex = nil
+        for row in assetRows {
+            row.setKeyboardFocused(false)
+        }
+    }
+    
+    func downloadSelectedAsset() -> Bool {
+        guard let idx = selectedAssetIndex,
+              let assets = currentAssets,
+              idx < assets.count else { return false }
+        downloadAssetClicked(assets[idx])
+        return true
+    }
+    
+    func scrollNotes(direction: Int) {
+        guard let clipView = textView.enclosingScrollView?.contentView else { return }
+        let currentOrigin = clipView.bounds.origin
+        let delta = CGFloat(direction) * 45.0
+        let docHeight = textView.bounds.height
+        let clipHeight = clipView.bounds.height
+        let maxY = max(0, docHeight - clipHeight)
+        let targetY = max(0, min(maxY, currentOrigin.y + delta))
+        clipView.scroll(to: NSPoint(x: currentOrigin.x, y: targetY))
+        textView.enclosingScrollView?.reflectScrolledClipView(clipView)
+    }
+    
+    func scrollNotesToTop() {
+        guard let clipView = textView.enclosingScrollView?.contentView else { return }
+        clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: 0))
+        textView.enclosingScrollView?.reflectScrolledClipView(clipView)
+    }
+    
+    func scrollNotesToEnd() {
+        guard let clipView = textView.enclosingScrollView?.contentView else { return }
+        let docHeight = textView.bounds.height
+        let clipHeight = clipView.bounds.height
+        let maxY = max(0, docHeight - clipHeight)
+        clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: maxY))
+        textView.enclosingScrollView?.reflectScrolledClipView(clipView)
+    }
+    
     @objc private func segmentChanged(_ sender: NSSegmentedControl) {
         let showNotes = sender.selectedSegment == 0
         if let scrollView = textView.enclosingScrollView {
             scrollView.isHidden = !showNotes
         }
         assetsScrollView.isHidden = showNotes
+        clearAssetFocus()
     }
     
     @objc private func assetsScrollViewDidScroll(_ notification: Notification) {
@@ -885,6 +1101,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
     }
     
     private func populateAssetsCard(assets: [ReleaseAsset]?) {
+        selectedAssetIndex = nil
         assetsContainerView.subviews.forEach { $0.removeFromSuperview() }
         
         guard let assets = assets, !assets.isEmpty else {
@@ -894,7 +1111,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         let baseFontSize = (ConfigManager.shared.config.menuFontSize ?? Constants.menuBaseFontSize) * Constants.menuScale
         let offset = baseFontSize - (13.0 * Constants.menuScale)
         
-        for asset in assets {
+        for (rowIndex, asset) in assets.enumerated() {
             let row = ClickableAssetRow(frame: .zero)
             row.translatesAutoresizingMaskIntoConstraints = false
             assetsContainerView.addArrangedSubview(row)
@@ -1029,6 +1246,7 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
             
             let assetToDownload = asset
             row.onClick = { [weak self] in
+                self?.selectAsset(at: rowIndex)
                 self?.downloadAssetClicked(assetToDownload)
             }
         }
@@ -1047,9 +1265,10 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         // Strict filename sanitization: prevents path traversal, control characters, and reserved names
         fileName = Utils.sanitizeFileName(fileName)
         
-        // Avoid overwriting: add " (1)", " (2)" etc. like macOS
-        let destURL = uniqueDestination(for: fileName, in: destDir)
+        // Atomic reservation: avoid overwriting existing files and prevent concurrent download collisions
+        let destURL = Self.reserveDestination(for: fileName, in: destDir)
         fileName = destURL.lastPathComponent
+        let downloadId = UUID().uuidString
         
         let startTime = Date()
         var lastUIUpdate = Date.distantPast
@@ -1097,12 +1316,13 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                     }
                     
                     Task { @MainActor in
-                        HUDPanel.shared.updateDownloadProgress(id: fileName, status: status, details: details, progress: progressRatio)
+                        HUDPanel.shared.updateDownloadProgress(id: downloadId, status: status, details: details, progress: progressRatio)
                     }
                 }
                 
                 await MainActor.run {
-                    self.activeDownloadTasks[fileName] = nil
+                    self.activeDownloadTasks[downloadId] = nil
+                    Self.releaseDestination(destURL)
                     let finalSize = (try? destURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map { Int64($0) } ?? asset.size ?? 0
                     let sizeStr = self.formatBytes(finalSize)
                     let compText = Translations.get("downloadSuccess")
@@ -1111,29 +1331,32 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
                         : "\(sizeStr) • \(compText)"
                     let shaBadge = !computedSHA.isEmpty ? "SHA-256: \(computedSHA.prefix(8))..." : nil
                     
-                    HUDPanel.shared.showDownloadCompletion(id: fileName, title: fileName, subtitle: subtitle, sha: shaBadge, destinationURL: destURL)
+                    HUDPanel.shared.showDownloadCompletion(id: downloadId, title: fileName, subtitle: subtitle, sha: shaBadge, destinationURL: destURL)
                 }
             } catch is CancellationError {
                 await MainActor.run {
-                    self.activeDownloadTasks[fileName] = nil
+                    self.activeDownloadTasks[downloadId] = nil
+                    Self.releaseDestination(destURL)
                     try? FileManager.default.removeItem(at: destURL)
-                    HUDPanel.shared.showCancellation(id: fileName, title: fileName, subtitle: Translations.get("downloadCancelled"), duration: 2.5)
+                    HUDPanel.shared.showCancellation(id: downloadId, title: fileName, subtitle: Translations.get("downloadCancelled"), duration: 2.5)
                 }
             } catch {
                 await MainActor.run {
-                    self.activeDownloadTasks[fileName] = nil
+                    self.activeDownloadTasks[downloadId] = nil
+                    Self.releaseDestination(destURL)
                     let failTitle = Translations.get("downloadFailed").format(with: ["filename": fileName])
-                    HUDPanel.shared.showCompletion(id: fileName, title: failTitle, subtitle: error.localizedDescription, isSuccess: false)
+                    HUDPanel.shared.showCompletion(id: downloadId, title: failTitle, subtitle: error.localizedDescription, isSuccess: false)
                 }
             }
         }
-        self.activeDownloadTasks[fileName] = downloadTask
+        self.activeDownloadTasks[downloadId] = downloadTask
         
-        HUDPanel.shared.showDownloadProgress(id: fileName, title: fileName, status: "...", details: "", progress: 0.0, onCancel: { [weak self] in
+        HUDPanel.shared.showDownloadProgress(id: downloadId, title: fileName, status: "...", details: "", progress: 0.0, onCancel: { [weak self] in
             downloadTask?.cancel()
-            self?.activeDownloadTasks[fileName] = nil
+            self?.activeDownloadTasks[downloadId] = nil
+            Self.releaseDestination(destURL)
             try? FileManager.default.removeItem(at: destURL)
-            HUDPanel.shared.showCancellation(id: fileName, title: fileName, subtitle: Translations.get("downloadCancelled"), duration: 2.5)
+            HUDPanel.shared.showCancellation(id: downloadId, title: fileName, subtitle: Translations.get("downloadCancelled"), duration: 2.5)
         })
     }
     
@@ -1151,27 +1374,42 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
         }
     }
     
-    /// Returns a unique file URL, appending " (1)", " (2)" etc. if the file already exists.
-    private func uniqueDestination(for fileName: String, in directory: URL) -> URL {
-        let url = directory.appendingPathComponent(fileName)
-        guard FileManager.default.fileExists(atPath: url.path) else { return url }
+    // MARK: - Atomic Destination Reservation
+    
+    private static var reservedDestinations = Set<String>()
+    private static let destinationLock = NSLock()
+    
+    /// Atomically chooses and reserves a unique destination URL to prevent concurrent task collisions.
+    static func reserveDestination(for fileName: String, in directory: URL) -> URL {
+        destinationLock.lock()
+        defer { destinationLock.unlock() }
         
         let name = (fileName as NSString).deletingPathExtension
         let ext = (fileName as NSString).pathExtension
         
+        var candidate = directory.appendingPathComponent(fileName)
         var counter = 1
-        while true {
-            let candidate: URL
+        while FileManager.default.fileExists(atPath: candidate.path) || reservedDestinations.contains(candidate.path) {
             if ext.isEmpty {
                 candidate = directory.appendingPathComponent("\(name) (\(counter))")
             } else {
                 candidate = directory.appendingPathComponent("\(name) (\(counter)).\(ext)")
             }
-            if !FileManager.default.fileExists(atPath: candidate.path) {
-                return candidate
-            }
             counter += 1
         }
+        reservedDestinations.insert(candidate.path)
+        return candidate
+    }
+    
+    static func releaseDestination(_ url: URL) {
+        destinationLock.lock()
+        defer { destinationLock.unlock() }
+        reservedDestinations.remove(url.path)
+    }
+    
+    /// Returns a unique file URL, appending " (1)", " (2)" etc. if the file already exists.
+    private func uniqueDestination(for fileName: String, in directory: URL) -> URL {
+        return Self.reserveDestination(for: fileName, in: directory)
     }
     
     // MARK: - Smart Matching Release Assets
@@ -1297,6 +1535,8 @@ class ReleaseNotesViewController: NSViewController, NSTextViewDelegate {
 /// Custom NSTextView subclass providing asymmetrical left/right insets to achieve
 /// perfect text symmetry while keeping the vertical scrollbar flush against the right window edge.
 class ReleaseNotesTextView: NSTextView {
+    weak var viewController: ReleaseNotesViewController?
+    
     /// Suppress context menu cleanly at the view level so right-clicking doesn't prevent closing on outside clicks
     override func menu(for event: NSEvent) -> NSMenu? {
         return nil
@@ -1308,7 +1548,20 @@ class ReleaseNotesTextView: NSTextView {
         }
     }
     
+    override func keyDown(with event: NSEvent) {
+        if let vc = viewController, vc.handleKeyDown(with: event) {
+            return
+        }
+        if let appDelegate = NSApp.delegate as? AppDelegate, appDelegate.handleGlobalShortcuts(with: event) {
+            return
+        }
+        super.keyDown(with: event)
+    }
+    
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let vc = viewController, vc.handleKeyDown(with: event) {
+            return true
+        }
         if let appDelegate = NSApp.delegate as? AppDelegate, appDelegate.handleGlobalShortcuts(with: event) {
             return true
         }

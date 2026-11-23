@@ -5,6 +5,41 @@ All notable changes to Mino will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2026-11-23
+
+### Concurrency Hardening
+- **UUID-Based Multitask Download Identities**: Decoupled visual asset filenames from internal task tracking by issuing unique `UUID` identifiers per operation (`downloadId`). Completely eliminates state collisions, progress overwrites, and crossed cancellations when downloading identically named assets (e.g. `latest.dmg`, `app.zip`) from different repositories concurrently.
+- **Atomic Destination Path Reservation**: Implemented `reserveAtomicDestination` with an active reservation registry. Resolves file destination paths atomically before download initiation, preventing race conditions where simultaneous downloads could select the same filename or overwrite completed files.
+- **True Atomic Asset Replacement via `replaceItemAt`**: Upgraded asset publishing from manual deletion and relocation to macOS `FileManager.default.replaceItemAt`, eliminating zero-byte and missing-file windows while guaranteeing the previous asset remains intact if replacement fails.
+- **HUD Task Lifecycle & ID Reuse Safeguards**: Hardened `registerOrUpdateTask` in `HUDPanel` to explicitly invalidate lingering auto-dismiss timers, clear stale checksums/destinations, and reset completion states upon task reactivation.
+- **Scrollable & Height-Constrained Multitask HUD**: Capped maximum multi-task HUD height to screen-safe bounds (380 pt) with an integrated `NSScrollView`, preventing screen overflow when queuing many concurrent operations.
+- **POSIX Permission Normalization on Startup**: Added `ConfigManager.ensureSecurePOSIXPermissions` on launch, normalizing directory permissions (`0700`) and configuration file permissions (`0600`) for existing and upgraded installations alike.
+- **Unified Transactional Mutations**: Migrated composite preference and favorite state changes (`handleToggleFavorite`, `applySheenEffectState`, `applyBeerHandleState`) to atomic `ConfigManager.modifyConfig` transactions.
+- **Accurate `SECURITY.md` Policy**: Corrected security documentation to reflect Device Flow OAuth, `formulae.brew.sh` read-only queries, and supported 2.4.x release tier.
+
+### Dual-Player Keyboard Navigation & Accessibility
+- **Dual-Player Keyboard Control Scheme**: Completely eliminated modal key hijacking between panels, enabling concurrent navigation without closing secondary views:
+  - **Player 1 (Main Menu & Repository List)**: Dedicated Arrow Keys (Up/Down) and Enter/Space drive repository list navigation, inline actions (Release Notes, Open Releases, Install, Delete), and menu shortcuts directly, even while secondary popovers (Settings or Release Notes) are open.
+  - **Player 2 (Settings & Release Notes Panels)**: Independent navigation powered by **WASD**, **Space**, and **TAB / Shift+TAB**, eliminating key collisions with the main repository list.
+- **Settings Focus Navigation & Geometric Symmetry**:
+  - Full keyboard cycle across all 9 preferences controls (Menu Layout, Text Size picker, Checkboxes, Interval slider, GitHub token actions) with high-visibility 2.0 pt accent focus rings.
+  - Rebuilt the Text Size control into a symmetrical native-style segmented picker (`TextSizePickerView`) featuring decrement, step level indicator, and increment buttons with keyboard stepping (`A`/`D` or `Space`).
+  - Standardized control widths to exactly 114.0 pt across Menu Layout, Text Size Picker, and Update Interval slider to achieve visual symmetry.
+- **Release Notes Keyboard Interaction & Clean Default Focus**:
+  - `TAB` cleanly toggles between "Notas" (rendered release notes) and "Archivos" (binary release assets).
+  - Uncluttered default state: switching to the "Archivos" tab leaves assets unfocused by default.
+  - Pressing `W`/`S` initiates selection on demand, navigating through binary assets with an accent border, while `Space` triggers the download of the focused asset.
+
+### User Interface Polish & Animations
+- **Animated Beer Handle (ASA) Dismissal**: Restored the smooth slide-and-fade exit animation (`hideAnimated`) for the decorative beer mug handle when secondary popovers open, eliminating abrupt cutoffs and matching the native ~0.25s macOS popover entrance. Protected with re-entrancy guards to prevent race conditions during rapid popover toggling.
+- **Dynamic Version Layout & Scale Awareness**: Factored in UI scale (`effectiveScale`) and natural string dimensions when calculating version label constraints in `RepoMenuItemView`, preventing premature ellipsis truncation when ample horizontal space is available.
+- **Refined HUD Notifications**:
+  - Updated repository addition confirmation from the imperative verb `"Add"` to the completed past participle **`"Added"`** / **«Añadido»** (`repoAdded`), fully localized across all 11 supported languages.
+  - Redesigned the disabled Beer Mug Handle icon in `HUDPanel` to a true native SF Symbol template glyph (`isTemplate = true`) on a 48×48 pt canvas, featuring a 6.0 pt knockout mask and 3.0 pt rounded diagonal slash (~45°). Eliminates the dark silhouette artifact and ensures crisp, brilliant white rendering in dark HUD mode.
+
+### Automated Testing
+- **Comprehensive Keyboard & UI Verification (Test 24 & Test 22 Updates)**: Added automated test suites validating dual-player keyboard routing, TAB asset focus defaults, WASD selection stepping, control width constraints (114.0 pt), HUD template glyph properties, and localized strings across the entire test matrix (24 audit tests passing 100%).
+
 ## [2.4.0] - 2026-11-21 - Padre
 
 ### Dynamic Multi-Task HUD & Visual Polish

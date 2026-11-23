@@ -30,7 +30,9 @@ class RepoCoordinator {
     /// Cleans up all cached data and config for a given repository upon deletion.
     private func cleanupRepoData(repoName: String) {
         guard let delegate = delegate else { return }
-        ConfigManager.shared.config.repos.removeAll { $0.name == repoName }
+        ConfigManager.shared.modifyConfig { cfg in
+            cfg.repos.removeAll { $0.name == repoName }
+        }
         delegate.repoCache.removeValue(forKey: repoName)
         
         var seenVersions = UserDefaults.standard.dictionary(forKey: "LastSeenVersions") as? [String: String] ?? [:]
@@ -48,7 +50,6 @@ class RepoCoordinator {
             delegate.releaseNotesPopover?.close()
         }
         
-        ConfigManager.shared.saveConfig()
         ConfigManager.shared.saveCache(repoCache: delegate.repoCache, etags: GitHubAPI.shared.allETags())
         delegate.updatePopularTagsCache()
     }
@@ -86,10 +87,11 @@ class RepoCoordinator {
             return
         }
         
-        // Re-insert at original position (clamped to current count)
-        let insertIndex = min(last.index, ConfigManager.shared.config.repos.count)
-        ConfigManager.shared.config.repos.insert(last.config, at: insertIndex)
-        ConfigManager.shared.saveConfig()
+        // Re-insert at original position atomically under lock
+        ConfigManager.shared.modifyConfig { cfg in
+            let insertIndex = min(last.index, cfg.repos.count)
+            cfg.repos.insert(last.config, at: insertIndex)
+        }
         
         // Restore cache if available
         if let cache = last.cache {
@@ -403,15 +405,16 @@ class RepoCoordinator {
             }
             
             let newRepo = RepoConfig(name: repoName, source: source, cask: cask, tags: repoMeta.tags ?? [], repoDescription: repoMeta.description)
-            ConfigManager.shared.config.repos.append(newRepo)
-            ConfigManager.shared.saveConfig()
+            ConfigManager.shared.modifyConfig { cfg in
+                cfg.repos.append(newRepo)
+            }
             
             await MainActor.run {
                 delegate.repoCache[repoName] = info
                 delegate.updatePopularTagsCache()
                 delegate.rebuildMenu()
                 delegate.animateStatusIcon(with: .bounce)
-                HUDPanel.shared.showCompletion(title: Translations.get("add"), subtitle: repoName, isSuccess: true)
+                HUDPanel.shared.showCompletion(title: Translations.get("repoAdded"), subtitle: repoName, isSuccess: true)
                 
                 UserDefaults.standard.set(true, forKey: "HasUnreadPulse")
                 delegate.updateStatusIcon(hasUpdates: true)

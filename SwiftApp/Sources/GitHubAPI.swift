@@ -921,9 +921,14 @@ class GitHubAPI {
         return (fallbackBody, nil)
     }
     
-    /// Delegate enforcing defense-in-depth credential stripping on HTTP redirects.
+    /// Delegate enforcing defense-in-depth credential stripping on HTTP redirects and rejecting HTTPS downgrades.
     private final class SafeDownloadRedirectDelegate: NSObject, URLSessionTaskDelegate {
         func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            // Reject any redirect that downgrades from HTTPS to insecure HTTP
+            guard let scheme = request.url?.scheme?.lowercased(), scheme == "https" else {
+                completionHandler(nil)
+                return
+            }
             var redirectedRequest = request
             if let host = request.url?.host?.lowercased(), !GitHubAPI.isTrustedGitHubHost(host) {
                 // Strip Authorization header when redirected outside exact trusted hosts (e.g. AWS S3 CDN)
@@ -1041,13 +1046,18 @@ class GitHubAPI {
             kLSQuarantineAgentNameKey as String: "Mino"
         ]
         var quarantinedTemp = tempURL
-        try? quarantinedTemp.setResourceValues(values)
-        
-        // Atomic destination replacement: safely remove previous file only after download & hash succeeded
-        if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.removeItem(at: destinationURL)
+        do {
+            try quarantinedTemp.setResourceValues(values)
+        } catch {
+            print("Warning: Failed to set quarantine properties on downloaded asset: \(error)")
         }
-        try fileManager.moveItem(at: tempURL, to: destinationURL)
+        
+        // True atomic destination replacement on macOS: avoids leaving a missing destination gap
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            _ = try fileManager.replaceItemAt(destinationURL, withItemAt: tempURL, backupItemName: nil, options: .withoutDeletingBackupItem)
+        } else {
+            try fileManager.moveItem(at: tempURL, to: destinationURL)
+        }
         return computedDigest
     }
     

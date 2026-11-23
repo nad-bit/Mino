@@ -231,13 +231,14 @@ class HUDTaskRowView: NSView {
             rowStack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             rowStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7),
             rowStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            rowStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            // Leave 20pt of trailing margin to ensure the vertical scroller never overlaps the cancel button
+            rowStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
             
             headerLine.widthAnchor.constraint(equalTo: centerStack.widthAnchor),
             progressBar.widthAnchor.constraint(equalTo: centerStack.widthAnchor),
             
             separator.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 34),
-            separator.trailingAnchor.constraint(equalTo: trailingAnchor),
+            separator.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             separator.bottomAnchor.constraint(equalTo: bottomAnchor),
             separator.heightAnchor.constraint(equalToConstant: 1)
         ])
@@ -356,6 +357,7 @@ class HUDPanel: NSPanel {
     private let multiHeaderStack: NSStackView
     private let multiHeaderTitle: NSTextField
     private let multiHeaderBadge: NSTextField
+    private let multiScrollView: NSScrollView
     private let multiTasksStack: NSStackView
     
     private var visualWidthConstraint: NSLayoutConstraint?
@@ -503,7 +505,15 @@ class HUDPanel: NSPanel {
         multiTasksStack.spacing = 0
         multiTasksStack.translatesAutoresizingMaskIntoConstraints = false
         
-        multiContainer = NSStackView(views: [multiHeaderStack, headerSep, multiTasksStack])
+        multiScrollView = NSScrollView()
+        multiScrollView.hasVerticalScroller = true
+        multiScrollView.hasHorizontalScroller = false
+        multiScrollView.autohidesScrollers = true
+        multiScrollView.drawsBackground = false
+        multiScrollView.documentView = multiTasksStack
+        multiScrollView.translatesAutoresizingMaskIntoConstraints = false
+        
+        multiContainer = NSStackView(views: [multiHeaderStack, headerSep, multiScrollView])
         multiContainer.orientation = .vertical
         multiContainer.alignment = .leading
         multiContainer.spacing = 6
@@ -565,7 +575,9 @@ class HUDPanel: NSPanel {
             
             multiHeaderStack.widthAnchor.constraint(equalTo: multiContainer.widthAnchor),
             headerSep.widthAnchor.constraint(equalTo: multiContainer.widthAnchor),
-            multiTasksStack.widthAnchor.constraint(equalTo: multiContainer.widthAnchor)
+            multiScrollView.widthAnchor.constraint(equalTo: multiContainer.widthAnchor),
+            multiScrollView.heightAnchor.constraint(lessThanOrEqualToConstant: 380),
+            multiTasksStack.widthAnchor.constraint(equalTo: multiScrollView.widthAnchor)
         ])
     }
     
@@ -580,6 +592,12 @@ class HUDPanel: NSPanel {
                                       progress: Double? = nil,
                                       onCancel: (() -> Void)? = nil) -> HUDTaskItem {
         if let existing = tasks[id] {
+            existing.autoDismissTimer?.invalidate()
+            existing.autoDismissTimer = nil
+            existing.isCompleted = false
+            existing.isSuccess = true
+            existing.destinationURL = nil
+            existing.sha = nil
             existing.title = title
             existing.subtitle = subtitle
             existing.details = details
@@ -723,10 +741,13 @@ class HUDPanel: NSPanel {
         visualEffect.layoutSubtreeIfNeeded()
         let fitting = visualEffect.fittingSize
         let targetWidth: CGFloat = isMultiTaskMode ? 400.0 : 340.0
-        let targetHeight: CGFloat = max(110.0, fitting.height)
         
         let screen = NSApp.keyWindow?.screen ?? self.screen ?? NSScreen.main ?? NSScreen.screens.first
         let screenRect = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        
+        // Ensure HUD height never overflows the display or extends off-screen
+        let maxAllowedHeight = min(screenRect.height * 0.70, 480.0)
+        let targetHeight: CGFloat = min(maxAllowedHeight, max(110.0, fitting.height))
         
         // Position horizontally centered on screen
         let newX = screenRect.midX - (targetWidth / 2.0)

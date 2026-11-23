@@ -228,37 +228,45 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSPopov
     }
     
     static func createMugImage(slashed: Bool) -> NSImage? {
-        guard let base = NSImage(systemSymbolName: "mug.fill", accessibilityDescription: nil) else { return nil }
-        guard slashed else { return base }
+        let config = NSImage.SymbolConfiguration(pointSize: 32, weight: .medium)
+        guard let base = NSImage(systemSymbolName: "mug.fill", accessibilityDescription: nil)?.withSymbolConfiguration(config) else { return nil }
         
         let size = NSSize(width: 48, height: 48)
         let img = NSImage(size: size, flipped: false) { rect in
-            base.draw(in: rect.insetBy(dx: 4, dy: 4))
+            let symbolRect = NSRect(
+                x: (size.width - base.size.width) / 2,
+                y: (size.height - base.size.height) / 2,
+                width: base.size.width,
+                height: base.size.height
+            )
+            base.draw(in: symbolRect)
             
-            guard let ctx = NSGraphicsContext.current?.cgContext else { return true }
-            
-            let p1 = CGPoint(x: rect.minX + 6, y: rect.maxY - 6)
-            let p2 = CGPoint(x: rect.maxX - 6, y: rect.minY + 6)
-            
-            // Knockout gap around slash
-            ctx.saveGState()
-            ctx.setBlendMode(.clear)
-            ctx.setLineCap(.round)
-            ctx.setLineWidth(5.5)
-            ctx.strokeLineSegments(between: [p1, p2])
-            ctx.restoreGState()
-            
-            // Slash stroke
-            ctx.saveGState()
-            ctx.setLineCap(.round)
-            ctx.setLineWidth(2.5)
-            NSColor.white.setStroke()
-            ctx.strokeLineSegments(between: [p1, p2])
-            ctx.restoreGState()
+            if slashed {
+                guard let ctx = NSGraphicsContext.current?.cgContext else { return true }
+                
+                let p1 = CGPoint(x: symbolRect.minX - 1, y: symbolRect.maxY + 1)
+                let p2 = CGPoint(x: symbolRect.maxX + 1, y: symbolRect.minY - 1)
+                
+                // Knockout gap around slash
+                ctx.saveGState()
+                ctx.setBlendMode(.clear)
+                ctx.setLineCap(.round)
+                ctx.setLineWidth(6.0)
+                ctx.strokeLineSegments(between: [p1, p2])
+                ctx.restoreGState()
+                
+                // Slash stroke
+                ctx.saveGState()
+                ctx.setLineCap(.round)
+                ctx.setLineWidth(3.0)
+                NSColor.black.setStroke()
+                ctx.strokeLineSegments(between: [p1, p2])
+                ctx.restoreGState()
+            }
             
             return true
         }
-        img.isTemplate = false
+        img.isTemplate = true
         return img
     }
     
@@ -278,6 +286,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSPopov
             let mugImage = AppDelegate.createMugImage(slashed: !newState)
             HUDPanel.shared.show(title: Translations.get("beerHandleTitle"), subtitle: statusText, image: mugImage)
         }
+    }
+    
+    @MainActor
+    func applySheenEffectState(_ newState: Bool) {
+        ConfigManager.shared.modifyConfig { cfg in
+            cfg.sheenEffectEnabled = newState
+        }
+        
+        if newState {
+            self.mainPopoverVC?.startSheenMinuteTimer()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                self.mainPopoverVC?.triggerSheen(force: true)
+            }
+        } else {
+            self.mainPopoverVC?.stopSheenMinuteTimer()
+        }
+        
+        let statusText = newState ? Translations.get("sheenEnabled") : Translations.get("sheenDisabled")
+        let sparklesImage = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
+        HUDPanel.shared.show(title: Translations.get("sheenTitle"), subtitle: statusText, image: sparklesImage)
     }
     
     func maxAllowedScaleForScreen(_ screen: NSScreen? = nil) -> Double {
@@ -708,14 +736,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSPopov
     }
     
     func handleToggleFavorite(for repoName: String) {
-        guard let index = ConfigManager.shared.config.repos.firstIndex(where: { $0.name == repoName }) else { return }
+        var updatedState: Bool?
+        ConfigManager.shared.modifyConfig { cfg in
+            guard let index = cfg.repos.firstIndex(where: { $0.name == repoName }) else { return }
+            let newState = !(cfg.repos[index].isFavorite ?? false)
+            cfg.repos[index].isFavorite = newState
+            updatedState = newState
+        }
         
-        let newState = !(ConfigManager.shared.config.repos[index].isFavorite ?? false)
-        ConfigManager.shared.config.repos[index].isFavorite = newState
-        ConfigManager.shared.saveConfig()
-        
-        // Sync the change with the UI's data source so scrolling doesn't revert the visual state
-        mainPopoverVC.updateFavoriteState(for: repoName, isFavorite: newState)
+        if let newState = updatedState {
+            // Sync the change with the UI's data source so scrolling doesn't revert the visual state
+            mainPopoverVC.updateFavoriteState(for: repoName, isFavorite: newState)
+        }
     }
     
     func performAfterPopoverClose(_ action: @escaping () -> Void) {
@@ -1144,10 +1176,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSPopov
                 self.updateBeerHandleVisibility()
             }
         } else {
-            // Secondary popover (Settings, Release Notes, About, Add Repo) opening -> cancel pending show and hide handle immediately
+            // Secondary popover (Settings, Release Notes, About, Add Repo) opening -> cancel pending show and hide handle with animation
             beerHandleShowWorkItem?.cancel()
             beerHandleShowWorkItem = nil
-            beerHandle?.hide()
+            beerHandle?.hideAnimated()
         }
     }
     
@@ -1256,7 +1288,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSPopov
             }
         }
         
-        // 1. Navigation (Arrows) - Intercepted even without modifiers
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
+        
+        // 1. Navigation (Arrows) - Intercepted even without modifiers (Player 1: Main Menu & Repo List)
         if event.keyCode == 125 { // Down Arrow
             mainPopoverVC.clearButtonFocus()
             mainPopoverVC.moveHighlight(direction: 1)
@@ -1274,7 +1308,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSPopov
         }
         
         // 2. Global App Shortcuts (CMD + ...)
-        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
         if modifiers == .command {
             switch event.charactersIgnoringModifiers?.lowercased() {
             case "0":
@@ -1345,6 +1378,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSPopov
             case "h": // CMD+H → Toggle beer mug handle (ASA)
                 let current = ConfigManager.shared.config.beerHandleEnabled ?? true
                 applyBeerHandleState(!current)
+                return true
+            case "l": // CMD+L → Toggle liquid glass reflection sheen
+                let current = ConfigManager.shared.config.sheenEffectEnabled ?? true
+                applySheenEffectState(!current)
                 return true
             case "c": // CMD+C → Copy GitHub URL
                 mainPopoverVC.triggerActionOnHighlighted(.copy)

@@ -26,7 +26,7 @@
 - **🧩 Integrated Search**: A sleek, centered search field with an intelligent Tag Cloud. Filter your repositories by language, topic, or status instantly using the auto-generated suggestion cloud.
 - **🧠 Quick Add**: Copy a GitHub repository URL, open the menu, and the header intelligently transforms into a "Quick Add" action with dynamic iconography. Bypass modal windows completely!
 - **📏 Dynamic Typography**: Choose your preferred text size (11pt to 21pt). The entire menu UI, from repository names to release notes and segmented controls, scales proportionally to ensure perfect legibility for every user.
-- **⏱ Tooltip Tracker**: The refresh countdown is hidden for a cleaner look — simply hover over the refresh icon to see the time remaining, or hover over the footer count for the exact last-update timestamp.
+- **⏱ Tooltip Tracker**: The refresh countdown is hidden for a cleaner look — simply hover over the refresh icon to see the time remaining and last refresh timestamp, or hover over the footer for casks count.
 - **🎯 Multi-Hunt Window**: The floating "Add Repositories..." window acts as a persistent tracking hub. Keep it open while you browse Safari, and simply hit `CMD+C` on sequential GitHub URLs. Mino automatically sniffs your clipboard and queues them up for rapid batch-ingestion without ever losing focus.
 - **📂 Quick Reveal**: After installing a Cask, the app reveals the application in Finder
 - **🔐 Hardened Security & Resilience**: GitHub OAuth tokens stored in macOS Keychain with minimal scopes (`""`), strict domain allowlist validation, atomic configuration persistence, link protocol isolation, and SHA-256 asset verification (see [SECURITY.md](SECURITY.md))
@@ -34,6 +34,8 @@
 - **🛡 Smart Launch & HTTP 304 Rate Limit Shield**: Unconditional startup refreshes are eliminated. Unchanged repositories respond with `304 Not Modified` via conditional `ETag` headers, consuming **0 units** of your GitHub API quota
 - **⚡️ Deep Linking (`mino://`)**: Native URL scheme integration for adding repos/casks (`mino://add/...`), launching notes directly from PopClip/Raycast (`mino://notes/...`), and toggling decorative UI accents (`mino://handle`)
 - **★ Favorites**: Right-click any repository (or hit `CMD + S`) to mark it as a favorite. A gold ★ appears inline — toggles instantly without closing the menu.
+- **🎮 Dual-Player Keyboard Navigation**: Full, conflict-free keyboard navigation. Use Arrow keys and `ENTER`/`SPACE` for the main repository list (Player 1), and `WASD`, `SPACE`, and `TAB` for secondary panels (Preferences & Release Notes) simultaneously without modal locking.
+- **✨ Metal Liquid-Crystal Reflection**: Continuous horizontal sheen animation across header, footer, release notes, preferences, and beer mug handle synchronized at 1-minute intervals (toggle with `CMD + L`).
 - **🌍 Localized**: English, Spanish, French, German, Italian, Portuguese, Mandarin Chinese, Hindi, Arabic, Russian, and Japanese with automatic system detection
 - **🔄 Auto-Start**: Launch at login via native macOS LaunchAgent
 - **🎨 Light & Dark Mode**: Full support, including a forced-dark HUD panel for notifications
@@ -137,7 +139,7 @@ Accessible via the **Preferences** menu item:
 |--------|-------------|
 | **GitHub Account** | Connect via OAuth for 5,000 req/hr limit (vs 60/hr unauthenticated) |
 | **Menu layout** | Segmented control: Choose between 3 distinct UI arrangements (Columns, Cards, Tags) |
-| **Text Size** | Segmented control: Choose your preferred reading comfort (11pt to 21pt) |
+| **Text Size** | Stepped picker control: Choose your preferred reading comfort (11pt to 21pt) |
 | **Sort by** | Segmented control: Date or Name |
 | **New Release Indicator** | Toggle the ● freshness dot (Columns/Cards) or dynamic pill color (Tags) and configure threshold (1-30 days) |
 | **Show Owner Name** | Toggle `owner/` prefix in repo names |
@@ -170,7 +172,7 @@ Mino adheres to strict defense-in-depth principles across authentication, networ
 - **Rate Limit Isolation & Quota Conservation**: Rate limit tracking strictly segregates unauthenticated IP-based quotas (60 req/hr) from authenticated user quotas (5,000 req/hr), purging stale state on token transitions and throttling UI hover updates with a 3-second cooldown to avoid wasteful quota consumption.
 - **Streaming Cryptographic Hashes**: Incorporates `Utils.computeSHA256` via Apple's `CryptoKit` with 64KB chunked streaming to verify file integrity with $O(1)$ memory consumption.
 - **Resource Protection & Memory Guards**: Remote release images are capped at 10 MB in memory, and the local disk cache (`~/Library/Caches/com.nad.mino/ReleaseImages`) is managed with automated background LRU pruning (150 MB quota / 30-day TTL).
-- **Automated Verification Suite (16 High-Value Tests)**: All security controls, host allowlists, URL regexes, decompression bomb guards, HTML sanitizers, multi-language localization integrity, cryptographic asset checksum validation, persistent cache serialization, ETag restoration, and zero-drift scheduling routines are verified via automated tests in `SwiftApp/Tests/AuditValidationTests.swift` compiled directly against production sources (`./build.sh --test`).
+- **Automated Verification Suite (24 Comprehensive Audit Tests)**: All security controls, host allowlists, URL regexes, decompression bomb guards, HTML sanitizers, multi-language localization integrity, cryptographic asset checksum validation, persistent cache serialization, ETag restoration, atomic download replacement, POSIX permissions, and dual-player keyboard navigation routines are verified via automated tests in `SwiftApp/Tests/AuditValidationTests.swift` compiled directly against production sources (`./build.sh --test`).
 
 ## Configuration & Cache
 
@@ -204,17 +206,30 @@ Use these shortcuts while the main menu is open:
 | `CMD + S` | Mark or unmark selected repo as Starred (Favorite) |
 | `CMD + B` | Install or update the focused repo via Homebrew |
 | `CMD + H` | Toggle decorative beer mug handle (ASA) silhouette |
+| `CMD + L` | Toggle liquid-crystal reflection sheen effect |
 | `CMD + 0` | Reset menu and notes scale to 1.0x (100% / base size) |
 | `CMD + 1..9` | Scale menu and notes from 1.05x (105%) to 1.45x (145%) in +5% steps |
 | `CMD +` / `CMD -` | Step scale up (+5%) or down (-5%) with screen-safe proportion locking |
 | `CMD + Z` | Undo last repository deletion |
 | `CMD + Q` | Quit Mino |
-| `TAB`     | Switch focus between Search field and Repo list |
-| `↑↓`     | Navigate up and down the Repo list |
-| `←→`     | Cycle through inline action buttons on the selected repo |
-| `ENTER`   | Trigger the focused action button, or open repo on GitHub if no button is focused |
 | `CMD + ⌫` | Delete the selected repo |
-| `ESC`     | Close any active popover |
+| `ESC`     | Close active secondary popover, clear search, or dismiss menu |
+
+### Dual-Player Keyboard Navigation
+
+Mino features a conflict-free dual-player control scheme so you can interact with secondary panels without losing keyboard control over the main repository list:
+
+**Player 1 — Main Menu & Repositories:**
+- `↑` / `↓`: Move selection up and down the repository list
+- `←` / `→`: Cycle through inline action buttons on the selected repository
+- `ENTER` / `SPACE`: Trigger the focused inline action button, or open the repository on GitHub if no button is focused
+- `TAB`: Switch focus between Search field and Repository list
+
+**Player 2 — Preferences & Release Notes Secondary Panels:**
+- `TAB` / `Shift + TAB`: Cycle through Preferences controls or toggle between "Notas" and "Archivos" in Release Notes
+- `W` / `S`: Navigate up/down through Preferences controls or Release Assets
+- `A` / `D` or `←` / `→`: Adjust segmented pickers (Menu Layout, Text Size) and sliders (Update Interval)
+- `SPACE`: Toggle checkboxes, click buttons, or download the selected release asset
 
 ## Architecture
 
@@ -227,36 +242,35 @@ SwiftApp/
 │   └── AuditValidationTests.swift   # Automated security, parsing, and recovery test suite
 └── Sources/
     ├── main.swift                   # Application entry point
-    ├── AppDelegate.swift            # App lifecycle, popover orchestration, and global shortcuts
-    ├── MainPopoverViewController.swift # Core UI controller (NSTableView, Search, Tag Cloud)
-    ├── HeaderMenuItemView.swift     # Search bar, Quick Add, and popular tags bar
-    ├── FooterMenuItemView.swift     # Repository counts, update trigger, and quit actions
-    ├── RepoMenuItemView.swift       # Virtualized row views (Columns, Cards, Tags layouts)
-    ├── NoSearchResultsView.swift    # Empty state view for filtered searches
-    ├── RepoCoordinator.swift        # Lifecycle actions (add, delete, install, single refresh)
-    ├── RefreshCoordinator.swift     # Background update cycles, 30-worker pool, exact timers
-    ├── SettingsViewController.swift # Preferences, UI scaling, layout modes, and intervals
-    ├── ReleaseNotesWindowController.swift # Release notes viewer and in-app asset download manager
+    ├── AboutViewController.swift    # About Mino visual credits panel
     ├── AddRepoViewController.swift  # Multi-Hunt batch ingestion window
-    ├── OAuthWindowController.swift  # GitHub Device Flow OAuth authorization window
+    ├── AppDelegate.swift            # App lifecycle, popover orchestration, and global shortcuts
     ├── BeerHandlePanel.swift        # Aesthetic popover handle attachment
     ├── ConfigManager.swift          # Atomic JSON persistence and fail-safe backup recovery
+    ├── Constants.swift              # Performance thresholds, timings, and layout metrics
+    ├── FelineEyeIcon.swift          # Dynamic cat eye status bar icon rendering
+    ├── FooterMenuItemView.swift     # Repository counts, update trigger, and quit actions
+    ├── GeneratedColor.swift         # Dynamic app accent colors derived from app icon
     ├── GitHubAPI.swift              # GitHub REST API client with domain allowlist & rate limits
     ├── GitHubAuth.swift             # Device Flow OAuth protocol & least-privilege token retrieval
-    ├── HomebrewManager.swift        # Homebrew Cask discovery, verification, and CLI bridge
     ├── GlobalHotkeyManager.swift    # System-wide hotkey listener and recorder
     ├── HUDPanel.swift               # Floating feedback overlay with progress tracking & Finder reveal
-    ├── Translations.swift           # Localization engine (11 languages)
+    ├── HeaderMenuItemView.swift     # Search bar, Quick Add, and popular tags bar
+    ├── HomebrewManager.swift        # Homebrew Cask discovery, verification, and CLI bridge
+    ├── MainPopoverViewController.swift # Core UI controller (NSTableView, Search, Tag Cloud)
     ├── Models.swift                 # Data structures (RepoInfo, AppConfig, RepoConfig)
-    ├── Constants.swift              # Performance thresholds, timings, and layout metrics
-    ├── GeneratedColor.swift         # Dynamic app accent colors derived from app icon
+    ├── NoSearchResultsView.swift    # Empty state view for filtered searches
+    ├── OAuthWindowController.swift  # GitHub Device Flow OAuth authorization window
+    ├── RefreshCoordinator.swift     # Background update cycles, 30-worker pool, exact timers
+    ├── ReleaseNotesWindowController.swift # Release notes viewer and in-app asset download manager
+    ├── RepoCoordinator.swift        # Lifecycle actions (add, delete, install, single refresh)
+    ├── RepoMenuItemView.swift       # Virtualized row views (Columns, Cards, Tags layouts)
+    ├── SettingsViewController.swift # Preferences, UI scaling, layout modes, and intervals
+    ├── SheenOverlayView.swift       # Metal-accelerated liquid-crystal reflection overlay
+    ├── Translations.swift           # Localization engine (11 languages)
     └── Utils.swift                  # Relative date formatting, styling, and window utilities
 ```
 
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
-## Credits
-
-No credits.
